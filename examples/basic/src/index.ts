@@ -3,6 +3,11 @@ import { Streamer, Utils, prepareStream, playStream } from "@dank074/discord-vid
 import config from "./config.json" with {type: "json"};
 
 const streamer = new Streamer(new Client());
+const token = process.env.DISCORD_TOKEN || config.token;
+
+if (!token || token === "SELF TOKEN HERE") {
+    throw new Error("Set DISCORD_TOKEN or update examples/basic/src/config.json with your Discord user token.");
+}
 
 // ready event
 streamer.client.on("ready", () => {
@@ -96,7 +101,7 @@ streamer.client.on("messageCreate", async (msg) => {
 });
 
 // login
-streamer.client.login(config.token);
+streamer.client.login(token);
 
 function parseArgs(message: string): Args | undefined {
     const args = message.split(" ");

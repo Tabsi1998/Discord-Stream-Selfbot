@@ -10,6 +10,11 @@ type BrowserOptions = {
 }
 
 const streamer = new Streamer(new Client());
+const token = process.env.DISCORD_TOKEN || config.token;
+
+if (!token || token === "SELF TOKEN HERE") {
+    throw new Error("Set DISCORD_TOKEN or update examples/puppeteer-stream/src/config.json with your Discord user token.");
+}
 let browser: Awaited<ReturnType<typeof launch>>;
 
 // ready event
@@ -60,7 +65,7 @@ streamer.client.on("messageCreate", async (msg) => {
 })
 
 // login
-streamer.client.login(config.token);
+streamer.client.login(token);
 
 async function streamPuppeteer(url: string, streamer: Streamer, opts: BrowserOptions, cancelSignal?: AbortSignal) {
     cancelSignal?.throwIfAborted();

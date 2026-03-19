@@ -252,6 +252,13 @@ readrateInitialBurst?: number,
 
 See [this page](./PERFORMANCE.md) for some tips on improving performance
 
+## Self-hosted control panel
+
+This repo now also includes a full scheduler and web UI under `examples/control-panel`.
+
+- Local setup: see `examples/control-panel/README.md`
+- Docker/self-hosted setup: see `SELFHOSTING.md`
+
 ## Running example
 
 `examples/basic/src/config.json`:

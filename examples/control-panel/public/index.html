@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stream Control Panel</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Discord Video Stream Scheduler</p>
+          <h1>Stream Control Panel</h1>
+          <p class="subtitle">
+            Kanaele, Presets, Serien, Discord-Kommandos und manuelle Starts auf einer Oberflaeche.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <span id="discordStatusBadge" class="badge badge-neutral">lädt</span>
+          <button id="refreshButton" class="ghost-button" type="button">
+            Aktualisieren
+          </button>
+          <button id="stopButton" class="danger-button" type="button">
+            Aktiven Stream stoppen
+          </button>
+        </div>
+      </header>
+
+      <div id="notice" class="notice hidden"></div>
+
+      <section class="overview-grid">
+        <article class="overview-card">
+          <h2>Discord</h2>
+          <p id="discordUser">nicht verbunden</p>
+          <p id="ffmpegInfo" class="muted"></p>
+          <p id="commandInfo" class="muted"></p>
+        </article>
+        <article class="overview-card">
+          <h2>Aktiver Lauf</h2>
+          <p id="activeRunPrimary">kein aktiver Stream</p>
+          <p id="activeRunSecondary" class="muted"></p>
+        </article>
+        <article class="overview-card">
+          <h2>Geplante Events</h2>
+          <p id="scheduledSummary">0 Events</p>
+          <p id="nextEventSummary" class="muted">kein nächstes Event</p>
+        </article>
+      </section>
+
+      <main class="layout">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Sofortaktion</p>
+              <h2>Manueller Start</h2>
+            </div>
+          </div>
+          <form id="manualStartForm" class="form-grid">
+            <label>
+              Kanal
+              <select id="manualChannelId" name="channelId" required></select>
+            </label>
+            <label>
+              Preset
+              <select id="manualPresetId" name="presetId" required></select>
+            </label>
+            <label>
+              Optional stoppen um
+              <input id="manualStopAt" name="stopAt" type="datetime-local" />
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">
+                Jetzt starten
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Discord Sync</p>
+              <h2>Voice Channels entdecken</h2>
+            </div>
+            <button id="refreshVoiceChannelsButton" class="ghost-button" type="button">
+              Aus Discord neu laden
+            </button>
+          </div>
+          <div class="form-grid compact-grid">
+            <label>
+              Discord Voice Channel
+              <select id="discoveredChannelSelect"></select>
+            </label>
+            <div class="form-actions">
+              <button id="applyDiscoveredChannelButton" class="ghost-button" type="button">
+                In Formular übernehmen
+              </button>
+            </div>
+          </div>
+          <p id="voiceChannelDiscoveryInfo" class="muted"></p>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Konfiguration</p>
+              <h2>Kanäle</h2>
+            </div>
+          </div>
+          <form id="channelForm" class="form-grid">
+            <input id="channelIdField" name="id" type="hidden" />
+            <label>
+              Name
+              <input id="channelName" name="name" required />
+            </label>
+            <label>
+              Guild ID
+              <input id="channelGuildId" name="guildId" required />
+            </label>
+            <label>
+              Voice Channel ID
+              <input id="channelDiscordId" name="channelId" required />
+            </label>
+            <label>
+              Stream-Modus
+              <select id="channelStreamMode" name="streamMode">
+                <option value="go-live">Go Live</option>
+                <option value="camera">Camera</option>
+              </select>
+            </label>
+            <label class="full-width">
+              Beschreibung
+              <input id="channelDescription" name="description" />
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Kanal speichern</button>
+              <button id="channelResetButton" class="ghost-button" type="button">
+                Zurücksetzen
+              </button>
+            </div>
+          </form>
+          <div id="channelsList" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Vorlagen</p>
+              <h2>Stream Presets</h2>
+            </div>
+          </div>
+          <form id="presetForm" class="form-grid">
+            <input id="presetIdField" name="id" type="hidden" />
+            <label>
+              Name
+              <input id="presetName" name="name" required />
+            </label>
+            <label>
+              Quelltyp
+              <select id="presetSourceMode" name="sourceMode">
+                <option value="direct">Direkte Media-URL</option>
+                <option value="yt-dlp">yt-dlp (YouTube / Livestream)</option>
+              </select>
+            </label>
+            <label class="full-width">
+              URL / Quelle
+              <input id="presetSourceUrl" name="sourceUrl" required />
+            </label>
+            <label>
+              Breite
+              <input id="presetWidth" name="width" type="number" min="1" value="1280" required />
+            </label>
+            <label>
+              Höhe
+              <input id="presetHeight" name="height" type="number" min="1" value="720" required />
+            </label>
+            <label>
+              FPS
+              <input id="presetFps" name="fps" type="number" min="1" value="30" required />
+            </label>
+            <label>
+              Video kbps
+              <input id="presetBitrateVideo" name="bitrateVideoKbps" type="number" min="1" value="1000" required />
+            </label>
+            <label>
+              Max Video kbps
+              <input id="presetBitrateVideoMax" name="maxBitrateVideoKbps" type="number" min="1" value="2500" required />
+            </label>
+            <label>
+              Audio kbps
+              <input id="presetBitrateAudio" name="bitrateAudioKbps" type="number" min="1" value="128" required />
+            </label>
+            <label>
+              Codec
+              <select id="presetVideoCodec" name="videoCodec">
+                <option value="H264">H264</option>
+                <option value="H265">H265</option>
+              </select>
+            </label>
+            <label class="checkbox-field">
+              <input id="presetIncludeAudio" name="includeAudio" type="checkbox" checked />
+              Audio mitsenden
+            </label>
+            <label class="checkbox-field">
+              <input id="presetHardwareAcceleration" name="hardwareAcceleration" type="checkbox" />
+              Hardware-Decoding
+            </label>
+            <label class="checkbox-field">
+              <input id="presetMinimizeLatency" name="minimizeLatency" type="checkbox" />
+              Latenz minimieren
+            </label>
+            <label class="full-width">
+              Beschreibung
+              <input id="presetDescription" name="description" />
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Preset speichern</button>
+              <button id="presetResetButton" class="ghost-button" type="button">
+                Zurücksetzen
+              </button>
+            </div>
+          </form>
+          <div id="presetsList" class="stack-list"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Planung</p>
+              <h2>Events</h2>
+            </div>
+          </div>
+          <form id="eventForm" class="form-grid">
+            <input id="eventIdField" name="id" type="hidden" />
+            <label>
+              Name
+              <input id="eventName" name="name" required />
+            </label>
+            <label>
+              Kanal
+              <select id="eventChannelId" name="channelId" required></select>
+            </label>
+            <label>
+              Preset
+              <select id="eventPresetId" name="presetId" required></select>
+            </label>
+            <label>
+              Start
+              <input id="eventStartAt" name="startAt" type="datetime-local" required />
+            </label>
+            <label>
+              Ende
+              <input id="eventEndAt" name="endAt" type="datetime-local" required />
+            </label>
+            <label>
+              Wiederholung
+              <select id="eventRecurrenceKind" name="recurrenceKind">
+                <option value="once">Einmalig</option>
+                <option value="daily">Taeglich</option>
+                <option value="weekly">Woechentlich</option>
+              </select>
+            </label>
+            <label>
+              Intervall
+              <input id="eventRecurrenceInterval" name="recurrenceInterval" type="number" min="1" value="1" />
+            </label>
+            <label>
+              Wiederholen bis
+              <input id="eventRecurrenceUntil" name="recurrenceUntil" type="datetime-local" />
+            </label>
+            <div id="eventWeekdaysField" class="weekday-field full-width hidden">
+              <span>Wochentage</span>
+              <div class="weekday-grid">
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="1" />Mo</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="2" />Di</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="3" />Mi</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="4" />Do</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="5" />Fr</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="6" />Sa</label>
+                <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="0" />So</label>
+              </div>
+            </div>
+            <label class="full-width">
+              Beschreibung
+              <input id="eventDescription" name="description" />
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Event speichern</button>
+              <button id="eventResetButton" class="ghost-button" type="button">
+                Zurücksetzen
+              </button>
+            </div>
+          </form>
+          <div id="eventsList" class="stack-list"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Verlauf</p>
+              <h2>Letzte Logs</h2>
+            </div>
+          </div>
+          <div id="logsList" class="log-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

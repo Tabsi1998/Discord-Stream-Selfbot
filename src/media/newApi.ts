@@ -261,11 +261,15 @@ export function prepareStream(
   }
 
   if (isHttpUrl) {
+    const serializedHeaders = Object.entries(customHeaders)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\r\n");
+
+    // The ffmpeg wrapper tokenizes string input like a shell command. Wrap the
+    // header blob so spaces inside header values remain a single argument.
     command.inputOptions(
       "-headers",
-      Object.entries(customHeaders)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\r\n"),
+      `"${serializedHeaders}"`,
     );
     if (!isHls) {
       command.inputOptions([
