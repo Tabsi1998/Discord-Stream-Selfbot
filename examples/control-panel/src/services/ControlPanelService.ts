@@ -859,7 +859,7 @@ export class ControlPanelService {
 
       const discordEvent = await guild.scheduledEvents.fetch(discordEventId);
       if (discordEvent) {
-        await discordEvent.setStatus(2);
+        await discordEvent.setStatus("ACTIVE");
         this.store.appendLog("info", "Discord Event gestartet", {
           discordEventId,
         });
@@ -885,7 +885,7 @@ export class ControlPanelService {
 
       const discordEvent = await guild.scheduledEvents.fetch(discordEventId);
       if (discordEvent) {
-        await discordEvent.setStatus(3);
+        await discordEvent.setStatus("COMPLETED");
         this.store.appendLog("info", "Discord Event als abgeschlossen markiert", {
           discordEventId,
         });

@@ -1,126 +1,74 @@
-# Discord Stream Selfbot - PRD & Verbesserungsplan
+# Discord Stream Selfbot - Control Panel
 
-## Was wurde bisher gemacht
+## Originales Problem
+Web-basiertes Control Panel zum Planen und Verwalten von Discord Streams ueber einen Self-Bot. Unterstuetzt YouTube, Twitch, Direkt-URLs und MPEG-TS Streams (Dispatcharr/IPTV).
 
-### Iteration 1 - Grundsetup (Emergent Preview)
-- React + FastAPI + MongoDB Control Panel fuer Emergent Preview
-- Discord Dark Theme UI
+## Architektur
+- **Production Stack**: Node.js / Express / TypeScript mit Vanilla JS Frontend
+- **Preview Stack**: React Frontend + FastAPI Backend + MongoDB (Emergent Preview)
+- **Quellcode**: `/app/examples/control-panel/` (Control Panel), `/app/src/` (Core Library)
+- **State**: File-based JSON (`control-panel-state.json`) in Production, MongoDB in Preview
+- **Deployment**: Docker via `control-panel.Dockerfile` + `docker-compose.yml`
 
-### Iteration 2 - Shell Scripts & Quality Profiles
-- install.sh: Interaktives Setup mit Farben, Token/User-ID Eingabe
-- update.sh: Git-Update ohne Datenverlust
-- config.sh: Menue-basierte Konfigurationsaenderung
-- Quality Profiles: "Original" entfernt, 2160p30 + 2160p60 hinzugefuegt
+## Kernfunktionen
+1. Channel-Verwaltung (Discord Voice Channels konfigurieren)
+2. Preset-Verwaltung (Stream-Quellen, Qualitaet, Buffer, Encoder)
+3. Event-Planung (Zeitgesteuerte Streams mit Wiederholung)
+4. Manueller Stream-Start/Stop
+5. Discord Event-Synchronisation (Create, Start, Cancel, Complete, Update)
+6. Stream Health Monitoring (Live Uptime Counter)
+7. MPEG-TS/Dispatcharr Stream-Erkennung
+8. URL-Erreichbarkeitstest
+9. yt-dlp Auto-Erkennung (YouTube/Twitch)
+10. Interaktive Install/Update/Config Shell-Skripte
 
-### Iteration 3 - GitHub CI Fixes
-- Biome Formatting in src/media/newApi.ts
-- temp_repo Submodule-Fehler behoben
-- .gitignore/.dockerignore bereinigt
+## Implementiert
+- [x] UI Overhaul: Modernes Discord-Dark-Theme
+- [x] Quality Profiles: 720p-4K, 30/60fps (Original entfernt)
+- [x] Interactive Shell Scripts: install.sh, update.sh, config.sh
+- [x] GitHub Actions CI Fixes (Biome, Submodules, Workflows)
+- [x] Docker Build Fixes (Path Separators, .dockerignore)
+- [x] Discord Event Sync: Create, Start, Cancel, Complete, Update
+- [x] yt-dlp Auto-Switch bei YouTube/Twitch URLs
+- [x] Stream Stabilitaet: FFmpeg Reconnect-Flags, MPEG-TS Erkennung
+- [x] MPEG-TS/Dispatcharr Support: Resilience-Flags, kein readrate fuer Live-TS
+- [x] Stream Health Monitoring: Live Uptime Counter im Dashboard
+- [x] URL-Test Button: Preset URLs auf Erreichbarkeit pruefen
+- [x] Adaptive Polling: 3s bei aktivem Stream, 8s im Leerlauf
+- [x] Discord Badge: Synced Events im Frontend markiert
+- [x] TypeScript Fixes: setStatus("COMPLETED") statt numerische Codes
+- [x] React Frontend: Vollstaendiges Dashboard, Channels, Presets, Events, Logs
 
-### Iteration 4 - Docker Build Fix
-- prebuild Pfad: Windows-Backslashes auf Linux-Forward-Slashes
-- publish_prerelease.yml deaktiviert (pkg-pr-new nicht installiert)
+## API Endpoints
+- GET /api/bootstrap - Gesamtstatus
+- GET /api/stream/health - Stream Health Info (aktiv/inaktiv, uptime)
+- POST /api/presets/test-url - URL Erreichbarkeitstest
+- GET/POST /api/channels - Channel CRUD
+- GET/POST /api/presets - Preset CRUD
+- GET/POST /api/events - Event CRUD
+- POST /api/manual/start - Manueller Stream-Start
+- POST /api/stop - Stream stoppen
+- GET /api/logs - Logs abrufen
 
-### Iteration 5 - Originalcode Fixes
-- Quality Profiles in den echten Quelldateien (types.ts, presetProfiles.ts, app.js, index.html)
-- yt-dlp Binary Detection Fix (-version vs --version)
-- YouTube URL Auto-Detection (direct -> yt-dlp)
-- Frontend Dark Theme CSS fuer Docker-Deployment
+## Offene Tasks
 
-### Iteration 6 - Discord Event Sync
-- Automatische Discord Scheduled Event Erstellung bei Event-Anlage
-- Discord Event Loeschung bei Event-Cancel/Delete
-- Discord Event Status "Active" bei Event-Start
-- discordEventId Feld in ScheduledEvent Typ
+### P1 - Naechste Schritte
+- Stream Kalender-Ansicht (Wochen-/Monatskalender)
+- Graceful Shutdown: FFmpeg-Prozesse sauber beenden
+- WebSocket fuer Real-time Updates statt Polling
+- Import/Export Funktionalitaet (JSON Backup)
 
-## Verbesserungsvorschlaege (Priorisiert)
+### P2 - Zukunft
+- Erweiterte Wiederholungsregeln ("jeden zweiten Dienstag")
+- Overlap-Protection global
+- Stream-Statistiken (Laufzeit, Fehlerrate)
+- Benachrichtigungen (Discord DM/Webhook)
+- Multi-Stream Vorbereitung
+- Mobile-Responsive Optimierung
+- Structured Logging
+- TypeScript Strict Mode aktivieren
 
-### P0 - Sollte als Naechstes gemacht werden
-
-1. **Event-Update -> Discord Event Update**
-   Aktuell wird beim Bearbeiten eines Events das Discord Event nicht aktualisiert.
-   Fix: Bei updateEvent altes Discord Event loeschen und neues erstellen.
-
-2. **Event Completed -> Discord Event Status**
-   Wenn ein Event fertig ist (Stream endet planmaessig), sollte das Discord Event
-   auf Status "Completed" (3) gesetzt werden.
-
-3. **Fehlerbehandlung bei Discord Offline**
-   Wenn Discord nicht verbunden ist, sollten Events trotzdem erstellt werden koennen.
-   Die Discord-Sync sollte dann nachgeholt werden sobald die Verbindung steht.
-   -> Queue-System fuer ausstehende Discord Events
-
-4. **Frontend: Discord Event Status anzeigen**
-   In der Event-Liste ein kleines Discord-Icon zeigen wenn ein Discord Event
-   verknuepft ist. Tooltip mit Discord Event ID.
-
-### P1 - Wichtige Verbesserungen
-
-5. **WebSocket fuer Real-time Updates**
-   Aktuell pollt das Frontend alle 5 Sekunden. WebSocket wuerde:
-   - Sofortige Status-Updates bei Stream Start/Stop
-   - Live Log-Stream
-   - Weniger Server-Last
-
-6. **Overlap-Protection Verbesserung**
-   Aktuell nur pro Channel. Sollte auch global pruefen ob der Bot
-   bereits in einem anderen Channel streamt (nur 1 Stream gleichzeitig moeglich).
-
-7. **Stream Health Monitoring**
-   FFmpeg-Prozess ueberwachen:
-   - CPU/RAM Verbrauch
-   - Dropped Frames zaehlen
-   - Bitrate-Schwankungen erkennen
-   - Automatischer Restart bei Crash
-
-8. **Preset Vorschau/Test**
-   "URL testen" Button der kurz prueft ob die Quelle erreichbar ist
-   (HTTP HEAD Request oder yt-dlp --simulate) bevor ein Event erstellt wird.
-
-9. **Event-Kalender Ansicht**
-   Wochen/Monats-Kalender statt nur Liste. Drag & Drop zum Verschieben.
-
-### P2 - Nice-to-Have
-
-10. **Export/Import Konfiguration**
-    Channels, Presets und Events als JSON exportieren/importieren.
-    Nuetzlich fuer Backup oder Migration.
-
-11. **Multi-Stream Support Vorbereitung**
-    Architektur vorbereiten fuer mehrere gleichzeitige Streams
-    (mehrere Discord Accounts).
-
-12. **Stream-Statistiken**
-    Wie lange wurde in welchem Channel gestreamt?
-    Erfolgsrate der Events? Durchschnittliche Dauer?
-
-13. **Benachrichtigungen**
-    Discord DM oder Webhook-Nachricht wenn:
-    - Stream startet/stoppt
-    - Event fehlschlaegt
-    - yt-dlp URL nicht aufloesbar
-
-14. **Mobile-Responsive UI**
-    Das Control Panel auch vom Handy bedienbar machen.
-
-15. **Twitch/YouTube Chat Relay**
-    Chat aus Twitch/YouTube Streams als Overlay oder
-    in einen Discord Text-Channel spiegeln.
-
-### Code-Qualitaet Verbesserungen
-
-16. **Error Boundaries im Frontend**
-    Einzelne Sektionen sollen bei JS-Fehler nicht die ganze Seite killen.
-
-17. **Rate Limiting auf API**
-    Schutz gegen versehentliche Spam-Requests.
-
-18. **Input Sanitization**
-    XSS-Schutz fuer Name/Description Felder die im HTML gerendert werden.
-
-19. **Structured Logging**
-    JSON-formatierte Logs mit Timestamp, Level, Context fuer besseres Debugging.
-
-20. **TypeScript Strict Mode**
-    tsconfig.json auf strict: true setzen. Aktuell sind einige
-    implicit-any und nullable Typen nicht abgefangen.
+## Bekannte Einschraenkungen
+- Discord-Funktionen nur mit gueltigem Self-Token testbar
+- Preview-Umgebung nutzt FastAPI/MongoDB statt Node.js/File-based JSON
+- MPEG-TS Streams benoetigen lokale Netzwerk-Erreichbarkeit
