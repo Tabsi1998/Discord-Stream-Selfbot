@@ -1,94 +1,126 @@
-# Discord Stream Selfbot Control Panel - PRD
+# Discord Stream Selfbot - PRD & Verbesserungsplan
 
-## Originale Problem-Beschreibung
-GitHub Repo klonen (https://github.com/Tabsi1998/Discord-Stream-Selfbot), zum Laufen bringen, komplett analysieren und Verbesserungen identifizieren. Fokus auf Frontend UI und generelle Code-Verbesserungen. Plan fuer weitere Entwicklung erstellen.
+## Was wurde bisher gemacht
 
-## Architektur
+### Iteration 1 - Grundsetup (Emergent Preview)
+- React + FastAPI + MongoDB Control Panel fuer Emergent Preview
+- Discord Dark Theme UI
 
-### Original (aus GitHub Repo)
-- **Backend**: Node.js + Express + TypeScript
-- **Frontend**: Vanilla HTML/CSS/JS (statische Dateien)
-- **State**: JSON-File basiert (kein Datenbank)
-- **Streaming**: discord-video-stream Library + FFmpeg + yt-dlp
+### Iteration 2 - Shell Scripts & Quality Profiles
+- install.sh: Interaktives Setup mit Farben, Token/User-ID Eingabe
+- update.sh: Git-Update ohne Datenverlust
+- config.sh: Menue-basierte Konfigurationsaenderung
+- Quality Profiles: "Original" entfernt, 2160p30 + 2160p60 hinzugefuegt
 
-### Portiert (aktuell laufend)
-- **Backend**: Python FastAPI + Motor (MongoDB async)
-- **Frontend**: React 18 + Tailwind CSS
-- **Datenbank**: MongoDB
-- **Hosting**: Emergent Platform (port 8001 backend, port 3000 frontend)
+### Iteration 3 - GitHub CI Fixes
+- Biome Formatting in src/media/newApi.ts
+- temp_repo Submodule-Fehler behoben
+- .gitignore/.dockerignore bereinigt
 
-## Was wurde implementiert (19.03.2026)
+### Iteration 4 - Docker Build Fix
+- prebuild Pfad: Windows-Backslashes auf Linux-Forward-Slashes
+- publish_prerelease.yml deaktiviert (pkg-pr-new nicht installiert)
 
-### Shell Scripts (komplett neu geschrieben)
-- **install.sh**: Interaktiv mit Farben, 5-Schritt-Flow (Voraussetzungen, Discord Token + User-IDs, Web Panel Port/TZ, Chat-Befehle/yt-dlp/Scheduler, Zusammenfassung & Start). Bestehende .env als Basis verwendbar. Validierung aller Eingaben. Geheime Token-Eingabe.
-- **update.sh**: Git-Update OHNE Datenverlust. Automatisches .env + State Backup. Zeigt verfuegbare Commits an. Stash-Support fuer lokale Aenderungen. Container rebuild nach Update. Restore bei Fehler.
-- **config.sh**: Menue-basiert (1-7 + a fuer alles). Zeigt aktuelle Werte, aendert gezielt einzelne Einstellungen. Container-Neustart optional.
+### Iteration 5 - Originalcode Fixes
+- Quality Profiles in den echten Quelldateien (types.ts, presetProfiles.ts, app.js, index.html)
+- yt-dlp Binary Detection Fix (-version vs --version)
+- YouTube URL Auto-Detection (direct -> yt-dlp)
+- Frontend Dark Theme CSS fuer Docker-Deployment
 
-### Quality Profiles (aktualisiert)
-- "Original" entfernt
-- 2160p30 (4K / 30 FPS - 3840x2160) hinzugefuegt
-- 2160p60 (4K / 60 FPS - 3840x2160) hinzugefuegt
-- 4K Bitrate-Empfehlungen: H264 10-18Mbps, H265 8.2-15.3Mbps
+### Iteration 6 - Discord Event Sync
+- Automatische Discord Scheduled Event Erstellung bei Event-Anlage
+- Discord Event Loeschung bei Event-Cancel/Delete
+- Discord Event Status "Active" bei Event-Start
+- discordEventId Feld in ScheduledEvent Typ
 
-### Backend (server.py)
-- GET /api/health - Health Check
-- GET /api/bootstrap - Kompletter App-State
-- GET /api/state - State ohne Voice Channels
-- GET /api/profiles - Quality & Buffer Profile Definitionen
-- GET /api/recommend-bitrate - Bitrate-Empfehlung berechnen
-- POST/PUT/DELETE /api/channels - CRUD fuer Discord Voice Channels
-- POST/PUT/DELETE /api/presets - CRUD fuer Stream Presets (mit Normalisierung)
-- POST/PUT/DELETE /api/events - CRUD fuer Events (mit Recurrence)
-- POST /api/events/{id}/start - Event starten
-- POST /api/events/{id}/cancel - Event abbrechen
-- POST /api/manual/start - Manueller Stream-Start
-- POST /api/stop - Aktiven Stream stoppen
-- GET /api/logs - Letzte Logs
+## Verbesserungsvorschlaege (Priorisiert)
 
-### Frontend (React)
-- Dashboard: Status-Karten, Manueller Start, System-Info, Letzte Logs
-- Kanaele: CRUD-Formular, Liste mit Edit/Delete
-- Presets: Tabs (Allgemein, Video, Audio, Erweitert), Quality Profiles, Buffer Profiles
-- Events: Einmalig/Taeglich/Woechentlich, Wochentag-Auswahl, Start/Cancel/Delete
-- Logs: Filter nach Level (All/Info/Warn/Error)
-- Sidebar Navigation mit Active-Run-Anzeige
+### P0 - Sollte als Naechstes gemacht werden
 
-## User Personas
-- **Primaer**: Technisch versierte Discord-Nutzer die Selfbot-Streaming einrichten
-- **Sprache**: Deutsch
-- **Use Case**: Streams zeitgesteuert in Discord-Voice-Channels abspielen
+1. **Event-Update -> Discord Event Update**
+   Aktuell wird beim Bearbeiten eines Events das Discord Event nicht aktualisiert.
+   Fix: Bei updateEvent altes Discord Event loeschen und neues erstellen.
 
-## Core Requirements (Statisch)
-1. Discord Voice Channel Verwaltung (Guild ID + Channel ID)
-2. Stream Preset Verwaltung (URL, Quality, Codec, Buffer)
-3. Event Scheduling (einmalig, taeglich, woechentlich)
-4. Manueller Stream Start/Stop
-5. Real-time Status und Logs
+2. **Event Completed -> Discord Event Status**
+   Wenn ein Event fertig ist (Stream endet planmaessig), sollte das Discord Event
+   auf Status "Completed" (3) gesetzt werden.
 
-## Priorisierter Backlog
+3. **Fehlerbehandlung bei Discord Offline**
+   Wenn Discord nicht verbunden ist, sollten Events trotzdem erstellt werden koennen.
+   Die Discord-Sync sollte dann nachgeholt werden sobald die Verbindung steht.
+   -> Queue-System fuer ausstehende Discord Events
 
-### P0 - Kritisch (fuer produktiven Einsatz)
-- [ ] Discord Self-Token Integration (WebSocket-Verbindung)
-- [ ] FFmpeg-basiertes Streaming zu Discord Voice Channels
-- [ ] yt-dlp Integration fuer YouTube/Twitch URLs
-- [ ] Scheduler-Service der Events automatisch startet/stoppt
+4. **Frontend: Discord Event Status anzeigen**
+   In der Event-Liste ein kleines Discord-Icon zeigen wenn ein Discord Event
+   verknuepft ist. Tooltip mit Discord Event ID.
 
-### P1 - Wichtig
-- [ ] Voice Channel Discovery (automatisch von Discord laden)
-- [ ] Discord Command Bridge (Chat-Befehle zum Steuern)
-- [ ] Overlap-Protection (Events duerfen sich nicht ueberschneiden)
-- [ ] Bessere Fehlerbehandlung und Retry-Logik
-- [ ] WebSocket fuer Real-time UI Updates
+### P1 - Wichtige Verbesserungen
+
+5. **WebSocket fuer Real-time Updates**
+   Aktuell pollt das Frontend alle 5 Sekunden. WebSocket wuerde:
+   - Sofortige Status-Updates bei Stream Start/Stop
+   - Live Log-Stream
+   - Weniger Server-Last
+
+6. **Overlap-Protection Verbesserung**
+   Aktuell nur pro Channel. Sollte auch global pruefen ob der Bot
+   bereits in einem anderen Channel streamt (nur 1 Stream gleichzeitig moeglich).
+
+7. **Stream Health Monitoring**
+   FFmpeg-Prozess ueberwachen:
+   - CPU/RAM Verbrauch
+   - Dropped Frames zaehlen
+   - Bitrate-Schwankungen erkennen
+   - Automatischer Restart bei Crash
+
+8. **Preset Vorschau/Test**
+   "URL testen" Button der kurz prueft ob die Quelle erreichbar ist
+   (HTTP HEAD Request oder yt-dlp --simulate) bevor ein Event erstellt wird.
+
+9. **Event-Kalender Ansicht**
+   Wochen/Monats-Kalender statt nur Liste. Drag & Drop zum Verschieben.
 
 ### P2 - Nice-to-Have
-- [ ] Stream Preview/Monitor
-- [ ] Export/Import von Konfigurationen
-- [ ] Multi-Account Support
-- [ ] Benachrichtigungen (Email/Discord)
-- [ ] Dunkler/Heller Theme Toggle
-- [ ] Mobile-responsive Optimierung
 
-## Naechste Schritte
-1. Code-Review und Verbesserungsplan praesentieren
-2. Basierend auf User-Feedback priorisieren
-3. Discord-Integration Schritt fuer Schritt umsetzen
+10. **Export/Import Konfiguration**
+    Channels, Presets und Events als JSON exportieren/importieren.
+    Nuetzlich fuer Backup oder Migration.
+
+11. **Multi-Stream Support Vorbereitung**
+    Architektur vorbereiten fuer mehrere gleichzeitige Streams
+    (mehrere Discord Accounts).
+
+12. **Stream-Statistiken**
+    Wie lange wurde in welchem Channel gestreamt?
+    Erfolgsrate der Events? Durchschnittliche Dauer?
+
+13. **Benachrichtigungen**
+    Discord DM oder Webhook-Nachricht wenn:
+    - Stream startet/stoppt
+    - Event fehlschlaegt
+    - yt-dlp URL nicht aufloesbar
+
+14. **Mobile-Responsive UI**
+    Das Control Panel auch vom Handy bedienbar machen.
+
+15. **Twitch/YouTube Chat Relay**
+    Chat aus Twitch/YouTube Streams als Overlay oder
+    in einen Discord Text-Channel spiegeln.
+
+### Code-Qualitaet Verbesserungen
+
+16. **Error Boundaries im Frontend**
+    Einzelne Sektionen sollen bei JS-Fehler nicht die ganze Seite killen.
+
+17. **Rate Limiting auf API**
+    Schutz gegen versehentliche Spam-Requests.
+
+18. **Input Sanitization**
+    XSS-Schutz fuer Name/Description Felder die im HTML gerendert werden.
+
+19. **Structured Logging**
+    JSON-formatierte Logs mit Timestamp, Level, Context fuer besseres Debugging.
+
+20. **TypeScript Strict Mode**
+    tsconfig.json auf strict: true setzen. Aktuell sind einige
+    implicit-any und nullable Typen nicht abgefangen.

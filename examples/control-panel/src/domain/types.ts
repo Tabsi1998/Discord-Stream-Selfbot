@@ -84,6 +84,7 @@ export type ScheduledEvent = {
   actualStartedAt?: string;
   actualEndedAt?: string;
   lastError?: string;
+  discordEventId?: string;
 };
 
 export type ActiveRun = {

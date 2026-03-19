@@ -18,7 +18,11 @@ import type {
   StreamPreset,
 } from "../domain/types.js";
 import { isYouTubeUrl } from "../runtime/SourceResolver.js";
-import { StreamRuntime, type RunEndedInfo, type RunFailedInfo } from "../runtime/StreamRuntime.js";
+import {
+  StreamRuntime,
+  type RunEndedInfo,
+  type RunFailedInfo,
+} from "../runtime/StreamRuntime.js";
 import { AppStateStore } from "../state/AppStateStore.js";
 
 function nowIso() {
@@ -318,6 +322,9 @@ export class ControlPanelService {
       sortEvents(draft.events);
     });
 
+    // Sync to Discord in background (non-blocking)
+    this.syncEventsToDiscord(plan.events, input.channelId).catch(() => {});
+
     return {
       createdCount: plan.events.length,
       events: plan.events,
@@ -362,6 +369,7 @@ export class ControlPanelService {
   }
 
   public deleteEvent(id: string) {
+    let discordEventIds: string[] = [];
     this.store.update((draft) => {
       const event = this.requireEventFromDraft(draft, id);
       if (event.status === "running") {
@@ -369,10 +377,22 @@ export class ControlPanelService {
       }
 
       const replaceIds = this.collectReplaceIds(draft.events, event);
+      discordEventIds = draft.events
+        .filter((e) => replaceIds.has(e.id) && e.discordEventId)
+        .map((e) => e.discordEventId!);
+      const guildId = draft.channels.find(
+        (c) => c.id === event.channelId,
+      )?.guildId;
+
       const before = draft.events.length;
       draft.events = draft.events.filter((entry) => !replaceIds.has(entry.id));
       if (draft.events.length === before) {
         throw new Error("Event not found");
+      }
+
+      // Delete Discord events in background
+      if (guildId && discordEventIds.length > 0) {
+        this.deleteDiscordEvents(guildId, discordEventIds).catch(() => {});
       }
     });
   }
@@ -387,6 +407,16 @@ export class ControlPanelService {
         throw new Error("The running event could not be stopped");
       }
       return;
+    }
+
+    // Cancel Discord scheduled event
+    if (event.discordEventId) {
+      const channel = state.channels.find((c) => c.id === event.channelId);
+      if (channel) {
+        this.deleteDiscordEvents(channel.guildId, [event.discordEventId]).catch(
+          () => {},
+        );
+      }
     }
 
     this.store.update((draft) => {
@@ -420,6 +450,13 @@ export class ControlPanelService {
       current.lastError = undefined;
       current.updatedAt = nowIso();
     });
+
+    // Set Discord event to Active
+    if (event.discordEventId) {
+      this.setDiscordEventActive(channel.guildId, event.discordEventId).catch(
+        () => {},
+      );
+    }
 
     try {
       await this.runtime.startRun({
@@ -653,5 +690,146 @@ export class ControlPanelService {
 
   private requireEventFromSnapshot(state: ControlPanelState, id: string) {
     return this.requireEventFromDraft(state, id);
+  }
+
+  // ── Discord Scheduled Event Sync ──────────────────────────────────
+
+  private async syncEventsToDiscord(
+    events: ScheduledEvent[],
+    channelId: string,
+  ) {
+    try {
+      const client = this.runtime.getClient();
+      if (!client.user) return;
+
+      const state = this.store.snapshot();
+      const channel = state.channels.find((c) => c.id === channelId);
+      if (!channel) return;
+
+      const preset = events[0]
+        ? state.presets.find((p) => p.id === events[0].presetId)
+        : undefined;
+
+      const guild = client.guilds.cache.get(channel.guildId);
+      if (!guild) {
+        this.store.appendLog(
+          "warn",
+          `Discord Event Sync: Guild ${channel.guildId} nicht im Cache`,
+        );
+        return;
+      }
+
+      for (const event of events) {
+        try {
+          const description = [
+            event.description || "",
+            "",
+            `Stream: ${channel.name} (${channel.streamMode})`,
+            preset ? `Preset: ${preset.name}` : "",
+            preset ? `Quelle: ${preset.sourceUrl}` : "",
+            preset
+              ? `Qualitaet: ${preset.width}x${preset.height} @ ${preset.fps}fps`
+              : "",
+            event.seriesId
+              ? `Serie #${event.occurrenceIndex}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+            .trim();
+
+          const discordEvent = await guild.scheduledEvents.create({
+            name: event.name,
+            scheduledStartTime: new Date(event.startAt),
+            scheduledEndTime: new Date(event.endAt),
+            privacyLevel: 2,
+            entityType: 2,
+            channel: channel.channelId,
+            description,
+          });
+
+          this.store.update((draft) => {
+            const target = draft.events.find((e) => e.id === event.id);
+            if (target) {
+              target.discordEventId = discordEvent.id;
+            }
+          });
+
+          this.store.appendLog(
+            "info",
+            `Discord Event erstellt: "${event.name}"`,
+            { discordEventId: discordEvent.id },
+          );
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : "Unbekannter Fehler";
+          this.store.appendLog(
+            "warn",
+            `Discord Event konnte nicht erstellt werden: "${event.name}"`,
+            { error: msg },
+          );
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.appendLog("warn", "Discord Event Sync fehlgeschlagen", {
+        error: msg,
+      });
+    }
+  }
+
+  private async deleteDiscordEvents(
+    guildId: string,
+    discordEventIds: string[],
+  ) {
+    try {
+      const client = this.runtime.getClient();
+      if (!client.user) return;
+
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return;
+
+      for (const eventId of discordEventIds) {
+        try {
+          const discordEvent = await guild.scheduledEvents.fetch(eventId);
+          if (discordEvent) {
+            await discordEvent.delete();
+            this.store.appendLog("info", "Discord Event geloescht", {
+              discordEventId: eventId,
+            });
+          }
+        } catch {
+          // Event might already be deleted
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  private async setDiscordEventActive(
+    guildId: string,
+    discordEventId: string,
+  ) {
+    try {
+      const client = this.runtime.getClient();
+      if (!client.user) return;
+
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return;
+
+      const discordEvent = await guild.scheduledEvents.fetch(discordEventId);
+      if (discordEvent) {
+        await discordEvent.setStatus(2);
+        this.store.appendLog("info", "Discord Event gestartet", {
+          discordEventId,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.appendLog("warn", "Discord Event Status-Update fehlgeschlagen", {
+        error: msg,
+      });
+    }
   }
 }
