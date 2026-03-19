@@ -27,7 +27,3 @@ temp_repo/
 test_reports/
 design_guidelines.json
 backend_test.py
--e 
-# Environment files
-*.env
-*.env.*

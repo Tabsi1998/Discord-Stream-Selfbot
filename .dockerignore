@@ -11,3 +11,13 @@ deploy/.env
 deploy/data/*
 !deploy/data/.gitkeep
 *.log
+
+# Emergent Platform
+.emergent
+backend
+frontend
+memory
+temp_repo
+test_reports
+design_guidelines.json
+backend_test.py
