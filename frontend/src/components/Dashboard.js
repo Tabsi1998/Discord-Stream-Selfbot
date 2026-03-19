@@ -1,10 +1,18 @@
-import React from 'react';
-import { Activity, Radio, Settings, Calendar, Clock, AlertTriangle, Wifi, WifiOff, Play, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, Radio, Settings, Calendar, Clock, AlertTriangle, Wifi, WifiOff, Play, Zap, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 
 function formatDT(iso) {
   if (!iso) return '—';
   return new Intl.DateTimeFormat('de-AT', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+}
+
+function formatUptime(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 export default function Dashboard({ state, api, refresh }) {
@@ -16,6 +24,16 @@ export default function Dashboard({ state, api, refresh }) {
   const logs = state?.logs || [];
   const scheduled = events.filter(e => e.status === 'scheduled');
   const nextEvent = [...scheduled].sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))[0];
+
+  const [uptimeMs, setUptimeMs] = useState(0);
+
+  useEffect(() => {
+    if (!activeRun?.startedAt) { setUptimeMs(0); return; }
+    const calc = () => setUptimeMs(Date.now() - Date.parse(activeRun.startedAt));
+    calc();
+    const t = setInterval(calc, 1000);
+    return () => clearInterval(t);
+  }, [activeRun?.startedAt]);
 
   const handleManualStart = async (e) => {
     e.preventDefault();
@@ -66,11 +84,21 @@ export default function Dashboard({ state, api, refresh }) {
           {activeRun ? (
             <>
               <p className="text-lg font-heading font-bold text-txt-bright">{activeRun.channelName} → {activeRun.presetName}</p>
-              <div className="flex items-center gap-3 mt-2 text-xs text-txt-muted">
+              <div className="flex items-center gap-3 mt-2 text-xs text-txt-muted flex-wrap">
                 <span className="px-2 py-0.5 bg-primary/20 text-primary rounded-full font-bold text-[11px]">{activeRun.status}</span>
                 <span>Seit {formatDT(activeRun.startedAt)}</span>
                 {activeRun.plannedStopAt && <span>Stop: {formatDT(activeRun.plannedStopAt)}</span>}
               </div>
+              {activeRun.status === 'running' && (
+                <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-primary/5 rounded-lg border border-primary/15" data-testid="stream-health-bar">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success"></span>
+                  </span>
+                  <Timer className="w-3.5 h-3.5 text-txt-muted" />
+                  <span className="font-mono font-bold text-sm text-txt-bright tracking-wider" data-testid="stream-uptime">{formatUptime(uptimeMs)}</span>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-sm text-txt-muted">Kein aktiver Stream</p>

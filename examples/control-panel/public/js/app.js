@@ -172,6 +172,10 @@ const els = {
   eventResetButton: document.querySelector("#eventResetButton"),
   eventsList: document.querySelector("#eventsList"),
   logsList: document.querySelector("#logsList"),
+  streamHealthBar: document.querySelector("#streamHealthBar"),
+  streamUptime: document.querySelector("#streamUptime"),
+  presetTestUrlButton: document.querySelector("#presetTestUrlButton"),
+  presetSourceHint: document.querySelector("#presetSourceHint"),
   eventWeekdayInputs: [
     ...document.querySelectorAll("#eventWeekdaysField input[data-weekday]"),
   ],
@@ -239,6 +243,14 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function formatUptime(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 function parsePositiveNumber(value, fallback) {
@@ -622,8 +634,10 @@ function renderOverview() {
     els.activeRunSecondary.textContent = runtime.lastEndedAt
       ? `Letztes Ende: ${formatDateTime(runtime.lastEndedAt)}`
       : "kein letzter Lauf";
+    els.streamHealthBar.classList.add("hidden");
   } else {
     els.activeRunPrimary.textContent = `${activeRun.channelName} -> ${activeRun.presetName}`;
+    const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
     els.activeRunSecondary.textContent = [
       `Status: ${activeRun.status}`,
       `Seit: ${formatDateTime(activeRun.startedAt)}`,
@@ -631,6 +645,12 @@ function renderOverview() {
         ? `Stop: ${formatDateTime(activeRun.plannedStopAt)}`
         : "Stop: offen",
     ].join(" | ");
+    if (activeRun.status === "running") {
+      els.streamHealthBar.classList.remove("hidden");
+      els.streamUptime.textContent = formatUptime(uptimeMs);
+    } else {
+      els.streamHealthBar.classList.add("hidden");
+    }
   }
 
   els.scheduledSummary.textContent = `${scheduled.length} Events geplant`;
@@ -719,13 +739,17 @@ function renderEvents() {
       const errorInfo = item.lastError
         ? `<p class="item-meta">Fehler: ${escapeHtml(item.lastError)}</p>`
         : "";
+      const discordBadge = item.discordEventId
+        ? `<span class="discord-badge" title="Discord Event: ${escapeHtml(item.discordEventId)}">Discord</span>`
+        : "";
+      const statusClass = `event-status event-status-${item.status}`;
       return `
         <article class="item-card">
           <div class="item-topline">
             <div>
-              <h3 class="item-title">${escapeHtml(item.name)}</h3>
+              <h3 class="item-title">${escapeHtml(item.name)}${discordBadge}</h3>
               <p class="item-meta">${formatDateTime(item.startAt)} -> ${formatDateTime(item.endAt)}</p>
-              <p class="item-meta">${eventStatusLabel(item.status)} | ${escapeHtml(recurrence)}</p>
+              <p class="item-meta"><span class="${statusClass}">${eventStatusLabel(item.status)}</span> | ${escapeHtml(recurrence)}</p>
               <p class="item-meta">${seriesInfo}</p>
               <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
               ${errorInfo}
@@ -1157,10 +1181,83 @@ function bindPresetQualityEvents() {
     }
   }
 
+  function isTsProxy(url) {
+    try {
+      const path = new URL(url).pathname.toLowerCase();
+      return path.includes("/ts/stream/") || path.includes("/proxy/ts/");
+    } catch {
+      return false;
+    }
+  }
+
+  function isMpegTsUrl(url) {
+    try {
+      const path = new URL(url).pathname.toLowerCase();
+      return path.endsWith(".ts") || isTsProxy(url);
+    } catch {
+      return false;
+    }
+  }
+
   els.presetSourceUrl.addEventListener("input", () => {
     const url = els.presetSourceUrl.value.trim();
-    if (url && needsYtDlp(url) && els.presetSourceMode.value === "direct") {
+    if (!url) {
+      els.presetSourceHint.classList.add("hidden");
+      return;
+    }
+
+    if (needsYtDlp(url) && els.presetSourceMode.value === "direct") {
       els.presetSourceMode.value = "yt-dlp";
+      els.presetSourceHint.textContent = "YouTube/Twitch erkannt. Quelltyp automatisch auf yt-dlp gesetzt.";
+      els.presetSourceHint.dataset.tone = "info";
+      els.presetSourceHint.classList.remove("hidden");
+    } else if (isTsProxy(url)) {
+      els.presetSourceMode.value = "direct";
+      if (els.presetBufferProfile.value === "auto" || els.presetBufferProfile.value === "low-latency") {
+        els.presetBufferProfile.value = "stable";
+      }
+      els.presetSourceHint.textContent = "MPEG-TS Proxy erkannt (Dispatcharr/IPTV). Quelltyp auf Direkt, Buffer auf Stabil gesetzt.";
+      els.presetSourceHint.dataset.tone = "info";
+      els.presetSourceHint.classList.remove("hidden");
+      syncPresetFieldsFromProfiles();
+    } else if (isMpegTsUrl(url)) {
+      els.presetSourceHint.textContent = "MPEG-TS Stream erkannt. Empfehlung: Buffer-Profil auf 'Stabil' setzen.";
+      els.presetSourceHint.dataset.tone = "info";
+      els.presetSourceHint.classList.remove("hidden");
+    } else {
+      els.presetSourceHint.classList.add("hidden");
+    }
+  });
+
+  // URL Test button
+  els.presetTestUrlButton.addEventListener("click", async () => {
+    const url = els.presetSourceUrl.value.trim();
+    if (!url) {
+      showNotice("Bitte zuerst eine URL eingeben.", "warn");
+      return;
+    }
+    els.presetTestUrlButton.disabled = true;
+    els.presetTestUrlButton.textContent = "Teste...";
+    try {
+      const result = await api("/api/presets/test-url", {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      });
+      if (result.reachable) {
+        els.presetSourceHint.textContent = `Erreichbar (${result.status}) | Typ: ${result.contentType}`;
+        els.presetSourceHint.dataset.tone = "success";
+      } else {
+        els.presetSourceHint.textContent = `Nicht erreichbar: ${result.error || "Status " + result.status}`;
+        els.presetSourceHint.dataset.tone = "danger";
+      }
+      els.presetSourceHint.classList.remove("hidden");
+    } catch (err) {
+      els.presetSourceHint.textContent = `Test fehlgeschlagen: ${err.message}`;
+      els.presetSourceHint.dataset.tone = "danger";
+      els.presetSourceHint.classList.remove("hidden");
+    } finally {
+      els.presetTestUrlButton.disabled = false;
+      els.presetTestUrlButton.textContent = "Testen";
     }
   });
 }
@@ -1216,6 +1313,29 @@ async function init() {
   resetPresetForm();
   resetEventForm();
   await refresh();
+
+  // Auto-poll: faster when a stream is actively running
+  let pollTimer;
+  function schedulePoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+    const interval = state.app?.runtime?.activeRun ? 3000 : 8000;
+    pollTimer = setTimeout(async () => {
+      try {
+        await refresh();
+      } catch {}
+      schedulePoll();
+    }, interval);
+  }
+  schedulePoll();
+
+  // Live uptime counter for active streams
+  setInterval(() => {
+    const activeRun = state.app?.runtime?.activeRun;
+    if (activeRun && activeRun.status === "running") {
+      const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
+      els.streamUptime.textContent = formatUptime(uptimeMs);
+    }
+  }, 1000);
 }
 
 void init().catch(handleError);

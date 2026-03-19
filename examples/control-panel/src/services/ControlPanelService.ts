@@ -335,6 +335,8 @@ export class ControlPanelService {
   public updateEvent(id: string, input: EventInput): EventMutationResult {
     const timestamp = nowIso();
     let updated: EventMutationResult | undefined;
+    let oldDiscordEventIds: string[] = [];
+    let guildId: string | undefined;
 
     this.store.update((draft) => {
       const target = this.requireEventFromDraft(draft, id);
@@ -345,6 +347,9 @@ export class ControlPanelService {
       this.requireChannelFromDraft(draft, input.channelId);
       this.requirePresetFromDraft(draft, input.presetId);
 
+      const channel = draft.channels.find((c) => c.id === input.channelId);
+      guildId = channel?.guildId;
+
       const replacement = this.planEvents(
         input,
         timestamp,
@@ -353,6 +358,12 @@ export class ControlPanelService {
       ).events;
 
       const replaceIds = this.collectReplaceIds(draft.events, target);
+
+      // Collect old Discord event IDs for cleanup
+      oldDiscordEventIds = draft.events
+        .filter((e) => replaceIds.has(e.id) && e.discordEventId)
+        .map((e) => e.discordEventId!);
+
       const retained = draft.events.filter((event) => !replaceIds.has(event.id));
 
       this.assertNoOverlap(retained, replacement);
@@ -364,6 +375,14 @@ export class ControlPanelService {
         events: replacement,
       };
     });
+
+    // Sync to Discord: delete old events and create new ones
+    if (guildId && oldDiscordEventIds.length > 0) {
+      this.deleteDiscordEvents(guildId, oldDiscordEventIds).catch(() => {});
+    }
+    if (updated) {
+      this.syncEventsToDiscord(updated.events, input.channelId).catch(() => {});
+    }
 
     return updated!;
   }
@@ -508,6 +527,10 @@ export class ControlPanelService {
   private onRunEnded(info: RunEndedInfo) {
     if (info.run.kind !== "event" || !info.run.eventId) return;
 
+    let shouldMarkCompleted = false;
+    let discordEventId: string | undefined;
+    let channelId: string | undefined;
+
     this.store.update((draft) => {
       const event = this.requireEventFromDraft(draft, info.run.eventId!);
       event.updatedAt = nowIso();
@@ -521,8 +544,24 @@ export class ControlPanelService {
         event.status = "canceled";
       } else {
         event.status = "completed";
+        if (event.discordEventId) {
+          shouldMarkCompleted = true;
+          discordEventId = event.discordEventId;
+          channelId = event.channelId;
+        }
       }
     });
+
+    // Set Discord scheduled event status to COMPLETED
+    if (shouldMarkCompleted && discordEventId && channelId) {
+      const state = this.store.snapshot();
+      const channel = state.channels.find((c) => c.id === channelId);
+      if (channel) {
+        this.setDiscordEventCompleted(channel.guildId, discordEventId).catch(
+          () => {},
+        );
+      }
+    }
   }
 
   private onRunFailed(info: RunFailedInfo) {
@@ -830,6 +869,34 @@ export class ControlPanelService {
       this.store.appendLog("warn", "Discord Event Status-Update fehlgeschlagen", {
         error: msg,
       });
+    }
+  }
+
+  private async setDiscordEventCompleted(
+    guildId: string,
+    discordEventId: string,
+  ) {
+    try {
+      const client = this.runtime.getClient();
+      if (!client.user) return;
+
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return;
+
+      const discordEvent = await guild.scheduledEvents.fetch(discordEventId);
+      if (discordEvent) {
+        await discordEvent.setStatus(3);
+        this.store.appendLog("info", "Discord Event als abgeschlossen markiert", {
+          discordEventId,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.appendLog(
+        "warn",
+        "Discord Event Completed-Update fehlgeschlagen",
+        { error: msg },
+      );
     }
   }
 }

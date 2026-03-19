@@ -223,11 +223,16 @@ export default function Events({ state, api, refresh }) {
                   }`} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-heading font-bold text-txt-bright text-sm">{ev.name}</h3>
                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${STATUS_STYLES[ev.status] || ''}`}>
                       {STATUS_LABELS[ev.status] || ev.status}
                     </span>
+                    {ev.discordEventId && (
+                      <span className="px-2 py-0.5 bg-primary/15 text-primary rounded-full text-[10px] font-bold tracking-wide" data-testid={`discord-badge-${ev.id}`} title={`Discord Event: ${ev.discordEventId}`}>
+                        DISCORD
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-txt-muted">
                     <Clock className="w-3 h-3" />

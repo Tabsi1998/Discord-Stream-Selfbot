@@ -36,9 +36,13 @@ export default function App() {
 
   useEffect(() => {
     fetchState();
-    const interval = setInterval(fetchState, 8000);
-    return () => clearInterval(interval);
-  }, [fetchState]);
+    // Adaptive polling: faster when a stream is active
+    const getInterval = () => state?.runtime?.activeRun ? 3000 : 8000;
+    let timer;
+    const schedule = () => { timer = setTimeout(async () => { await fetchState().catch(() => {}); schedule(); }, getInterval()); };
+    schedule();
+    return () => clearTimeout(timer);
+  }, [fetchState, state?.runtime?.activeRun?.startedAt]);
 
   const api = async (path, options = {}) => {
     const res = await fetch(`${API}${path}`, {

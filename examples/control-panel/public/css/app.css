@@ -568,3 +568,172 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     grid-column: auto;
   }
 }
+
+/* ── Stream Health Indicator ─────────────── */
+.stream-health {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  background: var(--primary-soft);
+  border: 1px solid rgba(88, 101, 242, 0.18);
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: healthPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes healthPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(35, 165, 90, 0.4); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(35, 165, 90, 0); }
+}
+
+.health-uptime {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--bright);
+  letter-spacing: 0.03em;
+}
+
+/* ── Discord Badge ───────────────────────── */
+.discord-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(88, 101, 242, 0.18);
+  color: var(--primary);
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* ── URL Test Field ──────────────────────── */
+.url-field-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.url-field-row input {
+  flex: 1;
+}
+
+.url-field-row .ghost-button {
+  white-space: nowrap;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+}
+
+/* ── Event Status Tags ───────────────────── */
+.event-status {
+  display: inline-flex;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.event-status-running {
+  background: var(--primary-soft);
+  color: var(--primary);
+  animation: pulse 2s infinite;
+}
+
+.event-status-scheduled {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.event-status-completed {
+  background: rgba(148, 155, 164, 0.12);
+  color: var(--muted);
+}
+
+.event-status-failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.event-status-canceled {
+  background: var(--danger-soft);
+  color: var(--danger);
+  opacity: 0.7;
+}
+
+/* ── Source Hint ──────────────────────────── */
+.source-hint {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.source-hint[data-tone="info"] {
+  background: var(--primary-soft);
+  border: 1px solid rgba(88, 101, 242, 0.18);
+  color: var(--primary);
+}
+
+.source-hint[data-tone="success"] {
+  background: var(--success-soft);
+  border: 1px solid rgba(35, 165, 90, 0.2);
+  color: var(--success);
+}
+
+.source-hint[data-tone="danger"] {
+  background: var(--danger-soft);
+  border: 1px solid rgba(242, 63, 66, 0.2);
+  color: var(--danger);
+}
+
+/* ── Auto-poll Indicator ─────────────────── */
+.poll-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.poll-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  opacity: 0.6;
+  transition: opacity 200ms;
+}
+
+.poll-dot.active {
+  opacity: 1;
+}
+
+/* ── Fade-in Animation ───────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.item-card {
+  animation: fadeIn 200ms ease-out;
+}
+
+.log-entry {
+  animation: fadeIn 150ms ease-out;
+}

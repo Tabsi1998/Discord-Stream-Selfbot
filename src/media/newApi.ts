@@ -310,6 +310,13 @@ export function prepareStream(
       // The ffmpeg wrapper tokenizes string input like a shell command. Wrap the
       // header blob so spaces inside header values remain a single argument.
       command.inputOptions("-headers", `"${serializedHeaders}"`);
+
+      // Detect live MPEG-TS streams (Dispatcharr, IPTV proxies, raw TS feeds)
+      const isLiveTs =
+        typeof source.src === "string" &&
+        (/\/(?:proxy\/)?ts\/stream\//i.test(source.src) ||
+          /\.ts(?:\?|$)/.test(source.src));
+
       if (!isHls) {
         command.inputOptions([
           "-reconnect 1",
@@ -321,18 +328,16 @@ export function prepareStream(
         ]);
       }
 
+      // MPEG-TS resilience: regenerate missing PTS and discard corrupt packets
+      if (isLiveTs) {
+        command.inputOptions(["-fflags +genpts+discardcorrupt"]);
+      }
+
       // Throttle read speed to ~1x realtime to prevent buffer overflow on
-      // fast connections. readrate_initial_burst covers the initial fill.
-      if (!minimizeLatency) {
+      // fast connections. Skip for live TS streams that already deliver in
+      // realtime – throttling them would introduce stalls and buffering.
+      if (!minimizeLatency && !isLiveTs) {
         command.inputOptions(["-readrate 1"]);
-        if (
-          isFiniteNonZero(opts.readrateInitialBurst) &&
-          opts.readrateInitialBurst > 0
-        ) {
-          command.inputOptions([
-            `-readrate_initial_burst ${opts.readrateInitialBurst}`,
-          ]);
-        }
       }
     }
 

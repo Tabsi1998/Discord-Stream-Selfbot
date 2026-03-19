@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings, Plus, Pencil, Trash2, X, Film, MonitorPlay } from 'lucide-react';
+import { Settings, Plus, Pencil, Trash2, X, Film, MonitorPlay, Globe, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const API_BASE = process.env.REACT_APP_BACKEND_URL || '';
 
 const QUALITY_PROFILES = {
   '720p30': { label: '720p / 30 FPS', w: 1280, h: 720, fps: 30 },
@@ -14,6 +16,23 @@ const QUALITY_PROFILES = {
   custom: { label: 'Custom', w: 1280, h: 720, fps: 30 },
 };
 
+const YT_DLP_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'twitch.tv', 'www.twitch.tv'];
+
+function needsYtDlp(url) {
+  try { const h = new URL(url).hostname.toLowerCase(); return YT_DLP_HOSTS.some(x => h === x || h.endsWith('.' + x)); }
+  catch { return false; }
+}
+
+function isTsProxy(url) {
+  try { const p = new URL(url).pathname.toLowerCase(); return p.includes('/ts/stream/') || p.includes('/proxy/ts/'); }
+  catch { return false; }
+}
+
+function isMpegTsUrl(url) {
+  try { const p = new URL(url).pathname.toLowerCase(); return p.endsWith('.ts') || isTsProxy(url); }
+  catch { return false; }
+}
+
 const defaultForm = {
   name: '', sourceUrl: '', sourceMode: 'direct', qualityProfile: '720p30', bufferProfile: 'auto',
   description: '', includeAudio: true, width: 1280, height: 720, fps: 30,
@@ -26,6 +45,8 @@ export default function Presets({ state, api, refresh }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({...defaultForm});
   const [tab, setTab] = useState('general');
+  const [sourceHint, setSourceHint] = useState(null);
+  const [urlTesting, setUrlTesting] = useState(false);
 
   const isCustom = form.qualityProfile === 'custom';
 
@@ -79,6 +100,45 @@ export default function Presets({ state, api, refresh }) {
 
   const upd = (key, val) => setForm(p => ({...p, [key]: val}));
 
+  const handleUrlChange = (url) => {
+    upd('sourceUrl', url);
+    if (!url.trim()) { setSourceHint(null); return; }
+    if (needsYtDlp(url) && form.sourceMode === 'direct') {
+      upd('sourceMode', 'yt-dlp');
+      setSourceHint({ text: 'YouTube/Twitch erkannt — Quelltyp auf yt-dlp gesetzt.', tone: 'info' });
+    } else if (isTsProxy(url)) {
+      setForm(f => ({ ...f, sourceUrl: url, sourceMode: 'direct', bufferProfile: 'stable' }));
+      setSourceHint({ text: 'MPEG-TS Proxy erkannt (Dispatcharr/IPTV) — Buffer auf Stabil gesetzt.', tone: 'info' });
+    } else if (isMpegTsUrl(url)) {
+      setSourceHint({ text: 'MPEG-TS Stream erkannt — Empfehlung: Buffer auf "Stabil" setzen.', tone: 'info' });
+    } else {
+      setSourceHint(null);
+    }
+  };
+
+  const testUrl = async () => {
+    const url = form.sourceUrl.trim();
+    if (!url) { toast.error('Bitte zuerst eine URL eingeben'); return; }
+    setUrlTesting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/presets/test-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.reachable) {
+        setSourceHint({ text: `Erreichbar (${data.status}) | Typ: ${data.contentType}`, tone: 'success' });
+      } else {
+        setSourceHint({ text: `Nicht erreichbar: ${data.error || 'Status ' + data.status}`, tone: 'danger' });
+      }
+    } catch (err) {
+      setSourceHint({ text: `Test fehlgeschlagen: ${err.message}`, tone: 'danger' });
+    } finally {
+      setUrlTesting(false);
+    }
+  };
+
   const TABS = [
     { key: 'general', label: 'Allgemein' },
     { key: 'video', label: 'Video' },
@@ -128,7 +188,25 @@ export default function Presets({ state, api, refresh }) {
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>URL / Quelle</label>
-                <input value={form.sourceUrl} onChange={e => upd('sourceUrl', e.target.value)} required className={inputCls} data-testid="preset-url-input" placeholder="https://..." />
+                <div className="flex gap-2">
+                  <input value={form.sourceUrl} onChange={e => handleUrlChange(e.target.value)} required className={`${inputCls} flex-1`} data-testid="preset-url-input" placeholder="https://..." />
+                  <button type="button" onClick={testUrl} disabled={urlTesting} data-testid="preset-test-url-btn"
+                    className="shrink-0 px-4 py-2.5 bg-surface-hover text-txt-muted text-xs font-bold rounded-lg hover:bg-surface-light transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                    {urlTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                    Testen
+                  </button>
+                </div>
+                {sourceHint && (
+                  <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                    sourceHint.tone === 'success' ? 'bg-success/10 text-success border border-success/20' :
+                    sourceHint.tone === 'danger' ? 'bg-danger/10 text-danger border border-danger/20' :
+                    'bg-primary/10 text-primary border border-primary/20'
+                  }`} data-testid="preset-source-hint">
+                    {sourceHint.tone === 'success' ? <CheckCircle className="w-3.5 h-3.5 shrink-0" /> :
+                     sourceHint.tone === 'danger' ? <XCircle className="w-3.5 h-3.5 shrink-0" /> : null}
+                    {sourceHint.text}
+                  </div>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Qualitaetsprofil</label>

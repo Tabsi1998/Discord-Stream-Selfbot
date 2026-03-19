@@ -121,6 +121,55 @@ export function createServer(service: ControlPanelService) {
     res.json({ stopped });
   });
 
+  app.get("/api/stream/health", (_req, res) => {
+    const state = service.snapshot();
+    const activeRun = state.runtime.activeRun;
+    if (!activeRun) {
+      res.json({ active: false });
+      return;
+    }
+    const startedAt = Date.parse(activeRun.startedAt);
+    const uptimeMs = Date.now() - startedAt;
+    res.json({
+      active: true,
+      status: activeRun.status,
+      channelName: activeRun.channelName,
+      presetName: activeRun.presetName,
+      uptimeMs,
+      startedAt: activeRun.startedAt,
+      plannedStopAt: activeRun.plannedStopAt,
+    });
+  });
+
+  app.post(
+    "/api/presets/test-url",
+    asyncRoute(async (req, res) => {
+      const { url } = req.body;
+      if (!url || typeof url !== "string") {
+        res.status(400).json({ error: "URL is required" });
+        return;
+      }
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        const response = await fetch(url, {
+          method: "HEAD",
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        res.json({
+          reachable: response.ok,
+          status: response.status,
+          contentType: response.headers.get("content-type") || "unknown",
+        });
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Connection failed";
+        res.json({ reachable: false, error: message });
+      }
+    }),
+  );
+
   app.get("*", (_req, res) => {
     res.sendFile(resolve(appConfig.publicDir, "index.html"));
   });

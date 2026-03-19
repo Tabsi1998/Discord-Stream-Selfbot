@@ -5,11 +5,14 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
@@ -689,3 +692,63 @@ async def get_logs(limit: int = 100):
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/voice-channels")
+async def voice_channels():
+    return []
+
+
+@app.get("/api/stream/health")
+async def stream_health():
+    runtime = await db.runtime.find_one({"_id": "singleton"}, {"_id": 0})
+    active_run = runtime.get("activeRun") if runtime else None
+    if not active_run:
+        return {"active": False}
+    started_at = datetime.fromisoformat(active_run["startedAt"].replace("Z", "+00:00"))
+    uptime_ms = int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
+    return {
+        "active": True,
+        "status": active_run.get("status", "unknown"),
+        "channelName": active_run.get("channelName", "?"),
+        "presetName": active_run.get("presetName", "?"),
+        "uptimeMs": uptime_ms,
+        "startedAt": active_run["startedAt"],
+        "plannedStopAt": active_run.get("plannedStopAt"),
+    }
+
+
+class UrlTestInput(BaseModel):
+    url: str
+
+
+@app.post("/api/presets/test-url")
+async def test_url(inp: UrlTestInput):
+    if not inp.url.strip():
+        raise HTTPException(400, "URL is required")
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.head(inp.url.strip(), follow_redirects=True)
+        content_type = resp.headers.get("content-type", "unknown")
+        return {
+            "reachable": resp.is_success,
+            "status": resp.status_code,
+            "contentType": content_type,
+        }
+    except Exception as e:
+        return {"reachable": False, "error": str(e)}
+
+
+# ── Static files (serve control panel UI) ───────────────────
+CONTROL_PANEL_PUBLIC = Path(__file__).resolve().parent.parent / "examples" / "control-panel" / "public"
+
+if CONTROL_PANEL_PUBLIC.exists():
+    app.mount("/css", StaticFiles(directory=str(CONTROL_PANEL_PUBLIC / "css")), name="css")
+    app.mount("/js", StaticFiles(directory=str(CONTROL_PANEL_PUBLIC / "js")), name="js")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = CONTROL_PANEL_PUBLIC / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(CONTROL_PANEL_PUBLIC / "index.html"))
