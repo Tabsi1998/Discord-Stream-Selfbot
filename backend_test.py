@@ -1,23 +1,19 @@
+#!/usr/bin/env python3
 import requests
-import json
 import sys
-from datetime import datetime, timedelta
-import uuid
+import json
+from datetime import datetime
 
-class DiscordStreamControlPanelTester:
+class DiscordSelfbotAPITester:
     def __init__(self, base_url="https://44952724-0e4c-465a-9d73-c0e1c371629a.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
-        self.created_resources = {
-            'channels': [],
-            'presets': [],
-            'events': []
-        }
+        self.failed_tests = []
 
-    def run_test(self, name, method, endpoint, expected_status, data=None):
-        """Run a single API test"""
-        url = f"{self.base_url}{endpoint}"
+    def run_test(self, name, method, endpoint, expected_status, data=None, validation_fn=None):
+        """Run a single API test with optional response validation"""
+        url = f"{self.base_url}/{endpoint}"
         headers = {'Content-Type': 'application/json'}
 
         self.tests_run += 1
@@ -34,303 +30,264 @@ class DiscordStreamControlPanelTester:
                 response = requests.delete(url, headers=headers, timeout=10)
 
             success = response.status_code == expected_status
+            
+            if success and validation_fn:
+                try:
+                    response_data = response.json() if response.content else {}
+                    validation_success = validation_fn(response_data)
+                    if not validation_success:
+                        success = False
+                        print(f"❌ Validation failed for {name}")
+                except Exception as e:
+                    success = False
+                    print(f"❌ Validation error: {str(e)}")
+
             if success:
                 self.tests_passed += 1
                 print(f"✅ Passed - Status: {response.status_code}")
-                if response.status_code != 204:
-                    try:
-                        response_data = response.json()
-                        if isinstance(response_data, dict) and 'id' in response_data:
-                            return True, response_data
-                        return True, response_data
-                    except:
-                        return True, {}
-                return True, {}
             else:
+                self.failed_tests.append(name)
                 print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                if response.text:
+                if response.content:
                     try:
                         error_data = response.json()
-                        print(f"   Error: {error_data}")
+                        print(f"   Response: {json.dumps(error_data, indent=2)}")
                     except:
-                        print(f"   Error text: {response.text}")
-                return False, {}
+                        print(f"   Response: {response.text[:200]}")
+
+            return success, response.json() if response.content and success else {}
 
         except Exception as e:
+            self.failed_tests.append(name)
             print(f"❌ Failed - Error: {str(e)}")
             return False, {}
 
-    def test_health(self):
-        """Test health endpoint"""
-        success, response = self.run_test("Health Check", "GET", "/api/health", 200)
-        return success and response.get('status') == 'ok'
-
-    def test_bootstrap(self):
-        """Test bootstrap endpoint"""
-        success, response = self.run_test("Bootstrap State", "GET", "/api/bootstrap", 200)
-        if success and 'state' in response:
-            print(f"   Found {len(response['state'].get('channels', []))} channels, {len(response['state'].get('presets', []))} presets, {len(response['state'].get('events', []))} events")
+    def test_quality_profiles(self):
+        """Test the new quality profiles - should NOT have 'original', should have 4K options"""
+        def validate_profiles(response_data):
+            profiles = response_data.get('qualityProfiles', {})
+            
+            # Should NOT contain 'original' profile
+            if 'original' in profiles:
+                print("❌ 'original' profile still exists (should be removed)")
+                return False
+            print("✅ 'original' profile correctly removed")
+            
+            # Should contain 2160p30 profile
+            if '2160p30' not in profiles:
+                print("❌ '2160p30' profile missing")
+                return False
+            p30 = profiles['2160p30']
+            if p30.get('width') != 3840 or p30.get('height') != 2160 or p30.get('fps') != 30:
+                print(f"❌ '2160p30' profile incorrect: {p30}")
+                return False
+            print("✅ '2160p30' profile correct: 3840x2160@30fps")
+            
+            # Should contain 2160p60 profile
+            if '2160p60' not in profiles:
+                print("❌ '2160p60' profile missing")
+                return False
+            p60 = profiles['2160p60']
+            if p60.get('width') != 3840 or p60.get('height') != 2160 or p60.get('fps') != 60:
+                print(f"❌ '2160p60' profile incorrect: {p60}")
+                return False
+            print("✅ '2160p60' profile correct: 3840x2160@60fps")
+            
+            # Check labels
+            label30 = profiles['2160p30'].get('label')
+            label60 = profiles['2160p60'].get('label')
+            if label30 != '4K / 30 FPS':
+                print(f"❌ '2160p30' label incorrect: {label30}")
+                return False
+            if label60 != '4K / 60 FPS':
+                print(f"❌ '2160p60' label incorrect: {label60}")
+                return False
+            print("✅ 4K profile labels correct")
+            
             return True
-        return False
 
-    def test_profiles(self):
-        """Test profiles endpoint"""
-        success, response = self.run_test("Quality Profiles", "GET", "/api/profiles", 200)
-        return success and 'qualityProfiles' in response and 'bufferProfiles' in response
+        return self.run_test(
+            "Quality profiles - check 4K profiles and removal of 'original'",
+            "GET", "api/profiles", 200, validation_fn=validate_profiles
+        )
 
-    def test_create_channel(self):
-        """Test channel creation"""
-        channel_data = {
-            "name": f"Test Channel {datetime.now().strftime('%H%M%S')}",
-            "guildId": "123456789012345678",
-            "channelId": "987654321098765432",
-            "streamMode": "go-live",
-            "description": "Test channel for API testing"
-        }
-        success, response = self.run_test("Create Channel", "POST", "/api/channels", 201, channel_data)
-        if success and 'id' in response:
-            self.created_resources['channels'].append(response['id'])
-            return response['id']
-        return None
-
-    def test_update_channel(self, channel_id):
-        """Test channel update"""
-        update_data = {
-            "name": f"Updated Channel {datetime.now().strftime('%H%M%S')}",
-            "guildId": "123456789012345678",
-            "channelId": "987654321098765432",
-            "streamMode": "camera",
-            "description": "Updated test channel"
-        }
-        success, response = self.run_test("Update Channel", "PUT", f"/api/channels/{channel_id}", 200, update_data)
-        return success
-
-    def test_create_preset(self):
-        """Test preset creation"""
-        preset_data = {
-            "name": f"Test Preset {datetime.now().strftime('%H%M%S')}",
-            "sourceUrl": "https://example.com/stream.mp4",
-            "sourceMode": "direct",
-            "qualityProfile": "720p30",
-            "bufferProfile": "auto",
-            "description": "Test preset for API testing",
-            "includeAudio": True,
-            "width": 1280,
-            "height": 720,
-            "fps": 30,
-            "bitrateVideoKbps": 4500,
-            "maxBitrateVideoKbps": 6500,
-            "bitrateAudioKbps": 160,
-            "videoCodec": "H264",
-            "hardwareAcceleration": False,
-            "minimizeLatency": False
-        }
-        success, response = self.run_test("Create Preset", "POST", "/api/presets", 201, preset_data)
-        if success and 'id' in response:
-            self.created_resources['presets'].append(response['id'])
-            return response['id']
-        return None
-
-    def test_update_preset(self, preset_id):
-        """Test preset update"""
-        update_data = {
-            "name": f"Updated Preset {datetime.now().strftime('%H%M%S')}",
-            "sourceUrl": "https://example.com/updated_stream.mp4",
-            "sourceMode": "yt-dlp",
-            "qualityProfile": "1080p30",
-            "bufferProfile": "stable",
-            "description": "Updated test preset",
-            "includeAudio": True,
-            "width": 1920,
-            "height": 1080,
-            "fps": 30,
-            "bitrateVideoKbps": 7000,
-            "maxBitrateVideoKbps": 9500,
-            "bitrateAudioKbps": 160,
-            "videoCodec": "H265",
-            "hardwareAcceleration": True,
-            "minimizeLatency": True
-        }
-        success, response = self.run_test("Update Preset", "PUT", f"/api/presets/{preset_id}", 200, update_data)
-        return success
-
-    def test_create_event_single(self, channel_id, preset_id):
-        """Test single event creation"""
-        start_time = datetime.now() + timedelta(hours=1)
-        end_time = start_time + timedelta(hours=2)
-        
-        event_data = {
-            "name": f"Test Single Event {datetime.now().strftime('%H%M%S')}",
-            "channelId": channel_id,
-            "presetId": preset_id,
-            "startAt": start_time.isoformat(),
-            "endAt": end_time.isoformat(),
-            "description": "Test single event",
-            "recurrence": {"kind": "once"}
-        }
-        success, response = self.run_test("Create Single Event", "POST", "/api/events", 201, event_data)
-        if success and 'events' in response and response['events']:
-            event_id = response['events'][0]['id']
-            self.created_resources['events'].append(event_id)
-            return event_id
-        return None
-
-    def test_create_event_recurring(self, channel_id, preset_id):
-        """Test recurring daily event creation"""
-        start_time = datetime.now() + timedelta(days=1)
-        end_time = start_time + timedelta(hours=1)
-        until_time = start_time + timedelta(days=5)
-        
-        event_data = {
-            "name": f"Test Daily Event {datetime.now().strftime('%H%M%S')}",
-            "channelId": channel_id,
-            "presetId": preset_id,
-            "startAt": start_time.isoformat(),
-            "endAt": end_time.isoformat(),
-            "description": "Test recurring daily event",
-            "recurrence": {
-                "kind": "daily",
-                "interval": 1,
-                "until": until_time.isoformat()
+    def test_4k_bitrate_recommendations(self):
+        """Test 4K bitrate recommendations"""
+        tests = [
+            {
+                'name': '4K H264 30fps bitrate',
+                'params': 'width=3840&height=2160&fps=30&codec=H264',
+                'expected_min_video': 9000,  # Should be around 10000-14000
+                'expected_max_video': 12000
+            },
+            {
+                'name': '4K H264 60fps bitrate', 
+                'params': 'width=3840&height=2160&fps=60&codec=H264',
+                'expected_min_video': 13000,  # Should be around 14000-18000
+                'expected_max_video': 16000
+            },
+            {
+                'name': '4K H265 30fps bitrate',
+                'params': 'width=3840&height=2160&fps=30&codec=H265',
+                'expected_min_video': 7000,  # H265 should be ~80% of H264
+                'expected_max_video': 10000
+            },
+            {
+                'name': '4K H265 60fps bitrate',
+                'params': 'width=3840&height=2160&fps=60&codec=H265', 
+                'expected_min_video': 10000,  # H265 should be ~80% of H264
+                'expected_max_video': 13000
             }
+        ]
+        
+        all_passed = True
+        for test in tests:
+            def validate_bitrate(response_data):
+                video = response_data.get('video', 0)
+                video_max = response_data.get('videoMax', 0)
+                audio = response_data.get('audio', 0)
+                
+                if video < test['expected_min_video'] or video > test['expected_max_video'] + 2000:
+                    print(f"❌ Video bitrate {video} not in expected range {test['expected_min_video']}-{test['expected_max_video']+2000}")
+                    return False
+                
+                if video_max <= video:
+                    print(f"❌ Max video bitrate {video_max} should be > video bitrate {video}")
+                    return False
+                    
+                if audio != 160:
+                    print(f"❌ Audio bitrate {audio} should be 160")
+                    return False
+                    
+                print(f"✅ Bitrates correct: video={video}, max={video_max}, audio={audio}")
+                return True
+
+            success, _ = self.run_test(
+                test['name'],
+                "GET", f"api/recommend-bitrate?{test['params']}", 200, validation_fn=validate_bitrate
+            )
+            if not success:
+                all_passed = False
+        
+        return all_passed
+
+    def test_preset_creation_with_4k(self):
+        """Test creating presets with 4K quality profiles"""
+        # Test 2160p30 preset creation
+        preset_data_30 = {
+            "name": "Test 4K 30fps Preset",
+            "sourceUrl": "https://example.com/test.mp4",
+            "qualityProfile": "2160p30",
+            "description": "Test preset for 4K 30fps"
         }
-        success, response = self.run_test("Create Recurring Event", "POST", "/api/events", 201, event_data)
-        if success and 'events' in response and response['events']:
-            # Add all created event IDs
-            for event in response['events']:
-                self.created_resources['events'].append(event['id'])
-            return response['events'][0]['id']
-        return None
-
-    def test_event_actions(self, event_id):
-        """Test event start and cancel actions"""
-        # Test start event
-        start_success, _ = self.run_test("Start Event", "POST", f"/api/events/{event_id}/start", 200)
         
-        # Test cancel event (since we just started it)
-        cancel_success, _ = self.run_test("Cancel Event", "POST", f"/api/events/{event_id}/cancel", 200)
+        success_30, response_30 = self.run_test(
+            "Create preset with 2160p30 profile",
+            "POST", "api/presets", 201, data=preset_data_30
+        )
         
-        return start_success and cancel_success
+        preset_id_30 = None
+        if success_30 and response_30:
+            preset_id_30 = response_30.get('id')
+            if (response_30.get('width') != 3840 or 
+                response_30.get('height') != 2160 or 
+                response_30.get('fps') != 30):
+                print(f"❌ 2160p30 preset has wrong resolution: {response_30.get('width')}x{response_30.get('height')}@{response_30.get('fps')}fps")
+                success_30 = False
+            else:
+                print(f"✅ 2160p30 preset created with correct resolution: 3840x2160@30fps")
 
-    def test_manual_start_stop(self, channel_id, preset_id):
-        """Test manual stream start and stop"""
-        stop_time = datetime.now() + timedelta(hours=1)
-        manual_data = {
-            "channelId": channel_id,
-            "presetId": preset_id,
-            "stopAt": stop_time.isoformat()
+        # Test 2160p60 preset creation
+        preset_data_60 = {
+            "name": "Test 4K 60fps Preset", 
+            "sourceUrl": "https://example.com/test60.mp4",
+            "qualityProfile": "2160p60",
+            "description": "Test preset for 4K 60fps"
         }
         
-        # Test manual start
-        start_success, _ = self.run_test("Manual Stream Start", "POST", "/api/manual/start", 200, manual_data)
+        success_60, response_60 = self.run_test(
+            "Create preset with 2160p60 profile",
+            "POST", "api/presets", 201, data=preset_data_60
+        )
         
-        # Test stop
-        stop_success, _ = self.run_test("Stop Stream", "POST", "/api/stop", 200)
-        
-        return start_success and stop_success
+        preset_id_60 = None
+        if success_60 and response_60:
+            preset_id_60 = response_60.get('id')
+            if (response_60.get('width') != 3840 or 
+                response_60.get('height') != 2160 or 
+                response_60.get('fps') != 60):
+                print(f"❌ 2160p60 preset has wrong resolution: {response_60.get('width')}x{response_60.get('height')}@{response_60.get('fps')}fps")
+                success_60 = False
+            else:
+                print(f"✅ 2160p60 preset created with correct resolution: 3840x2160@60fps")
 
-    def test_get_logs(self):
-        """Test logs retrieval"""
-        success, response = self.run_test("Get Logs", "GET", "/api/logs", 200)
-        return success and isinstance(response, list)
+        # Cleanup - delete test presets
+        if preset_id_30:
+            self.run_test("Delete 2160p30 test preset", "DELETE", f"api/presets/{preset_id_30}", 204)
+        if preset_id_60:
+            self.run_test("Delete 2160p60 test preset", "DELETE", f"api/presets/{preset_id_60}", 204)
 
-    def cleanup_resources(self):
-        """Clean up created test resources"""
-        print("\n🧹 Cleaning up test resources...")
-        
-        # Delete events first (they reference channels and presets)
-        for event_id in self.created_resources['events']:
-            try:
-                requests.delete(f"{self.base_url}/api/events/{event_id}", timeout=5)
-                print(f"   Deleted event {event_id}")
-            except:
-                pass
-        
-        # Delete presets
-        for preset_id in self.created_resources['presets']:
-            try:
-                requests.delete(f"{self.base_url}/api/presets/{preset_id}", timeout=5)
-                print(f"   Deleted preset {preset_id}")
-            except:
-                pass
-        
-        # Delete channels
-        for channel_id in self.created_resources['channels']:
-            try:
-                requests.delete(f"{self.base_url}/api/channels/{channel_id}", timeout=5)
-                print(f"   Deleted channel {channel_id}")
-            except:
-                pass
+        return success_30 and success_60
 
-def main():
-    print("🚀 Starting Discord Stream Control Panel API Tests")
-    print("=" * 60)
-    
-    tester = DiscordStreamControlPanelTester()
-    
-    try:
-        # Basic functionality tests
-        if not tester.test_health():
-            print("❌ Health check failed, stopping tests")
-            return 1
+    def test_basic_endpoints(self):
+        """Test basic endpoints are still working"""
+        tests = [
+            ("Health check", "GET", "api/health", 200),
+            ("Bootstrap", "GET", "api/bootstrap", 200),
+            ("Get state", "GET", "api/state", 200),
+        ]
         
-        if not tester.test_bootstrap():
-            print("❌ Bootstrap failed, stopping tests") 
-            return 1
-            
-        if not tester.test_profiles():
-            print("❌ Profiles test failed")
-            
-        # Channel CRUD tests
-        channel_id = tester.test_create_channel()
-        if not channel_id:
-            print("❌ Channel creation failed, stopping dependent tests")
-            return 1
-            
-        if not tester.test_update_channel(channel_id):
-            print("❌ Channel update failed")
-            
-        # Preset CRUD tests
-        preset_id = tester.test_create_preset()
-        if not preset_id:
-            print("❌ Preset creation failed, stopping dependent tests")
-            return 1
-            
-        if not tester.test_update_preset(preset_id):
-            print("❌ Preset update failed")
-            
-        # Event tests (require both channel and preset)
-        single_event_id = tester.test_create_event_single(channel_id, preset_id)
-        recurring_event_id = tester.test_create_event_recurring(channel_id, preset_id)
+        all_passed = True
+        for name, method, endpoint, status in tests:
+            success, _ = self.run_test(name, method, endpoint, status)
+            if not success:
+                all_passed = False
         
-        if single_event_id:
-            if not tester.test_event_actions(single_event_id):
-                print("❌ Event actions failed")
-        
-        # Manual stream tests
-        if not tester.test_manual_start_stop(channel_id, preset_id):
-            print("❌ Manual stream start/stop failed")
-            
-        # Logs test
-        if not tester.test_get_logs():
-            print("❌ Logs retrieval failed")
-        
+        return all_passed
+
+    def run_full_test_suite(self):
+        """Run all tests"""
+        print("=" * 60)
+        print("Discord Stream Selfbot Control Panel - Testing")
+        print(f"Backend URL: {self.base_url}")
+        print("=" * 60)
+
+        # Test basic functionality first
+        print("\n📋 Testing Basic Endpoints...")
+        self.test_basic_endpoints()
+
+        # Test the main changes from this iteration
+        print("\n🎯 Testing Quality Profile Changes...")
+        self.test_quality_profiles()
+
+        print("\n💡 Testing 4K Bitrate Recommendations...")
+        self.test_4k_bitrate_recommendations()
+
+        print("\n🎬 Testing 4K Preset Creation...")
+        self.test_preset_creation_with_4k()
+
         # Final results
         print("\n" + "=" * 60)
-        print(f"📊 Tests completed: {tester.tests_passed}/{tester.tests_run} passed")
-        success_rate = (tester.tests_passed / tester.tests_run * 100) if tester.tests_run > 0 else 0
-        print(f"📈 Success rate: {success_rate:.1f}%")
+        print("TEST RESULTS")
+        print("=" * 60)
+        print(f"Tests passed: {self.tests_passed}/{self.tests_run}")
         
-        return 0 if tester.tests_passed == tester.tests_run else 1
+        if self.failed_tests:
+            print(f"\nFailed tests:")
+            for test in self.failed_tests:
+                print(f"  ❌ {test}")
+        else:
+            print("\n🎉 All tests passed!")
         
-    except KeyboardInterrupt:
-        print("\n⚠️  Tests interrupted by user")
-        return 1
-    except Exception as e:
-        print(f"\n💥 Unexpected error: {str(e)}")
-        return 1
-    finally:
-        tester.cleanup_resources()
+        success_rate = (self.tests_passed / self.tests_run * 100) if self.tests_run > 0 else 0
+        print(f"Success rate: {success_rate:.1f}%")
+        
+        return self.tests_passed == self.tests_run
+
+def main():
+    tester = DiscordSelfbotAPITester()
+    success = tester.run_full_test_suite()
+    return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(main())

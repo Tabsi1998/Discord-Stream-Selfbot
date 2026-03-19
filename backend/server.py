@@ -19,24 +19,26 @@ DB_NAME = os.environ.get("DB_NAME")
 
 # ── Quality & Buffer Profiles ───────────────────────────────────────
 QUALITY_PROFILES = {
-    "original": {"width": 1920, "height": 1080, "fps": 60, "preserveSource": True},
     "720p30": {"width": 1280, "height": 720, "fps": 30, "preserveSource": False},
     "720p60": {"width": 1280, "height": 720, "fps": 60, "preserveSource": False},
     "1080p30": {"width": 1920, "height": 1080, "fps": 30, "preserveSource": False},
     "1080p60": {"width": 1920, "height": 1080, "fps": 60, "preserveSource": False},
     "1440p30": {"width": 2560, "height": 1440, "fps": 30, "preserveSource": False},
     "1440p60": {"width": 2560, "height": 1440, "fps": 60, "preserveSource": False},
+    "2160p30": {"width": 3840, "height": 2160, "fps": 30, "preserveSource": False},
+    "2160p60": {"width": 3840, "height": 2160, "fps": 60, "preserveSource": False},
     "custom": {"width": 1280, "height": 720, "fps": 30, "preserveSource": False},
 }
 
 QUALITY_LABELS = {
-    "original": "Original",
     "720p30": "720p / 30 FPS",
     "720p60": "720p / 60 FPS",
     "1080p30": "1080p / 30 FPS",
     "1080p60": "1080p / 60 FPS",
     "1440p30": "1440p / 30 FPS",
     "1440p60": "1440p / 60 FPS",
+    "2160p30": "4K / 30 FPS",
+    "2160p60": "4K / 60 FPS",
     "custom": "Custom",
 }
 
@@ -49,13 +51,11 @@ BUFFER_LABELS = {
 
 
 def get_recommended_bitrates(w, h, fps, codec, qp="custom"):
-    if qp == "original":
-        if codec == "H265":
-            return {"video": 7500, "videoMax": 9000, "audio": 160}
-        return {"video": 9000, "videoMax": 10000, "audio": 160}
     px = w * h
     hfr = fps >= 50
-    if px >= 2560 * 1440:
+    if px >= 3840 * 2160:
+        v, vm = (14000, 18000) if hfr else (10000, 14000)
+    elif px >= 2560 * 1440:
         v, vm = (9000, 10000) if hfr else (8000, 10000)
     elif px >= 1920 * 1080:
         v, vm = (8500, 10000) if hfr else (7000, 9500)

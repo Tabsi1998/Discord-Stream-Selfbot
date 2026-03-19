@@ -3,13 +3,14 @@ import { Settings, Plus, Pencil, Trash2, X, Film, MonitorPlay } from 'lucide-rea
 import { toast } from 'sonner';
 
 const QUALITY_PROFILES = {
-  original: { label: 'Original', w: 1920, h: 1080, fps: 60 },
   '720p30': { label: '720p / 30 FPS', w: 1280, h: 720, fps: 30 },
   '720p60': { label: '720p / 60 FPS', w: 1280, h: 720, fps: 60 },
   '1080p30': { label: '1080p / 30 FPS', w: 1920, h: 1080, fps: 30 },
   '1080p60': { label: '1080p / 60 FPS', w: 1920, h: 1080, fps: 60 },
   '1440p30': { label: '1440p / 30 FPS', w: 2560, h: 1440, fps: 30 },
   '1440p60': { label: '1440p / 60 FPS', w: 2560, h: 1440, fps: 60 },
+  '2160p30': { label: '4K / 30 FPS', w: 3840, h: 2160, fps: 30 },
+  '2160p60': { label: '4K / 60 FPS', w: 3840, h: 2160, fps: 60 },
   custom: { label: 'Custom', w: 1280, h: 720, fps: 30 },
 };
 
