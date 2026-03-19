@@ -1,0 +1,163 @@
+{
+  "project_name": "Discord Stream Selfbot Control Panel",
+  "version": "1.0",
+  "language": "de",
+  "theme_preference": "dark",
+  "design_philosophy": {
+    "identity": "E1 - The Anti-AI Designer",
+    "core_principles": [
+      "Fusion over Imitation: Mix Technical Dashboard precision with Gamer aesthetics.",
+      "Emotion First: The UI should feel 'Pro' and 'Reliable'.",
+      "Content is King: Data density without clutter.",
+      "Negative Space: Use padding to separate complex form groups.",
+      "Contrast: High contrast for readability in dark mode."
+    ],
+    "archetype": "ARCHETYPE 2: THE PERFORMANCE PRO (Discord Variant)",
+    "vibe": "Tactical, Dark, Neon Accents, Glass-morphism (Subtle)"
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Work Sans, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight text-white",
+      "h2": "text-xl font-semibold tracking-normal text-white",
+      "h3": "text-lg font-medium text-gray-200",
+      "body": "text-sm text-[#dcddde]",
+      "small": "text-xs text-[#72767d]",
+      "label": "text-xs font-bold uppercase tracking-wide text-[#b9bbbe]"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#202225",
+      "surface": "#2f3136",
+      "surface_hover": "#36393f",
+      "primary": "#5865F2",
+      "primary_hover": "#4752c4",
+      "success": "#3BA55C",
+      "warning": "#FAA61A",
+      "danger": "#ED4245",
+      "text": {
+        "primary": "#dcddde",
+        "muted": "#72767d",
+        "interactive": "#ffffff"
+      },
+      "border": "#202225"
+    },
+    "gradients": {
+      "primary_glow": "linear-gradient(135deg, rgba(88, 101, 242, 0.2) 0%, rgba(88, 101, 242, 0) 100%)",
+      "danger_glow": "linear-gradient(135deg, rgba(237, 66, 69, 0.2) 0%, rgba(237, 66, 69, 0) 100%)"
+    }
+  },
+  "layout_structure": {
+    "type": "Sidebar Layout",
+    "specs": {
+      "sidebar_width": "w-64",
+      "content_padding": "p-8",
+      "container_max_width": "max-w-7xl mx-auto"
+    },
+    "grid_system": {
+      "dashboard_overview": "Bento Grid Mode B (High Density)",
+      "specs": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+      "card_ratios": {
+        "discord_status": "col-span-1 row-span-1",
+        "active_stream": "col-span-2 row-span-2",
+        "next_events": "col-span-1 row-span-2",
+        "recent_logs": "col-span-3 row-span-1"
+      }
+    }
+  },
+  "components": {
+    "cards": {
+      "base": "bg-[#2f3136] rounded-lg shadow-lg border border-[#202225]",
+      "hover": "hover:bg-[#36393f] transition-colors duration-200"
+    },
+    "buttons": {
+      "primary": "bg-[#5865F2] hover:bg-[#4752c4] text-white font-medium px-4 py-2 rounded transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5",
+      "secondary": "bg-[#4f545c] hover:bg-[#5d6269] text-white px-4 py-2 rounded transition-all",
+      "danger": "bg-[#ED4245] hover:bg-[#c03537] text-white px-4 py-2 rounded transition-all",
+      "ghost": "bg-transparent hover:bg-[#36393f] text-[#dcddde] px-4 py-2 rounded transition-colors"
+    },
+    "inputs": {
+      "base": "bg-[#202225] border border-[#202225] text-[#dcddde] rounded px-3 py-2 focus:ring-2 focus:ring-[#5865F2] focus:outline-none placeholder-[#72767d]",
+      "label_style": "block mb-2 text-xs font-bold text-[#b9bbbe] uppercase tracking-wide"
+    },
+    "tables": {
+      "header": "text-xs font-bold text-[#b9bbbe] uppercase tracking-wide border-b border-[#202225] pb-2",
+      "row": "border-b border-[#202225] hover:bg-[#32353b] transition-colors",
+      "cell": "py-3 text-sm text-[#dcddde]"
+    },
+    "status_badges": {
+      "online": "bg-[#3BA55C] text-white text-xs px-2 py-1 rounded-full font-bold",
+      "offline": "bg-[#747f8d] text-white text-xs px-2 py-1 rounded-full font-bold",
+      "streaming": "bg-[#5865F2] text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse",
+      "error": "bg-[#ED4245] text-white text-xs px-2 py-1 rounded-full font-bold"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-md bg-[#2f3136]/90 border border-[#ffffff]/5",
+    "shadows": "shadow-[0_8px_30px_rgb(0,0,0,0.12)]",
+    "motion": {
+      "hover_lift": "hover:-translate-y-1 transition-transform duration-200",
+      "active_press": "active:scale-95 transition-transform duration-100"
+    }
+  },
+  "media_assets": {
+    "background_texture": "https://images.unsplash.com/photo-1764258560730-d167e5deda65?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjBkaWdpdGFsJTIwdGVjaG5vbG9neSUyMHN0cmVhbSUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzczOTUzNTcxfDA&ixlib=rb-4.1.0&q=85",
+    "avatar_placeholder": "https://images.unsplash.com/photo-1744451658473-cf5c564d5a37?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwyfHxnYW1lciUyMHJvYm90JTIwbWFzY290JTIwYXZhdGFyfGVufDB8fHx8MTc3Mzk1MzU3Mnww&ixlib=rb-4.1.0&q=85",
+    "icons_library": "lucide-react"
+  },
+  "pages_structure": [
+    {
+      "name": "Dashboard (Overview)",
+      "route": "/",
+      "components": ["OverviewStats", "ActiveStreamCard", "ManualStartWidget", "NextEventsList"]
+    },
+    {
+      "name": "Channels",
+      "route": "/channels",
+      "components": ["ChannelList", "ChannelFormModal", "VoiceDiscoveryWidget"]
+    },
+    {
+      "name": "Presets",
+      "route": "/presets",
+      "components": ["PresetList", "PresetForm (Complex)"]
+    },
+    {
+      "name": "Schedule",
+      "route": "/schedule",
+      "components": ["CalendarView", "EventList", "EventFormModal"]
+    },
+    {
+      "name": "Logs",
+      "route": "/logs",
+      "components": ["LogFilter", "LogTable", "LogDetailView"]
+    }
+  ],
+  "instructions_to_main_agent": [
+    "IMPERATIVE: The entire UI must be in GERMAN language (labels, buttons, messages).",
+    "Use the 'Bento Grid' layout for the Dashboard Overview as defined in layout_structure.",
+    "Implement the 'Dark Mode' using the provided hex codes. Do NOT use Tailwind's default slate/gray colors. Use the specific custom colors.",
+    "For the 'Stream Preset' form, use a 'Tabs' or 'Accordion' component to group fields (General, Video, Audio, Advanced) to avoid a long scrolling form.",
+    "Use 'sonner' for toast notifications (Success, Error, Info).",
+    "Ensure all interactive elements have 'data-testid' attributes.",
+    "Use 'lucide-react' for icons (e.g., 'Activity', 'Radio', 'Calendar', 'Settings', 'LogOut').",
+    "The 'Manual Start' widget should be prominent on the Dashboard.",
+    "Use 'recharts' for any future analytics, styled with the custom theme colors."
+  ],
+  "universal_guidelines": {
+    "do_not": [
+      "DO NOT use gradients for text.",
+      "DO NOT use 'Inter' for Headings.",
+      "DO NOT use generic centered layouts."
+    ],
+    "must_do": [
+      "MUST use 'Work Sans' for Headings.",
+      "MUST use 'JetBrains Mono' for logs and technical data (IDs, Bitrates).",
+      "MUST implement proper loading states (skeletons) for data fetching."
+    ]
+  }
+}
