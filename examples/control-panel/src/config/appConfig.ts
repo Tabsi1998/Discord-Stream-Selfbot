@@ -65,7 +65,7 @@ function parsePositiveIntegerEnv(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dataFileEnv = process.env.DATA_FILE ?? "./data/control-panel-state.json";
 const dataFile = isAbsolute(dataFileEnv)
   ? dataFileEnv

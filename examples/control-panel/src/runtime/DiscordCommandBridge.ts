@@ -1,13 +1,13 @@
 import type { Message } from "discord.js-selfbot-v13";
-import { appConfig } from "./config.js";
-import { ControlPanelService } from "./service.js";
-import { StreamRuntime } from "./runtime.js";
-import { AppStateStore } from "./storage.js";
+import { appConfig } from "../config/appConfig.js";
 import type {
   ChannelDefinition,
   ScheduledEvent,
   StreamPreset,
-} from "./types.js";
+} from "../domain/types.js";
+import { ControlPanelService } from "../services/ControlPanelService.js";
+import { AppStateStore } from "../state/AppStateStore.js";
+import { StreamRuntime } from "./StreamRuntime.js";
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat("de-AT", {

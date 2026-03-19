@@ -4,8 +4,8 @@ import express, {
   type Response,
 } from "express";
 import { resolve } from "node:path";
-import { appConfig } from "./config.js";
-import { ControlPanelService } from "./service.js";
+import { appConfig } from "../config/appConfig.js";
+import { ControlPanelService } from "../services/ControlPanelService.js";
 
 type AsyncRoute = (
   req: Request,

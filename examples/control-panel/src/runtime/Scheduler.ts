@@ -1,4 +1,4 @@
-import { ControlPanelService } from "./service.js";
+import { ControlPanelService } from "../services/ControlPanelService.js";
 
 export class Scheduler {
   private interval?: NodeJS.Timeout;

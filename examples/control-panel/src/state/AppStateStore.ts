@@ -11,14 +11,14 @@ import { randomUUID } from "node:crypto";
 import {
   coerceBufferProfile,
   coerceQualityProfile,
-} from "./presetProfiles.js";
-import { coerceRecurrenceRule } from "./recurrence.js";
+} from "../domain/presetProfiles.js";
+import { coerceRecurrenceRule } from "../domain/recurrence.js";
 import type {
   ControlPanelState,
   LogEntry,
   LogLevel,
   RuntimeState,
-} from "./types.js";
+} from "../domain/types.js";
 
 function defaultRuntime(): RuntimeState {
   return {

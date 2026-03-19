@@ -15,6 +15,19 @@ Dieses Beispiel erweitert `@dank074/discord-video-stream` um ein lokales Web-Pan
 - Buffer-Profile fuer Stabilitaet oder niedrige Latenz
 - Statusseite und letzte Logs
 
+## Struktur
+
+Das Beispiel ist jetzt bewusst nach Verantwortung aufgeteilt:
+
+- `src/config`: App-Konfiguration und Binary-Erkennung
+- `src/domain`: Typen, Wiederholungslogik und Preset-Profile
+- `src/runtime`: Discord-Laufzeit, Scheduler, Commands und Source-Resolution
+- `src/server`: Express-Server und API-Routen
+- `src/services`: fachliche Steuerlogik fuer Kanaele, Presets und Events
+- `src/state`: Persistenz und Runtime-State
+- `public/css`: Styles
+- `public/js`: Frontend-Logik
+
 ## Setup
 
 1. `.env.example` nach `.env` kopieren

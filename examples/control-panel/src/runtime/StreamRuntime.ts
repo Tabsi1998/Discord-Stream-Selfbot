@@ -6,17 +6,17 @@ import {
 } from "discord.js-selfbot-v13";
 import { Streamer, Utils, prepareStream, playStream } from "@dank074/discord-video-stream";
 import { setFFmpegPath, setFFprobePath } from "fluent-ffmpeg-simplified";
-import { appConfig } from "./config.js";
-import { resolveRuntimePresetConfig } from "./presetProfiles.js";
-import { SourceResolver } from "./sourceResolver.js";
-import { AppStateStore } from "./storage.js";
+import { appConfig } from "../config/appConfig.js";
+import { resolveRuntimePresetConfig } from "../domain/presetProfiles.js";
 import type {
   ActiveRun,
   ChannelDefinition,
   RunKind,
   StreamPreset,
   VoiceChannelOption,
-} from "./types.js";
+} from "../domain/types.js";
+import { AppStateStore } from "../state/AppStateStore.js";
+import { SourceResolver } from "./SourceResolver.js";
 
 type StartRunOptions = {
   kind: RunKind;

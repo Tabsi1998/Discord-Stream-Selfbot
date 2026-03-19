@@ -1,10 +1,10 @@
-import { appConfig } from "./config.js";
-import { createServer } from "./server.js";
-import { DiscordCommandBridge } from "./discordCommands.js";
-import { ControlPanelService } from "./service.js";
-import { Scheduler } from "./scheduler.js";
-import { AppStateStore } from "./storage.js";
-import { StreamRuntime } from "./runtime.js";
+import { appConfig } from "./config/appConfig.js";
+import { DiscordCommandBridge } from "./runtime/DiscordCommandBridge.js";
+import { Scheduler } from "./runtime/Scheduler.js";
+import { StreamRuntime } from "./runtime/StreamRuntime.js";
+import { createServer } from "./server/createServer.js";
+import { ControlPanelService } from "./services/ControlPanelService.js";
+import { AppStateStore } from "./state/AppStateStore.js";
 
 const store = new AppStateStore(appConfig.dataFile);
 const runtime = new StreamRuntime(store);

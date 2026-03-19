@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { appConfig } from "./config.js";
-import { normalizePresetInput } from "./presetProfiles.js";
+import { appConfig } from "../config/appConfig.js";
+import { normalizePresetInput } from "../domain/presetProfiles.js";
 import {
   buildOccurrenceWindows,
   normalizeRecurrenceInput,
-} from "./recurrence.js";
-import { isYouTubeUrl } from "./sourceResolver.js";
-import { StreamRuntime, type RunEndedInfo, type RunFailedInfo } from "./runtime.js";
-import { AppStateStore } from "./storage.js";
+} from "../domain/recurrence.js";
 import type {
   ChannelDefinition,
   ChannelInput,
@@ -19,7 +16,10 @@ import type {
   PresetInput,
   ScheduledEvent,
   StreamPreset,
-} from "./types.js";
+} from "../domain/types.js";
+import { isYouTubeUrl } from "../runtime/SourceResolver.js";
+import { StreamRuntime, type RunEndedInfo, type RunFailedInfo } from "../runtime/StreamRuntime.js";
+import { AppStateStore } from "../state/AppStateStore.js";
 
 function nowIso() {
   return new Date().toISOString();

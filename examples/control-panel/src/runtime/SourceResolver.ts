@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { appConfig } from "./config.js";
-import { buildYtDlpFormatForPreset } from "./presetProfiles.js";
-import { AppStateStore } from "./storage.js";
-import type { SourceMode, StreamPreset } from "./types.js";
+import { appConfig } from "../config/appConfig.js";
+import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
+import type { SourceMode, StreamPreset } from "../domain/types.js";
+import { AppStateStore } from "../state/AppStateStore.js";
 
 export type ResolvedSource = {
   input:
