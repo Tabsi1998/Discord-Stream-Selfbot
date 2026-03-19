@@ -307,6 +307,29 @@ select {
   flex-wrap: wrap;
 }
 
+.quality-helper {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 248, 237, 0.88);
+  border: 1px solid rgba(77, 55, 35, 0.1);
+}
+
+.quality-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.quality-hint[data-tone="success"] {
+  color: var(--primary-strong);
+}
+
+.quality-hint[data-tone="warn"] {
+  color: var(--warning);
+}
+
 .stack-list {
   display: grid;
   gap: 12px;

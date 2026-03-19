@@ -189,7 +189,7 @@
             </label>
             <label>
               Audio kbps
-              <input id="presetBitrateAudio" name="bitrateAudioKbps" type="number" min="1" value="128" required />
+              <input id="presetBitrateAudio" name="bitrateAudioKbps" type="number" min="1" value="160" required />
             </label>
             <label>
               Codec
@@ -198,6 +198,14 @@
                 <option value="H265">H265</option>
               </select>
             </label>
+            <div class="quality-helper full-width">
+              <button id="presetRecommendButton" class="ghost-button" type="button">
+                Empfohlene Bitrate setzen
+              </button>
+              <p id="presetQualityHint" class="quality-hint" data-tone="info">
+                Fuer fluessige Streams sollte die Bitrate zur Aufloesung und FPS passen.
+              </p>
+            </div>
             <label class="checkbox-field">
               <input id="presetIncludeAudio" name="includeAudio" type="checkbox" checked />
               Audio mitsenden

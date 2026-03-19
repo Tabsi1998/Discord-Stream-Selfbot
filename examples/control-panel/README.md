@@ -41,7 +41,7 @@ Normale YouTube-Links funktionieren nur ueber den Preset-Modus `yt-dlp`.
 - `sourceMode = direct`: direkte MP4/HLS/M3U8-Quellen
 - `sourceMode = yt-dlp`: YouTube-Videos und YouTube-Livestreams
 
-Hinweis: das Panel erwartet fuer `yt-dlp` eine kombinierte, direkt abspielbare Medienquelle. Die Standard-Formatwahl ist deshalb auf progressive oder bereits kombinierte Streams ausgerichtet.
+Hinweis: das Panel kann fuer `yt-dlp` jetzt sowohl kombinierte Medienquellen als auch getrennte Video-/Audio-Streams zusammenfuehren. Damit bleiben hohe Aufloesungen und hohe FPS bei YouTube nicht mehr auf progressive Fallbacks limitiert.
 
 ## Wiederkehrende Events
 

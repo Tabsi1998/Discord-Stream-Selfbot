@@ -21,7 +21,7 @@ DEFAULT_HOST_PORT=3099
 DEFAULT_PORT=3099
 DEFAULT_TZ=Europe/Vienna
 DEFAULT_COMMAND_PREFIX='$panel'
-DEFAULT_YT_DLP_FORMAT='best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best'
+DEFAULT_YT_DLP_FORMAT='bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best'
 DEFAULT_SCHEDULER_POLL_MS=1000
 DEFAULT_STARTUP_TIMEOUT_MS=15000
 

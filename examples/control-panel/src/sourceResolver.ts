@@ -4,7 +4,12 @@ import { AppStateStore } from "./storage.js";
 import type { SourceMode, StreamPreset } from "./types.js";
 
 export type ResolvedSource = {
-  input: string;
+  input:
+    | string
+    | {
+        video: string;
+        audio?: string;
+      };
   inputUrl: string;
   sourceMode: SourceMode;
   resolvedTitle?: string;
@@ -119,14 +124,26 @@ export class SourceResolver {
       }
 
       const [resolvedTitle, isLiveFlag, ...urls] = lines;
-      if (urls.length !== 1) {
+      if (urls.length > 2) {
         throw new Error(
-          "yt-dlp returned multiple media streams. Choose a source that offers a combined stream",
+          "yt-dlp returned more media streams than expected",
         );
       }
 
+      if (urls.length === 0) {
+        throw new Error("yt-dlp did not return a playable media URL");
+      }
+
+      const input =
+        urls.length === 1
+          ? urls[0]
+          : {
+              video: urls[0],
+              audio: urls[1],
+            };
+
       return {
-        input: urls[0],
+        input,
         inputUrl: preset.sourceUrl,
         sourceMode: preset.sourceMode,
         resolvedTitle,

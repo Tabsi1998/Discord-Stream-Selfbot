@@ -257,6 +257,10 @@ export class StreamRuntime extends EventEmitter {
         mode: resolvedSource.sourceMode,
         title: resolvedSource.resolvedTitle ?? "",
         live: resolvedSource.isLive ? "true" : "false",
+        separateAudio:
+          typeof resolvedSource.input === "object" && resolvedSource.input.audio
+            ? "true"
+            : "false",
       });
 
       ({ command, output } = prepareStream(

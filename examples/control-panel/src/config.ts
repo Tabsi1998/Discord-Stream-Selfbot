@@ -90,7 +90,7 @@ export const appConfig = {
   ytDlpPath,
   ytDlpFormat:
     process.env.YT_DLP_FORMAT ??
-    "best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",
+    "bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",
   commandEnabled: process.env.DISCORD_COMMANDS_ENABLED !== "0",
   commandPrefix: process.env.COMMAND_PREFIX?.trim() || "$panel",
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),

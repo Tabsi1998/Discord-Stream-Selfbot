@@ -19,6 +19,14 @@ import type { EncoderSettingsGetter } from "./encoders/index.js";
 import type { VideoStreamInfo } from "./LibavDemuxer.js";
 import type { WebRtcConnWrapper } from "../client/voice/WebRtcWrapper.js";
 
+export type PrepareStreamSource = string | Readable;
+export type PrepareStreamInput =
+  | PrepareStreamSource
+  | {
+      video: PrepareStreamSource;
+      audio?: PrepareStreamSource;
+    };
+
 export type PrepareStreamOptions = {
   /**
    * Disable video transcoding
@@ -126,7 +134,7 @@ export type Controller = {
 };
 
 export function prepareStream(
-  input: string | Readable,
+  input: PrepareStreamInput,
   options: Partial<PrepareStreamOptions> = {},
   cancelSignal?: AbortSignal,
 ) {
@@ -219,16 +227,6 @@ export function prepareStream(
 
   const mergedOptions = mergeOptions(options);
 
-  let isHttpUrl = false;
-  let isHls = false;
-  let isSrt = false;
-
-  if (typeof input === "string") {
-    isHttpUrl = input.startsWith("http") || input.startsWith("https");
-    isHls = input.includes("m3u");
-    isSrt = input.startsWith("srt://");
-  }
-
   const output = new PassThrough();
 
   // command creation
@@ -236,53 +234,80 @@ export function prepareStream(
   command.on("stderr", (line) => {
     loggerFFmpeg.debug(line);
   });
-  command.input(input);
-  command.inputOptions("-y", "-loglevel", mergedOptions.logLevel, "-nostats");
+  const resolvedInput =
+    typeof input === "object" && !("pipe" in input)
+      ? input
+      : { video: input };
 
-  // input options
-  if (
-    mergedOptions.customInputOptions &&
-    mergedOptions.customInputOptions.length > 0
-  ) {
-    command.inputOptions(mergedOptions.customInputOptions);
-  }
+  const inputSources = [
+    { src: resolvedInput.video, role: "video" as const },
+    ...(resolvedInput.audio ? [{ src: resolvedInput.audio, role: "audio" as const }] : []),
+  ];
 
   const { hardwareAcceleratedDecoding, minimizeLatency, customHeaders } =
     mergedOptions;
-  if (hardwareAcceleratedDecoding) command.inputOptions("-hwaccel", "auto");
 
-  if (minimizeLatency) {
-    command.inputOptions(
-      "-fflags nobuffer",
-      "-flags lowdelay",
-      "-flush_packets 1",
-      "-max_delay 100000",
-    );
-  }
+  for (const [index, source] of inputSources.entries()) {
+    let isHttpUrl = false;
+    let isHls = false;
+    let isSrt = false;
 
-  if (isHttpUrl) {
-    const serializedHeaders = Object.entries(customHeaders)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join("\r\n");
-
-    // The ffmpeg wrapper tokenizes string input like a shell command. Wrap the
-    // header blob so spaces inside header values remain a single argument.
-    command.inputOptions(
-      "-headers",
-      `"${serializedHeaders}"`,
-    );
-    if (!isHls) {
-      command.inputOptions([
-        "-reconnect 1",
-        "-reconnect_at_eof 1",
-        "-reconnect_streamed 1",
-        "-reconnect_delay_max 4294",
-      ]);
+    if (typeof source.src === "string") {
+      isHttpUrl = source.src.startsWith("http") || source.src.startsWith("https");
+      isHls = source.src.includes("m3u");
+      isSrt = source.src.startsWith("srt://");
     }
-  }
 
-  if (isSrt) {
-    command.inputOptions("-scan_all_pmts 0");
+    command.input(source.src);
+
+    if (index === 0) {
+      command.inputOptions("-y", "-loglevel", mergedOptions.logLevel, "-nostats");
+
+      if (
+        mergedOptions.customInputOptions &&
+        mergedOptions.customInputOptions.length > 0
+      ) {
+        command.inputOptions(mergedOptions.customInputOptions);
+      }
+    }
+
+    if (hardwareAcceleratedDecoding && source.role === "video") {
+      command.inputOptions("-hwaccel", "auto");
+    }
+
+    if (minimizeLatency) {
+      command.inputOptions(
+        "-fflags nobuffer",
+        "-flags lowdelay",
+        "-flush_packets 1",
+        "-max_delay 100000",
+      );
+    }
+
+    if (isHttpUrl) {
+      const serializedHeaders = Object.entries(customHeaders)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("\r\n");
+
+      // The ffmpeg wrapper tokenizes string input like a shell command. Wrap the
+      // header blob so spaces inside header values remain a single argument.
+      command.inputOptions(
+        "-headers",
+        `"${serializedHeaders}"`,
+      );
+      if (!isHls) {
+        command.inputOptions([
+          "-reconnect 1",
+          "-reconnect_at_eof 1",
+          "-reconnect_streamed 1",
+          "-reconnect_delay_max 4294",
+        ]);
+      }
+    }
+
+    if (isSrt) {
+      command.inputOptions("-scan_all_pmts 0");
+    }
   }
 
   // general output options
@@ -299,31 +324,70 @@ export function prepareStream(
     videoCodec,
     encoder,
   } = mergedOptions;
-  command.outputOptions("-map 0:v");
+  const keyframeInterval = Math.max(Math.round(frameRate ?? 30), 1);
+  const targetBitrate = Math.min(bitrateVideo, bitrateVideoMax);
+  const maxBitrate = Math.max(targetBitrate, bitrateVideoMax);
+  const bufferSize = Math.max(maxBitrate * 2, targetBitrate * 2);
+
+  command.outputOptions("-map 0:v:0");
 
   if (noTranscoding) {
     command.videoCodec("copy");
   } else {
-    command.videoFilters(`scale=${width}:${height}`);
+    if (width > 0 && height > 0) {
+      command.videoFilters([
+        {
+          filter: "scale",
+          options: {
+            w: width,
+            h: height,
+            force_original_aspect_ratio: "decrease",
+          },
+        },
+        {
+          filter: "pad",
+          options: {
+            w: width,
+            h: height,
+            x: "(ow-iw)/2",
+            y: "(oh-ih)/2",
+          },
+        },
+        "setsar=1",
+      ]);
+    } else {
+      command.videoFilters([
+        `scale=${width}:${height}`,
+        "setsar=1",
+      ]);
+    }
 
     if (frameRate) command.fps(frameRate);
 
     command.outputOptions([
       "-b:v",
-      `${bitrateVideo}k`,
+      `${targetBitrate}k`,
       "-maxrate:v",
-      `${bitrateVideoMax}k`,
+      `${maxBitrate}k`,
       "-bufsize:v",
-      `${Math.round(bitrateVideo / 2)}k`,
+      `${bufferSize}k`,
       "-bf",
       "0",
       "-pix_fmt",
       "yuv420p",
+      "-g",
+      `${keyframeInterval}`,
+      "-keyint_min",
+      `${keyframeInterval}`,
+      "-sc_threshold",
+      "0",
+      "-fps_mode",
+      "cfr",
       "-force_key_frames",
       "expr:gte(t,n_forced*1)",
     ]);
 
-    const encoderSettings = encoder(bitrateVideo, bitrateVideoMax)[videoCodec];
+    const encoderSettings = encoder(targetBitrate, maxBitrate)[videoCodec];
     if (!encoderSettings)
       throw new Error(`Encoder settings not specified for ${videoCodec}`);
     command
@@ -337,7 +401,9 @@ export function prepareStream(
   const { includeAudio, bitrateAudio } = mergedOptions;
   if (includeAudio)
     command
-      .outputOptions("-map 0:a:0?")
+      .outputOptions(
+        resolvedInput.audio ? "-map 1:a:0?" : "-map 0:a:0?",
+      )
       .audioChannels(2)
       /*
        * I don't have much surround sound material to test this with,

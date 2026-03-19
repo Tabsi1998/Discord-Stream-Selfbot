@@ -44,6 +44,8 @@ const els = {
   presetBitrateVideoMax: document.querySelector("#presetBitrateVideoMax"),
   presetBitrateAudio: document.querySelector("#presetBitrateAudio"),
   presetVideoCodec: document.querySelector("#presetVideoCodec"),
+  presetRecommendButton: document.querySelector("#presetRecommendButton"),
+  presetQualityHint: document.querySelector("#presetQualityHint"),
   presetIncludeAudio: document.querySelector("#presetIncludeAudio"),
   presetHardwareAcceleration: document.querySelector(
     "#presetHardwareAcceleration",
@@ -138,6 +140,89 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function parsePositiveNumber(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function roundToNearest(value, step = 50) {
+  return Math.max(step, Math.round(value / step) * step);
+}
+
+function getRecommendedBitrates(width, height, fps, codec) {
+  const pixels = width * height;
+  const highFrameRate = fps >= 50;
+  let video = 2500;
+  let videoMax = 3500;
+
+  if (pixels >= 1920 * 1080) {
+    video = highFrameRate ? 9000 : 7000;
+    videoMax = highFrameRate ? 12000 : 9500;
+  } else if (pixels >= 1280 * 720) {
+    video = highFrameRate ? 6500 : 4500;
+    videoMax = highFrameRate ? 9000 : 6500;
+  } else if (pixels >= 854 * 480) {
+    video = highFrameRate ? 3500 : 2500;
+    videoMax = highFrameRate ? 5000 : 3600;
+  } else {
+    video = highFrameRate ? 2200 : 1600;
+    videoMax = highFrameRate ? 3200 : 2400;
+  }
+
+  if (codec === "H265") {
+    video = Math.round(video * 0.8);
+    videoMax = Math.round(videoMax * 0.82);
+  }
+
+  return {
+    video: roundToNearest(video),
+    videoMax: roundToNearest(videoMax),
+    audio: 160,
+  };
+}
+
+function getCurrentPresetRecommendation() {
+  const width = parsePositiveNumber(els.presetWidth.value, 1280);
+  const height = parsePositiveNumber(els.presetHeight.value, 720);
+  const fps = parsePositiveNumber(els.presetFps.value, 30);
+  const codec = els.presetVideoCodec.value || "H264";
+  return {
+    width,
+    height,
+    fps,
+    codec,
+    ...getRecommendedBitrates(width, height, fps, codec),
+  };
+}
+
+function updatePresetQualityHint() {
+  const recommendation = getCurrentPresetRecommendation();
+  const currentVideo = parsePositiveNumber(els.presetBitrateVideo.value, 0);
+  const currentVideoMax = parsePositiveNumber(els.presetBitrateVideoMax.value, 0);
+  const currentAudio = parsePositiveNumber(els.presetBitrateAudio.value, 0);
+  const includeAudio = els.presetIncludeAudio.checked;
+
+  const belowRecommendation =
+    currentVideo < recommendation.video
+    || currentVideoMax < recommendation.videoMax
+    || (includeAudio && currentAudio < recommendation.audio);
+
+  els.presetQualityHint.dataset.tone = belowRecommendation ? "warn" : "success";
+  els.presetQualityHint.textContent = belowRecommendation
+    ? `Empfohlen fuer ${recommendation.width}x${recommendation.height} @ ${recommendation.fps} fps (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Das aktuelle Preset liegt darunter und fuehrt oft zu matschigem Bild oder FPS-Drops.`
+    : `Empfohlen fuer ${recommendation.width}x${recommendation.height} @ ${recommendation.fps} fps (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Die aktuellen Werte liegen im sauberen Bereich.`;
+}
+
+function applyRecommendedPresetSettings() {
+  const recommendation = getCurrentPresetRecommendation();
+  els.presetBitrateVideo.value = String(recommendation.video);
+  els.presetBitrateVideoMax.value = String(recommendation.videoMax);
+  if (els.presetIncludeAudio.checked) {
+    els.presetBitrateAudio.value = String(recommendation.audio);
+  }
+  updatePresetQualityHint();
 }
 
 function recurrenceSummary(rule) {
@@ -355,6 +440,7 @@ function renderPresets() {
             <div>
               <h3 class="item-title">${escapeHtml(item.name)}</h3>
               <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(item.videoCodec)} | ${item.width}x${item.height} @ ${item.fps} fps</p>
+              <p class="item-meta">${item.bitrateVideoKbps}/${item.maxBitrateVideoKbps} kbps Video | ${item.bitrateAudioKbps} kbps Audio | ${item.includeAudio ? "Audio an" : "Audio aus"}</p>
               <p class="item-meta">${escapeHtml(item.sourceUrl)}</p>
               <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
             </div>
@@ -466,13 +552,14 @@ function resetPresetForm() {
   els.presetWidth.value = "1280";
   els.presetHeight.value = "720";
   els.presetFps.value = "30";
-  els.presetBitrateVideo.value = "1000";
-  els.presetBitrateVideoMax.value = "2500";
-  els.presetBitrateAudio.value = "128";
+  els.presetBitrateVideo.value = "4500";
+  els.presetBitrateVideoMax.value = "6500";
+  els.presetBitrateAudio.value = "160";
   els.presetVideoCodec.value = "H264";
   els.presetIncludeAudio.checked = true;
   els.presetHardwareAcceleration.checked = false;
   els.presetMinimizeLatency.checked = false;
+  updatePresetQualityHint();
 }
 
 function resetEventForm() {
@@ -577,6 +664,7 @@ function editPreset(id) {
   els.presetHardwareAcceleration.checked = item.hardwareAcceleration;
   els.presetMinimizeLatency.checked = item.minimizeLatency;
   els.presetDescription.value = item.description;
+  updatePresetQualityHint();
   els.presetName.focus();
 }
 
@@ -775,6 +863,24 @@ async function stopActiveRun() {
   await refresh();
 }
 
+function bindPresetQualityEvents() {
+  [
+    els.presetWidth,
+    els.presetHeight,
+    els.presetFps,
+    els.presetBitrateVideo,
+    els.presetBitrateVideoMax,
+    els.presetBitrateAudio,
+    els.presetVideoCodec,
+    els.presetIncludeAudio,
+  ].forEach((element) => {
+    element.addEventListener("input", updatePresetQualityHint);
+    element.addEventListener("change", updatePresetQualityHint);
+  });
+
+  els.presetRecommendButton.addEventListener("click", applyRecommendedPresetSettings);
+}
+
 function bindEvents() {
   els.refreshButton.addEventListener("click", () => {
     void refresh();
@@ -792,6 +898,7 @@ function bindEvents() {
   els.presetForm.addEventListener("submit", (event) => {
     void handlePresetSubmit(event).catch(handleError);
   });
+  bindPresetQualityEvents();
   els.eventForm.addEventListener("submit", (event) => {
     void handleEventSubmit(event).catch(handleError);
   });
