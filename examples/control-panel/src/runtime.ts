@@ -7,6 +7,7 @@ import {
 import { Streamer, Utils, prepareStream, playStream } from "@dank074/discord-video-stream";
 import { setFFmpegPath, setFFprobePath } from "fluent-ffmpeg-simplified";
 import { appConfig } from "./config.js";
+import { resolveRuntimePresetConfig } from "./presetProfiles.js";
 import { SourceResolver } from "./sourceResolver.js";
 import { AppStateStore } from "./storage.js";
 import type {
@@ -245,6 +246,7 @@ export class StreamRuntime extends EventEmitter {
     let command: ReturnType<typeof prepareStream>["command"];
     let output: ReturnType<typeof prepareStream>["output"];
     let waitForStartup: Promise<void> | undefined;
+    const resolvedPreset = resolveRuntimePresetConfig(options.preset);
 
     try {
       const resolvedSource = await this.sourceResolver.resolve(
@@ -261,20 +263,24 @@ export class StreamRuntime extends EventEmitter {
           typeof resolvedSource.input === "object" && resolvedSource.input.audio
             ? "true"
             : "false",
+        qualityProfile: resolvedPreset.qualityProfile,
+        bufferProfile: resolvedPreset.effectiveBufferProfile,
       });
 
       ({ command, output } = prepareStream(
         resolvedSource.input,
         {
           includeAudio: options.preset.includeAudio,
-          width: options.preset.width,
-          height: options.preset.height,
-          frameRate: options.preset.fps,
+          width: resolvedPreset.preserveSource ? undefined : options.preset.width,
+          height: resolvedPreset.preserveSource ? undefined : options.preset.height,
+          frameRate: resolvedPreset.preserveSource ? undefined : options.preset.fps,
           bitrateVideo: options.preset.bitrateVideoKbps,
           bitrateVideoMax: options.preset.maxBitrateVideoKbps,
           bitrateAudio: options.preset.bitrateAudioKbps,
           hardwareAcceleratedDecoding: options.preset.hardwareAcceleration,
-          minimizeLatency: options.preset.minimizeLatency,
+          minimizeLatency: resolvedPreset.minimizeLatency,
+          customInputOptions: resolvedPreset.customInputOptions,
+          bitrateBufferFactor: resolvedPreset.bitrateBufferFactor,
           videoCodec: Utils.normalizeVideoCodec(options.preset.videoCodec),
         },
         controller.signal,
@@ -296,7 +302,10 @@ export class StreamRuntime extends EventEmitter {
     void playStream(
       output,
       this.streamer,
-      { type: options.channel.streamMode },
+      {
+        type: options.channel.streamMode,
+        readrateInitialBurst: resolvedPreset.readrateInitialBurst,
+      },
       controller.signal,
     )
       .then(() => {

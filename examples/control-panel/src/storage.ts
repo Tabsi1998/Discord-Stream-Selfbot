@@ -8,6 +8,10 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  coerceBufferProfile,
+  coerceQualityProfile,
+} from "./presetProfiles.js";
 import { coerceRecurrenceRule } from "./recurrence.js";
 import type {
   ControlPanelState,
@@ -42,12 +46,19 @@ function normalizeState(input: unknown): ControlPanelState {
   return {
     channels: Array.isArray(state.channels) ? state.channels : fallback.channels,
     presets: Array.isArray(state.presets)
-      ? state.presets.map((preset) => {
+        ? state.presets.map((preset) => {
           const sourceMode =
             typeof preset.sourceMode === "string" ? preset.sourceMode : "direct";
+          const qualityProfile = coerceQualityProfile(preset.qualityProfile);
+          const bufferProfile = coerceBufferProfile(
+            preset.bufferProfile,
+            !!preset.minimizeLatency,
+          );
           return {
             ...preset,
             sourceMode,
+            qualityProfile,
+            bufferProfile,
           };
         })
       : fallback.presets,

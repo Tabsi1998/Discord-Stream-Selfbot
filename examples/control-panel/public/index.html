@@ -163,10 +163,35 @@
                 <option value="yt-dlp">yt-dlp (YouTube / Livestream)</option>
               </select>
             </label>
+            <label>
+              Qualitaetsprofil
+              <select id="presetQualityProfile" name="qualityProfile">
+                <option value="720p30">720p / 30 FPS</option>
+                <option value="720p60">720p / 60 FPS</option>
+                <option value="1080p30">1080p / 30 FPS</option>
+                <option value="1080p60">1080p / 60 FPS</option>
+                <option value="1440p30">1440p / 30 FPS</option>
+                <option value="1440p60">1440p / 60 FPS</option>
+                <option value="original">Original</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label>
+              Stream-Verhalten
+              <select id="presetBufferProfile" name="bufferProfile">
+                <option value="auto">Auto</option>
+                <option value="stable">Maximale Stabilitaet</option>
+                <option value="balanced">Ausgewogen</option>
+                <option value="low-latency">Minimale Latenz</option>
+              </select>
+            </label>
             <label class="full-width">
               URL / Quelle
               <input id="presetSourceUrl" name="sourceUrl" required />
             </label>
+            <p id="presetProfileHint" class="quality-hint full-width" data-tone="info">
+              Waehle Profil und Stream-Verhalten, die restlichen Werte werden automatisch gesetzt.
+            </p>
             <label>
               Breite
               <input id="presetWidth" name="width" type="number" min="1" value="1280" required />
@@ -181,11 +206,11 @@
             </label>
             <label>
               Video kbps
-              <input id="presetBitrateVideo" name="bitrateVideoKbps" type="number" min="1" value="1000" required />
+              <input id="presetBitrateVideo" name="bitrateVideoKbps" type="number" min="1" value="4500" required />
             </label>
             <label>
               Max Video kbps
-              <input id="presetBitrateVideoMax" name="maxBitrateVideoKbps" type="number" min="1" value="2500" required />
+              <input id="presetBitrateVideoMax" name="maxBitrateVideoKbps" type="number" min="1" value="6500" required />
             </label>
             <label>
               Audio kbps
@@ -213,10 +238,6 @@
             <label class="checkbox-field">
               <input id="presetHardwareAcceleration" name="hardwareAcceleration" type="checkbox" />
               Hardware-Decoding
-            </label>
-            <label class="checkbox-field">
-              <input id="presetMinimizeLatency" name="minimizeLatency" type="checkbox" />
-              Latenz minimieren
             </label>
             <label class="full-width">
               Beschreibung

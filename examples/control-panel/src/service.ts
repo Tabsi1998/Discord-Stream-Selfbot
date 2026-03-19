@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appConfig } from "./config.js";
+import { normalizePresetInput } from "./presetProfiles.js";
 import {
   buildOccurrenceWindows,
   normalizeRecurrenceInput,
@@ -218,25 +219,28 @@ export class ControlPanelService {
   }
 
   public createPreset(input: PresetInput) {
-    this.validatePresetInput(input);
+    const normalizedInput = normalizePresetInput(input);
+    this.validatePresetInput(normalizedInput);
 
     const timestamp = nowIso();
     const preset: StreamPreset = {
       id: randomUUID(),
-      name: input.name.trim(),
-      sourceUrl: input.sourceUrl.trim(),
-      sourceMode: input.sourceMode,
-      description: input.description?.trim() ?? "",
-      includeAudio: input.includeAudio,
-      width: input.width,
-      height: input.height,
-      fps: input.fps,
-      bitrateVideoKbps: input.bitrateVideoKbps,
-      maxBitrateVideoKbps: input.maxBitrateVideoKbps,
-      bitrateAudioKbps: input.bitrateAudioKbps,
-      videoCodec: input.videoCodec,
-      hardwareAcceleration: input.hardwareAcceleration,
-      minimizeLatency: input.minimizeLatency,
+      name: normalizedInput.name.trim(),
+      sourceUrl: normalizedInput.sourceUrl.trim(),
+      sourceMode: normalizedInput.sourceMode,
+      qualityProfile: normalizedInput.qualityProfile,
+      bufferProfile: normalizedInput.bufferProfile,
+      description: normalizedInput.description?.trim() ?? "",
+      includeAudio: normalizedInput.includeAudio,
+      width: normalizedInput.width,
+      height: normalizedInput.height,
+      fps: normalizedInput.fps,
+      bitrateVideoKbps: normalizedInput.bitrateVideoKbps,
+      maxBitrateVideoKbps: normalizedInput.maxBitrateVideoKbps,
+      bitrateAudioKbps: normalizedInput.bitrateAudioKbps,
+      videoCodec: normalizedInput.videoCodec,
+      hardwareAcceleration: normalizedInput.hardwareAcceleration,
+      minimizeLatency: normalizedInput.minimizeLatency,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -250,7 +254,8 @@ export class ControlPanelService {
   }
 
   public updatePreset(id: string, input: PresetInput) {
-    this.validatePresetInput(input);
+    const normalizedInput = normalizePresetInput(input);
+    this.validatePresetInput(normalizedInput);
 
     const updatedAt = nowIso();
     let updated: StreamPreset | undefined;
@@ -261,20 +266,22 @@ export class ControlPanelService {
       }
 
       const preset = this.requirePresetFromDraft(draft, id);
-      preset.name = input.name.trim();
-      preset.sourceUrl = input.sourceUrl.trim();
-      preset.sourceMode = input.sourceMode;
-      preset.description = input.description?.trim() ?? "";
-      preset.includeAudio = input.includeAudio;
-      preset.width = input.width;
-      preset.height = input.height;
-      preset.fps = input.fps;
-      preset.bitrateVideoKbps = input.bitrateVideoKbps;
-      preset.maxBitrateVideoKbps = input.maxBitrateVideoKbps;
-      preset.bitrateAudioKbps = input.bitrateAudioKbps;
-      preset.videoCodec = input.videoCodec;
-      preset.hardwareAcceleration = input.hardwareAcceleration;
-      preset.minimizeLatency = input.minimizeLatency;
+      preset.name = normalizedInput.name.trim();
+      preset.sourceUrl = normalizedInput.sourceUrl.trim();
+      preset.sourceMode = normalizedInput.sourceMode;
+      preset.qualityProfile = normalizedInput.qualityProfile;
+      preset.bufferProfile = normalizedInput.bufferProfile;
+      preset.description = normalizedInput.description?.trim() ?? "";
+      preset.includeAudio = normalizedInput.includeAudio;
+      preset.width = normalizedInput.width;
+      preset.height = normalizedInput.height;
+      preset.fps = normalizedInput.fps;
+      preset.bitrateVideoKbps = normalizedInput.bitrateVideoKbps;
+      preset.maxBitrateVideoKbps = normalizedInput.maxBitrateVideoKbps;
+      preset.bitrateAudioKbps = normalizedInput.bitrateAudioKbps;
+      preset.videoCodec = normalizedInput.videoCodec;
+      preset.hardwareAcceleration = normalizedInput.hardwareAcceleration;
+      preset.minimizeLatency = normalizedInput.minimizeLatency;
       preset.updatedAt = updatedAt;
       updated = { ...preset };
       sortPresets(draft.presets);

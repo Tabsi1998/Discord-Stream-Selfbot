@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { appConfig } from "./config.js";
+import { buildYtDlpFormatForPreset } from "./presetProfiles.js";
 import { AppStateStore } from "./storage.js";
 import type { SourceMode, StreamPreset } from "./types.js";
 
@@ -58,7 +59,7 @@ export class SourceResolver {
       "--no-warnings",
       "--no-playlist",
       "--format",
-      appConfig.ytDlpFormat,
+      buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
       "%(title)s",
       "--print",

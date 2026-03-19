@@ -1,6 +1,20 @@
 export type StreamMode = "go-live" | "camera";
 export type VideoCodec = "H264" | "H265";
 export type SourceMode = "direct" | "yt-dlp";
+export type QualityProfile =
+  | "original"
+  | "720p30"
+  | "720p60"
+  | "1080p30"
+  | "1080p60"
+  | "1440p30"
+  | "1440p60"
+  | "custom";
+export type BufferProfile =
+  | "auto"
+  | "stable"
+  | "balanced"
+  | "low-latency";
 export type RecurrenceKind = "once" | "daily" | "weekly";
 export type EventStatus =
   | "scheduled"
@@ -35,6 +49,8 @@ export type StreamPreset = {
   name: string;
   sourceUrl: string;
   sourceMode: SourceMode;
+  qualityProfile: QualityProfile;
+  bufferProfile: BufferProfile;
   description: string;
   includeAudio: boolean;
   width: number;
@@ -133,6 +149,8 @@ export type PresetInput = {
   name: string;
   sourceUrl: string;
   sourceMode: SourceMode;
+  qualityProfile: QualityProfile;
+  bufferProfile: BufferProfile;
   description?: string;
   includeAudio: boolean;
   width: number;

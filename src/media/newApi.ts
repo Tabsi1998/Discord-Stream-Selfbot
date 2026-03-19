@@ -114,6 +114,11 @@ export type PrepareStreamOptions = {
   customFfmpegFlags: string[];
 
   /**
+   * Multiplier used to derive ffmpeg's VBV buffer size from max bitrate
+   */
+  bitrateBufferFactor: number;
+
+  /**
    * FFmpeg log level
    */
   logLevel:
@@ -163,6 +168,7 @@ export function prepareStream(
     },
     customInputOptions: [],
     customFfmpegFlags: [],
+    bitrateBufferFactor: 2,
     logLevel: "verbose",
   } satisfies PrepareStreamOptions;
 
@@ -221,6 +227,11 @@ export function prepareStream(
       customFfmpegFlags:
         opts.customFfmpegFlags ?? defaultOptions.customFfmpegFlags,
 
+      bitrateBufferFactor:
+        isFiniteNonZero(opts.bitrateBufferFactor) && opts.bitrateBufferFactor > 0
+          ? opts.bitrateBufferFactor
+          : defaultOptions.bitrateBufferFactor,
+
       logLevel: opts.logLevel ?? defaultOptions.logLevel,
     } satisfies PrepareStreamOptions;
   }
@@ -262,13 +273,13 @@ export function prepareStream(
 
     if (index === 0) {
       command.inputOptions("-y", "-loglevel", mergedOptions.logLevel, "-nostats");
+    }
 
-      if (
-        mergedOptions.customInputOptions &&
-        mergedOptions.customInputOptions.length > 0
-      ) {
-        command.inputOptions(mergedOptions.customInputOptions);
-      }
+    if (
+      mergedOptions.customInputOptions &&
+      mergedOptions.customInputOptions.length > 0
+    ) {
+      command.inputOptions(mergedOptions.customInputOptions);
     }
 
     if (hardwareAcceleratedDecoding && source.role === "video") {
@@ -321,13 +332,17 @@ export function prepareStream(
     frameRate,
     bitrateVideo,
     bitrateVideoMax,
+    bitrateBufferFactor,
     videoCodec,
     encoder,
   } = mergedOptions;
   const keyframeInterval = Math.max(Math.round(frameRate ?? 30), 1);
   const targetBitrate = Math.min(bitrateVideo, bitrateVideoMax);
   const maxBitrate = Math.max(targetBitrate, bitrateVideoMax);
-  const bufferSize = Math.max(maxBitrate * 2, targetBitrate * 2);
+  const bufferSize = Math.max(
+    Math.round(maxBitrate * bitrateBufferFactor),
+    Math.round(targetBitrate * bitrateBufferFactor),
+  );
 
   command.outputOptions("-map 0:v:0");
 

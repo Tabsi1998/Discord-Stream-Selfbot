@@ -257,6 +257,13 @@ select {
   color: var(--text);
 }
 
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: rgba(239, 231, 216, 0.72);
+}
+
 .checkbox-field {
   grid-template-columns: auto 1fr;
   align-items: center;

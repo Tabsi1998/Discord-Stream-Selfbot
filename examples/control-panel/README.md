@@ -11,6 +11,8 @@ Dieses Beispiel erweitert `@dank074/discord-video-stream` um ein lokales Web-Pan
 - wiederkehrende Events (`once`, `daily`, `weekly`)
 - Ueberschneidungsschutz fuer geplante Serien
 - Discord-Commands als Zusatzsteuerung
+- Qualitaetsprofile (`720p30` bis `1440p60`, `Original`, `Custom`)
+- Buffer-Profile fuer Stabilitaet oder niedrige Latenz
 - Statusseite und letzte Logs
 
 ## Setup
@@ -42,6 +44,15 @@ Normale YouTube-Links funktionieren nur ueber den Preset-Modus `yt-dlp`.
 - `sourceMode = yt-dlp`: YouTube-Videos und YouTube-Livestreams
 
 Hinweis: das Panel kann fuer `yt-dlp` jetzt sowohl kombinierte Medienquellen als auch getrennte Video-/Audio-Streams zusammenfuehren. Damit bleiben hohe Aufloesungen und hohe FPS bei YouTube nicht mehr auf progressive Fallbacks limitiert.
+
+## Qualitaets- und Buffer-Profile
+
+Presets koennen jetzt fast komplett ueber Auswahlfelder gesteuert werden.
+
+- Qualitaetsprofil waehlt Ziel-Aufloesung, FPS und die passende Standard-Bitrate
+- Buffer-Profil steuert Burst, Queue-Groessen und Startverhalten
+- `Original` behaelt Quell-Aufloesung und Quell-FPS bei
+- `Custom` schaltet die manuellen Zahlenfelder wieder frei
 
 ## Wiederkehrende Events
 

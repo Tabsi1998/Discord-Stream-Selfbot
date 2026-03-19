@@ -3,6 +3,95 @@ const state = {
   voiceChannels: [],
 };
 
+const QUALITY_PROFILES = {
+  original: {
+    label: "Original",
+    description: "Aufloesung und FPS der Quelle werden beibehalten.",
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    preserveSource: true,
+  },
+  "720p30": {
+    label: "720p / 30 FPS",
+    description: "Solide Standardwahl fuer lange, stabile Streams.",
+    width: 1280,
+    height: 720,
+    fps: 30,
+    preserveSource: false,
+  },
+  "720p60": {
+    label: "720p / 60 FPS",
+    description: "Mehr Bewegungsglaette bei moderater Last.",
+    width: 1280,
+    height: 720,
+    fps: 60,
+    preserveSource: false,
+  },
+  "1080p30": {
+    label: "1080p / 30 FPS",
+    description: "Schaerferes Bild bei noch gut beherrschbarer Last.",
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    preserveSource: false,
+  },
+  "1080p60": {
+    label: "1080p / 60 FPS",
+    description: "Hohe Bildqualitaet, braucht deutlich mehr Reserven.",
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    preserveSource: false,
+  },
+  "1440p30": {
+    label: "1440p / 30 FPS",
+    description: "Sehr schaerf, aber schon klar schwerer fuer Encoder und Discord.",
+    width: 2560,
+    height: 1440,
+    fps: 30,
+    preserveSource: false,
+  },
+  "1440p60": {
+    label: "1440p / 60 FPS",
+    description: "Sehr hohe Last, nur fuer starke Systeme sinnvoll.",
+    width: 2560,
+    height: 1440,
+    fps: 60,
+    preserveSource: false,
+  },
+  custom: {
+    label: "Custom",
+    description: "Freie Aufloesung, FPS und Bitraten.",
+    width: 1280,
+    height: 720,
+    fps: 30,
+    preserveSource: false,
+  },
+};
+
+const BUFFER_STRATEGIES = {
+  auto: {
+    label: "Auto",
+    description: "Waehlt das Verhalten passend zu Quelle und Profil.",
+  },
+  stable: {
+    label: "Maximale Stabilitaet",
+    description: "Mehr Burst und Queue fuer moeglichst ruhige Wiedergabe.",
+    minimizeLatency: false,
+  },
+  balanced: {
+    label: "Ausgewogen",
+    description: "Der beste Standard fuer die meisten Streams.",
+    minimizeLatency: false,
+  },
+  "low-latency": {
+    label: "Minimale Latenz",
+    description: "Schneller Start, aber empfindlicher bei Spikes.",
+    minimizeLatency: true,
+  },
+};
+
 const els = {
   notice: document.querySelector("#notice"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -36,7 +125,10 @@ const els = {
   presetIdField: document.querySelector("#presetIdField"),
   presetName: document.querySelector("#presetName"),
   presetSourceMode: document.querySelector("#presetSourceMode"),
+  presetQualityProfile: document.querySelector("#presetQualityProfile"),
+  presetBufferProfile: document.querySelector("#presetBufferProfile"),
   presetSourceUrl: document.querySelector("#presetSourceUrl"),
+  presetProfileHint: document.querySelector("#presetProfileHint"),
   presetWidth: document.querySelector("#presetWidth"),
   presetHeight: document.querySelector("#presetHeight"),
   presetFps: document.querySelector("#presetFps"),
@@ -50,7 +142,6 @@ const els = {
   presetHardwareAcceleration: document.querySelector(
     "#presetHardwareAcceleration",
   ),
-  presetMinimizeLatency: document.querySelector("#presetMinimizeLatency"),
   presetDescription: document.querySelector("#presetDescription"),
   presetResetButton: document.querySelector("#presetResetButton"),
   presetsList: document.querySelector("#presetsList"),
@@ -151,15 +242,32 @@ function roundToNearest(value, step = 50) {
   return Math.max(step, Math.round(value / step) * step);
 }
 
-function getRecommendedBitrates(width, height, fps, codec) {
+function getQualityProfileConfig(profile) {
+  return QUALITY_PROFILES[profile] || QUALITY_PROFILES.custom;
+}
+
+function getBufferStrategy(profile) {
+  return BUFFER_STRATEGIES[profile] || BUFFER_STRATEGIES.auto;
+}
+
+function getRecommendedBitrates(width, height, fps, codec, qualityProfile = "custom") {
+  if (qualityProfile === "original") {
+    return codec === "H265"
+      ? { video: 7500, videoMax: 9000, audio: 160 }
+      : { video: 9000, videoMax: 10000, audio: 160 };
+  }
+
   const pixels = width * height;
   const highFrameRate = fps >= 50;
   let video = 2500;
   let videoMax = 3500;
 
-  if (pixels >= 1920 * 1080) {
-    video = highFrameRate ? 9000 : 7000;
-    videoMax = highFrameRate ? 12000 : 9500;
+  if (pixels >= 2560 * 1440) {
+    video = highFrameRate ? 9000 : 8000;
+    videoMax = 10000;
+  } else if (pixels >= 1920 * 1080) {
+    video = highFrameRate ? 8500 : 7000;
+    videoMax = highFrameRate ? 10000 : 9500;
   } else if (pixels >= 1280 * 720) {
     video = highFrameRate ? 6500 : 4500;
     videoMax = highFrameRate ? 9000 : 6500;
@@ -183,18 +291,130 @@ function getRecommendedBitrates(width, height, fps, codec) {
   };
 }
 
-function getCurrentPresetRecommendation() {
-  const width = parsePositiveNumber(els.presetWidth.value, 1280);
-  const height = parsePositiveNumber(els.presetHeight.value, 720);
-  const fps = parsePositiveNumber(els.presetFps.value, 30);
+function getEffectiveBufferProfile(sourceMode, qualityProfile, width, height, fps, selectedProfile) {
+  if (selectedProfile && selectedProfile !== "auto") {
+    return selectedProfile;
+  }
+  if (qualityProfile === "original") return "stable";
+  if (sourceMode === "yt-dlp" && fps >= 60) return "stable";
+  if (fps >= 60) return "stable";
+  if (height >= 1080 || width >= 1920) return "stable";
+  return "balanced";
+}
+
+function getResolvedPresetFormSettings() {
+  const qualityProfile = els.presetQualityProfile.value || "720p30";
+  const sourceMode = els.presetSourceMode.value || "direct";
+  const bufferProfile = els.presetBufferProfile.value || "auto";
   const codec = els.presetVideoCodec.value || "H264";
-  return {
+  const quality = getQualityProfileConfig(qualityProfile);
+  const manualWidth = parsePositiveNumber(els.presetWidth.value, quality.width);
+  const manualHeight = parsePositiveNumber(els.presetHeight.value, quality.height);
+  const manualFps = parsePositiveNumber(els.presetFps.value, quality.fps);
+  const width = qualityProfile === "custom" ? manualWidth : quality.width;
+  const height = qualityProfile === "custom" ? manualHeight : quality.height;
+  const fps = qualityProfile === "custom" ? manualFps : quality.fps;
+  const bitrateRecommendation = getRecommendedBitrates(
     width,
     height,
     fps,
     codec,
-    ...getRecommendedBitrates(width, height, fps, codec),
+    qualityProfile,
+  );
+  const bitrateVideoKbps =
+    qualityProfile === "custom"
+      ? parsePositiveNumber(els.presetBitrateVideo.value, bitrateRecommendation.video)
+      : bitrateRecommendation.video;
+  const maxBitrateVideoKbps =
+    qualityProfile === "custom"
+      ? parsePositiveNumber(
+          els.presetBitrateVideoMax.value,
+          bitrateRecommendation.videoMax,
+        )
+      : bitrateRecommendation.videoMax;
+  const bitrateAudioKbps =
+    qualityProfile === "custom"
+      ? parsePositiveNumber(els.presetBitrateAudio.value, bitrateRecommendation.audio)
+      : bitrateRecommendation.audio;
+  const effectiveBufferProfile = getEffectiveBufferProfile(
+    sourceMode,
+    qualityProfile,
+    width,
+    height,
+    fps,
+    bufferProfile,
+  );
+  const bufferStrategy = getBufferStrategy(effectiveBufferProfile);
+
+  return {
+    qualityProfile,
+    sourceMode,
+    bufferProfile,
+    effectiveBufferProfile,
+    quality,
+    width,
+    height,
+    fps,
+    bitrateVideoKbps,
+    maxBitrateVideoKbps,
+    bitrateAudioKbps,
+    codec,
+    minimizeLatency: !!bufferStrategy.minimizeLatency,
   };
+}
+
+function getCurrentPresetRecommendation() {
+  const resolved = getResolvedPresetFormSettings();
+  return {
+    width: resolved.width,
+    height: resolved.height,
+    fps: resolved.fps,
+    codec: resolved.codec,
+    qualityProfile: resolved.qualityProfile,
+    effectiveBufferProfile: resolved.effectiveBufferProfile,
+    quality: resolved.quality,
+    video: resolved.bitrateVideoKbps,
+    videoMax: resolved.maxBitrateVideoKbps,
+    audio: resolved.bitrateAudioKbps,
+  };
+}
+
+function syncPresetFieldsFromProfiles() {
+  const resolved = getResolvedPresetFormSettings();
+  const autoManaged = resolved.qualityProfile !== "custom";
+
+  if (autoManaged) {
+    els.presetWidth.value = String(resolved.width);
+    els.presetHeight.value = String(resolved.height);
+    els.presetFps.value = String(resolved.fps);
+    els.presetBitrateVideo.value = String(resolved.bitrateVideoKbps);
+    els.presetBitrateVideoMax.value = String(resolved.maxBitrateVideoKbps);
+    els.presetBitrateAudio.value = String(resolved.bitrateAudioKbps);
+  }
+
+  [
+    els.presetWidth,
+    els.presetHeight,
+    els.presetFps,
+    els.presetBitrateVideo,
+    els.presetBitrateVideoMax,
+    els.presetBitrateAudio,
+  ].forEach((element) => {
+    element.disabled = autoManaged;
+  });
+
+  const bufferLabel =
+    resolved.bufferProfile === "auto"
+      ? `${BUFFER_STRATEGIES.auto.label} -> ${getBufferStrategy(
+          resolved.effectiveBufferProfile,
+        ).label}`
+      : getBufferStrategy(resolved.effectiveBufferProfile).label;
+  const profileText = resolved.quality.preserveSource
+    ? `${resolved.quality.label}: Quelle bestimmt Aufloesung und FPS, Buffering laeuft auf ${bufferLabel}.`
+    : `${resolved.quality.label}: ${resolved.width}x${resolved.height} @ ${resolved.fps} FPS, Buffering auf ${bufferLabel}.`;
+  els.presetProfileHint.dataset.tone =
+    resolved.effectiveBufferProfile === "low-latency" ? "warn" : "info";
+  els.presetProfileHint.textContent = `${profileText} ${resolved.quality.description}`;
 }
 
 function updatePresetQualityHint() {
@@ -211,17 +431,19 @@ function updatePresetQualityHint() {
 
   els.presetQualityHint.dataset.tone = belowRecommendation ? "warn" : "success";
   els.presetQualityHint.textContent = belowRecommendation
-    ? `Empfohlen fuer ${recommendation.width}x${recommendation.height} @ ${recommendation.fps} fps (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Das aktuelle Preset liegt darunter und fuehrt oft zu matschigem Bild oder FPS-Drops.`
-    : `Empfohlen fuer ${recommendation.width}x${recommendation.height} @ ${recommendation.fps} fps (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Die aktuellen Werte liegen im sauberen Bereich.`;
+    ? `Empfohlen fuer ${recommendation.quality.label} (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Das aktuelle Preset liegt darunter und fuehrt oft zu matschigem Bild oder FPS-Drops.`
+    : `Empfohlen fuer ${recommendation.quality.label} (${recommendation.codec}): ${recommendation.video}/${recommendation.videoMax} kbps Video${includeAudio ? `, ${recommendation.audio} kbps Audio` : ""}. Die aktuellen Werte liegen im sauberen Bereich.`;
 }
 
 function applyRecommendedPresetSettings() {
   const recommendation = getCurrentPresetRecommendation();
+  els.presetWidth.value = String(recommendation.width);
+  els.presetHeight.value = String(recommendation.height);
+  els.presetFps.value = String(recommendation.fps);
   els.presetBitrateVideo.value = String(recommendation.video);
   els.presetBitrateVideoMax.value = String(recommendation.videoMax);
-  if (els.presetIncludeAudio.checked) {
-    els.presetBitrateAudio.value = String(recommendation.audio);
-  }
+  els.presetBitrateAudio.value = String(recommendation.audio);
+  syncPresetFieldsFromProfiles();
   updatePresetQualityHint();
 }
 
@@ -308,6 +530,26 @@ function channelLabel(item) {
 
 function presetLabel(item) {
   return `${item.name} (${item.sourceMode})`;
+}
+
+function describePresetQuality(item) {
+  const profile = getQualityProfileConfig(item.qualityProfile || "custom");
+  const buffer = getBufferStrategy(
+    getEffectiveBufferProfile(
+      item.sourceMode,
+      item.qualityProfile || "custom",
+      item.width,
+      item.height,
+      item.fps,
+      item.bufferProfile || "auto",
+    ),
+  );
+
+  if (profile.preserveSource) {
+    return `${profile.label} | ${buffer.label}`;
+  }
+
+  return `${profile.label} | ${item.videoCodec} | ${item.width}x${item.height} @ ${item.fps} fps | ${buffer.label}`;
 }
 
 function fillSelect(select, items, placeholder, mapper) {
@@ -439,7 +681,7 @@ function renderPresets() {
           <div class="item-topline">
             <div>
               <h3 class="item-title">${escapeHtml(item.name)}</h3>
-              <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(item.videoCodec)} | ${item.width}x${item.height} @ ${item.fps} fps</p>
+              <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(describePresetQuality(item))}</p>
               <p class="item-meta">${item.bitrateVideoKbps}/${item.maxBitrateVideoKbps} kbps Video | ${item.bitrateAudioKbps} kbps Audio | ${item.includeAudio ? "Audio an" : "Audio aus"}</p>
               <p class="item-meta">${escapeHtml(item.sourceUrl)}</p>
               <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
@@ -549,6 +791,8 @@ function resetPresetForm() {
   els.presetForm.reset();
   els.presetIdField.value = "";
   els.presetSourceMode.value = "direct";
+  els.presetQualityProfile.value = "720p30";
+  els.presetBufferProfile.value = "auto";
   els.presetWidth.value = "1280";
   els.presetHeight.value = "720";
   els.presetFps.value = "30";
@@ -558,7 +802,7 @@ function resetPresetForm() {
   els.presetVideoCodec.value = "H264";
   els.presetIncludeAudio.checked = true;
   els.presetHardwareAcceleration.checked = false;
-  els.presetMinimizeLatency.checked = false;
+  syncPresetFieldsFromProfiles();
   updatePresetQualityHint();
 }
 
@@ -592,20 +836,23 @@ function buildChannelPayload() {
 }
 
 function buildPresetPayload() {
+  const resolved = getResolvedPresetFormSettings();
   return {
     name: els.presetName.value.trim(),
     sourceMode: els.presetSourceMode.value,
+    qualityProfile: resolved.qualityProfile,
+    bufferProfile: resolved.bufferProfile,
     sourceUrl: els.presetSourceUrl.value.trim(),
-    width: Number.parseInt(els.presetWidth.value, 10),
-    height: Number.parseInt(els.presetHeight.value, 10),
-    fps: Number.parseInt(els.presetFps.value, 10),
-    bitrateVideoKbps: Number.parseInt(els.presetBitrateVideo.value, 10),
-    maxBitrateVideoKbps: Number.parseInt(els.presetBitrateVideoMax.value, 10),
-    bitrateAudioKbps: Number.parseInt(els.presetBitrateAudio.value, 10),
+    width: resolved.width,
+    height: resolved.height,
+    fps: resolved.fps,
+    bitrateVideoKbps: resolved.bitrateVideoKbps,
+    maxBitrateVideoKbps: resolved.maxBitrateVideoKbps,
+    bitrateAudioKbps: resolved.bitrateAudioKbps,
     videoCodec: els.presetVideoCodec.value,
     includeAudio: els.presetIncludeAudio.checked,
     hardwareAcceleration: els.presetHardwareAcceleration.checked,
-    minimizeLatency: els.presetMinimizeLatency.checked,
+    minimizeLatency: resolved.minimizeLatency,
     description: els.presetDescription.value.trim(),
   };
 }
@@ -652,6 +899,8 @@ function editPreset(id) {
   els.presetIdField.value = item.id;
   els.presetName.value = item.name;
   els.presetSourceMode.value = item.sourceMode || "direct";
+  els.presetQualityProfile.value = item.qualityProfile || "custom";
+  els.presetBufferProfile.value = item.bufferProfile || "auto";
   els.presetSourceUrl.value = item.sourceUrl;
   els.presetWidth.value = String(item.width);
   els.presetHeight.value = String(item.height);
@@ -662,8 +911,8 @@ function editPreset(id) {
   els.presetVideoCodec.value = item.videoCodec;
   els.presetIncludeAudio.checked = item.includeAudio;
   els.presetHardwareAcceleration.checked = item.hardwareAcceleration;
-  els.presetMinimizeLatency.checked = item.minimizeLatency;
   els.presetDescription.value = item.description;
+  syncPresetFieldsFromProfiles();
   updatePresetQualityHint();
   els.presetName.focus();
 }
@@ -865,6 +1114,9 @@ async function stopActiveRun() {
 
 function bindPresetQualityEvents() {
   [
+    els.presetSourceMode,
+    els.presetQualityProfile,
+    els.presetBufferProfile,
     els.presetWidth,
     els.presetHeight,
     els.presetFps,
@@ -874,8 +1126,14 @@ function bindPresetQualityEvents() {
     els.presetVideoCodec,
     els.presetIncludeAudio,
   ].forEach((element) => {
-    element.addEventListener("input", updatePresetQualityHint);
-    element.addEventListener("change", updatePresetQualityHint);
+    element.addEventListener("input", () => {
+      syncPresetFieldsFromProfiles();
+      updatePresetQualityHint();
+    });
+    element.addEventListener("change", () => {
+      syncPresetFieldsFromProfiles();
+      updatePresetQualityHint();
+    });
   });
 
   els.presetRecommendButton.addEventListener("click", applyRecommendedPresetSettings);
