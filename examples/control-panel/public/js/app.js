@@ -1141,6 +1141,28 @@ function bindPresetQualityEvents() {
   });
 
   els.presetRecommendButton.addEventListener("click", applyRecommendedPresetSettings);
+
+  // Auto-detect yt-dlp URLs and switch source mode
+  const YT_DLP_HOSTS = [
+    "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+    "twitch.tv", "www.twitch.tv",
+  ];
+
+  function needsYtDlp(url) {
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      return YT_DLP_HOSTS.some((h) => host === h || host.endsWith("." + h));
+    } catch {
+      return false;
+    }
+  }
+
+  els.presetSourceUrl.addEventListener("input", () => {
+    const url = els.presetSourceUrl.value.trim();
+    if (url && needsYtDlp(url) && els.presetSourceMode.value === "direct") {
+      els.presetSourceMode.value = "yt-dlp";
+    }
+  });
 }
 
 function bindEvents() {
