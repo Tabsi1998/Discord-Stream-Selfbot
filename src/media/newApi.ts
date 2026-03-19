@@ -228,7 +228,8 @@ export function prepareStream(
         opts.customFfmpegFlags ?? defaultOptions.customFfmpegFlags,
 
       bitrateBufferFactor:
-        isFiniteNonZero(opts.bitrateBufferFactor) && opts.bitrateBufferFactor > 0
+        isFiniteNonZero(opts.bitrateBufferFactor) &&
+        opts.bitrateBufferFactor > 0
           ? opts.bitrateBufferFactor
           : defaultOptions.bitrateBufferFactor,
 
@@ -246,13 +247,13 @@ export function prepareStream(
     loggerFFmpeg.debug(line);
   });
   const resolvedInput =
-    typeof input === "object" && !("pipe" in input)
-      ? input
-      : { video: input };
+    typeof input === "object" && !("pipe" in input) ? input : { video: input };
 
   const inputSources = [
     { src: resolvedInput.video, role: "video" as const },
-    ...(resolvedInput.audio ? [{ src: resolvedInput.audio, role: "audio" as const }] : []),
+    ...(resolvedInput.audio
+      ? [{ src: resolvedInput.audio, role: "audio" as const }]
+      : []),
   ];
 
   const { hardwareAcceleratedDecoding, minimizeLatency, customHeaders } =
@@ -264,7 +265,8 @@ export function prepareStream(
     let isSrt = false;
 
     if (typeof source.src === "string") {
-      isHttpUrl = source.src.startsWith("http") || source.src.startsWith("https");
+      isHttpUrl =
+        source.src.startsWith("http") || source.src.startsWith("https");
       isHls = source.src.includes("m3u");
       isSrt = source.src.startsWith("srt://");
     }
@@ -272,7 +274,12 @@ export function prepareStream(
     command.input(source.src);
 
     if (index === 0) {
-      command.inputOptions("-y", "-loglevel", mergedOptions.logLevel, "-nostats");
+      command.inputOptions(
+        "-y",
+        "-loglevel",
+        mergedOptions.logLevel,
+        "-nostats",
+      );
     }
 
     if (
@@ -302,10 +309,7 @@ export function prepareStream(
 
       // The ffmpeg wrapper tokenizes string input like a shell command. Wrap the
       // header blob so spaces inside header values remain a single argument.
-      command.inputOptions(
-        "-headers",
-        `"${serializedHeaders}"`,
-      );
+      command.inputOptions("-headers", `"${serializedHeaders}"`);
       if (!isHls) {
         command.inputOptions([
           "-reconnect 1",
@@ -371,10 +375,7 @@ export function prepareStream(
         "setsar=1",
       ]);
     } else {
-      command.videoFilters([
-        `scale=${width}:${height}`,
-        "setsar=1",
-      ]);
+      command.videoFilters([`scale=${width}:${height}`, "setsar=1"]);
     }
 
     if (frameRate) command.fps(frameRate);
@@ -416,9 +417,7 @@ export function prepareStream(
   const { includeAudio, bitrateAudio } = mergedOptions;
   if (includeAudio)
     command
-      .outputOptions(
-        resolvedInput.audio ? "-map 1:a:0?" : "-map 0:a:0?",
-      )
+      .outputOptions(resolvedInput.audio ? "-map 1:a:0?" : "-map 0:a:0?")
       .audioChannels(2)
       /*
        * I don't have much surround sound material to test this with,
