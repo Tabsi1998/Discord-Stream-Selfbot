@@ -19,6 +19,17 @@ GitHub Repo klonen (https://github.com/Tabsi1998/Discord-Stream-Selfbot), zum La
 
 ## Was wurde implementiert (19.03.2026)
 
+### Shell Scripts (komplett neu geschrieben)
+- **install.sh**: Interaktiv mit Farben, 5-Schritt-Flow (Voraussetzungen, Discord Token + User-IDs, Web Panel Port/TZ, Chat-Befehle/yt-dlp/Scheduler, Zusammenfassung & Start). Bestehende .env als Basis verwendbar. Validierung aller Eingaben. Geheime Token-Eingabe.
+- **update.sh**: Git-Update OHNE Datenverlust. Automatisches .env + State Backup. Zeigt verfuegbare Commits an. Stash-Support fuer lokale Aenderungen. Container rebuild nach Update. Restore bei Fehler.
+- **config.sh**: Menue-basiert (1-7 + a fuer alles). Zeigt aktuelle Werte, aendert gezielt einzelne Einstellungen. Container-Neustart optional.
+
+### Quality Profiles (aktualisiert)
+- "Original" entfernt
+- 2160p30 (4K / 30 FPS - 3840x2160) hinzugefuegt
+- 2160p60 (4K / 60 FPS - 3840x2160) hinzugefuegt
+- 4K Bitrate-Empfehlungen: H264 10-18Mbps, H265 8.2-15.3Mbps
+
 ### Backend (server.py)
 - GET /api/health - Health Check
 - GET /api/bootstrap - Kompletter App-State
