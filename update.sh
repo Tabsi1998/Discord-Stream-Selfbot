@@ -28,144 +28,119 @@ STATE_FILE="$DATA_DIR/control-panel-state.json"
 STATE_BACKUP="$DATA_DIR/control-panel-state.pre-update.json"
 
 # ── Helper ──────────────────────────────────────────────────────
-print_banner() {
-  clear
-  echo ""
-  echo -e "${CYAN}${BOLD}"
-  echo "  ╔══════════════════════════════════════════════════════╗"
-  echo "  ║                                                      ║"
-  echo "  ║   Discord Stream Selfbot - Updater                   ║"
-  echo "  ║                                                      ║"
-  echo "  ╚══════════════════════════════════════════════════════╝"
-  echo -e "${NC}"
-  echo ""
-}
-
 print_step() {
-  local step=$1
-  local total=$2
-  local title=$3
-  echo ""
-  echo -e "${CYAN}${BOLD}  [$step/$total] $title${NC}"
-  echo -e "${DIM}  ─────────────────────────────────────────────${NC}"
+  echo "" >&2
+  echo -e "${CYAN}${BOLD}  [$1/$2] $3${NC}" >&2
+  echo -e "${DIM}  ─────────────────────────────────────────────${NC}" >&2
 }
+print_success() { echo -e "  ${GREEN}✓${NC} $1" >&2; }
+print_info()    { echo -e "  ${BLUE}i${NC} $1" >&2; }
+print_warn()    { echo -e "  ${YELLOW}!${NC} $1" >&2; }
+print_error()   { echo -e "  ${RED}✗${NC} $1" >&2; }
 
-print_success() { echo -e "  ${GREEN}✓${NC} $1"; }
-print_info()    { echo -e "  ${BLUE}i${NC} $1"; }
-print_warn()    { echo -e "  ${YELLOW}!${NC} $1"; }
-print_error()   { echo -e "  ${RED}✗${NC} $1"; }
-
-prompt_yn() {
-  local label=$1
-  local default=$2
-  local result
+ask_yn() {
+  local label="$1"
+  local default="$2"
+  local answer
   if [ "$default" = "y" ]; then
-    echo -en "  ${BOLD}$label${NC} ${DIM}[J/n]${NC}: "
+    printf "  ${BOLD}%s${NC} ${DIM}[J/n]${NC}: " "$label" >&2
   else
-    echo -en "  ${BOLD}$label${NC} ${DIM}[j/N]${NC}: "
+    printf "  ${BOLD}%s${NC} ${DIM}[j/N]${NC}: " "$label" >&2
   fi
-  read -r result
-  result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
-  [ -z "$result" ] && result="$default"
-  case "$result" in
-    j|y|ja|yes) echo "1" ;;
-    *) echo "0" ;;
+  read -r answer
+  answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
+  [ -z "$answer" ] && answer="$default"
+  case "$answer" in
+    j|y|ja|yes) printf '1' ;;
+    *) printf '0' ;;
   esac
 }
 
-read_env_value() {
-  local key=$1
+read_env() {
+  local key="$1"
   if [ -f "$ENV_FILE" ]; then
     grep -m1 "^${key}=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- || true
   fi
 }
 
 # ══════════════════════════════════════════════════════════════════
-#  HAUPTPROGRAMM
-# ══════════════════════════════════════════════════════════════════
 
-print_banner
+clear
+echo "" >&2
+echo -e "${CYAN}${BOLD}" >&2
+echo "  ╔══════════════════════════════════════════════════════╗" >&2
+echo "  ║                                                      ║" >&2
+echo "  ║   Discord Stream Selfbot - Updater                   ║" >&2
+echo "  ║                                                      ║" >&2
+echo "  ╚══════════════════════════════════════════════════════╝" >&2
+echo -e "${NC}" >&2
 
-# ──────────────────────────────────────────────────────────────
+# ── [1/5] Voraussetzungen ─────────────────────────────────────
 print_step 1 5 "Voraussetzungen pruefen"
 
-# Git pruefen
-if ! command -v git &>/dev/null; then
-  print_error "Git ist nicht installiert"
-  exit 1
-fi
+if ! command -v git &>/dev/null; then print_error "Git fehlt"; exit 1; fi
 print_success "Git gefunden"
 
-# Docker pruefen
-if ! command -v docker &>/dev/null; then
-  print_error "Docker ist nicht installiert"
-  exit 1
-fi
+if ! command -v docker &>/dev/null; then print_error "Docker fehlt"; exit 1; fi
 print_success "Docker gefunden"
 
-if ! docker compose version &>/dev/null 2>&1; then
-  print_error "Docker Compose nicht gefunden"
-  exit 1
-fi
+if ! docker compose version &>/dev/null 2>&1; then print_error "Docker Compose fehlt"; exit 1; fi
 print_success "Docker Compose gefunden"
 
-# Git Repo pruefen
 if [ ! -d "$SCRIPT_DIR/.git" ]; then
-  print_error "Kein Git Repository gefunden in: $SCRIPT_DIR"
-  print_info "Hast du das Repo mit 'git clone' heruntergeladen?"
+  print_error "Kein Git Repo in: $SCRIPT_DIR"
+  print_info "Repo mit 'git clone' herunterladen"
   exit 1
 fi
-print_success "Git Repository gefunden"
+print_success "Git Repository OK"
 
-# .env pruefen
 if [ ! -f "$ENV_FILE" ]; then
-  print_error "Keine Konfiguration gefunden ($ENV_FILE)"
-  print_info "Fuehre zuerst ./install.sh aus"
+  print_error "Keine Konfiguration ($ENV_FILE) - zuerst ./install.sh"
   exit 1
 fi
 print_success "Konfiguration vorhanden"
 
-# ──────────────────────────────────────────────────────────────
-print_step 2 5 "Aktuelle Version und Aenderungen"
+# ── [2/5] Aktueller Stand ────────────────────────────────────
+print_step 2 5 "Aktueller Stand"
 
-CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unbekannt")
+CURRENT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
 CURRENT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
 CURRENT_DATE=$(git -C "$SCRIPT_DIR" log -1 --format="%ci" 2>/dev/null | cut -d' ' -f1,2 || echo "?")
 
-echo ""
-echo -e "  ${BOLD}Aktueller Stand:${NC}"
-echo -e "  ${DIM}Branch:${NC}  $CURRENT_BRANCH"
-echo -e "  ${DIM}Commit:${NC}  $CURRENT_COMMIT"
-echo -e "  ${DIM}Datum:${NC}   $CURRENT_DATE"
-echo ""
+echo "" >&2
+echo -e "  ${BOLD}Aktuell:${NC}" >&2
+echo -e "  ${DIM}Branch:${NC}  $CURRENT_BRANCH" >&2
+echo -e "  ${DIM}Commit:${NC}  $CURRENT_COMMIT" >&2
+echo -e "  ${DIM}Datum:${NC}   $CURRENT_DATE" >&2
 
-# Lokale Aenderungen pruefen
+# Lokale Aenderungen?
 DIRTY=$(git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)
-if [ -n "$DIRTY" ]; then
-  print_warn "Es gibt lokale Aenderungen an Dateien:"
-  echo ""
-  git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no 2>/dev/null | while IFS= read -r line; do
-    echo -e "    ${YELLOW}$line${NC}"
-  done
-  echo ""
+STASHED=false
 
-  STASH_CHOICE=$(prompt_yn "Lokale Aenderungen temporaer sichern (git stash) und weiter?" "y")
-  if [ "$STASH_CHOICE" = "1" ]; then
+if [ -n "$DIRTY" ]; then
+  echo "" >&2
+  print_warn "Lokale Aenderungen gefunden:"
+  echo "" >&2
+  git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no 2>/dev/null | while IFS= read -r line; do
+    echo -e "    ${YELLOW}$line${NC}" >&2
+  done
+  echo "" >&2
+
+  STASH_IT=$(ask_yn "Aenderungen sichern (git stash) und weiter?" "y")
+  if [ "$STASH_IT" = "1" ]; then
     git -C "$SCRIPT_DIR" stash push -m "update-backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null
-    print_success "Aenderungen gesichert (git stash)"
-    print_info "Wiederherstellen mit: git stash pop"
+    print_success "Gesichert (git stash) - spaeter: git stash pop"
     STASHED=true
   else
-    print_warn "Update abgebrochen. Committe oder stashe deine Aenderungen zuerst."
+    print_warn "Abbruch. Committe oder stashe deine Aenderungen."
     exit 0
   fi
 else
   print_success "Keine lokalen Aenderungen"
-  STASHED=false
 fi
 
-# Verfuegbare Updates pruefen
-echo ""
+# Auf Updates pruefen
+echo "" >&2
 print_info "Pruefe auf Updates..."
 git -C "$SCRIPT_DIR" fetch origin "$CURRENT_BRANCH" 2>/dev/null
 
@@ -173,154 +148,121 @@ LOCAL_HEAD=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null)
 REMOTE_HEAD=$(git -C "$SCRIPT_DIR" rev-parse "origin/$CURRENT_BRANCH" 2>/dev/null || echo "")
 
 if [ "$LOCAL_HEAD" = "$REMOTE_HEAD" ]; then
-  echo ""
-  print_success "Du bist bereits auf dem neuesten Stand!"
-  echo ""
-
-  REBUILD=$(prompt_yn "Container trotzdem neu bauen?" "n")
+  echo "" >&2
+  print_success "Bereits auf neuestem Stand!"
+  echo "" >&2
+  REBUILD=$(ask_yn "Container trotzdem neu bauen?" "n")
   if [ "$REBUILD" = "0" ]; then
-    print_info "Nichts zu tun. Alles aktuell."
+    [ "$STASHED" = true ] && git -C "$SCRIPT_DIR" stash pop 2>/dev/null || true
+    print_info "Nichts zu tun."
     exit 0
   fi
 else
-  # Aenderungen anzeigen
-  COMMITS_BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/$CURRENT_BRANCH 2>/dev/null || echo "?")
-  echo ""
-  echo -e "  ${GREEN}${BOLD}$COMMITS_BEHIND neue Commit(s) verfuegbar!${NC}"
-  echo ""
-  echo -e "  ${BOLD}Aenderungen:${NC}"
-  git -C "$SCRIPT_DIR" log --oneline HEAD..origin/$CURRENT_BRANCH 2>/dev/null | head -20 | while IFS= read -r line; do
-    echo -e "    ${GREEN}+${NC} $line"
+  BEHIND=$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/$CURRENT_BRANCH 2>/dev/null || echo "?")
+  echo "" >&2
+  echo -e "  ${GREEN}${BOLD}$BEHIND neue Commit(s) verfuegbar!${NC}" >&2
+  echo "" >&2
+  git -C "$SCRIPT_DIR" log --oneline HEAD..origin/$CURRENT_BRANCH 2>/dev/null | head -15 | while IFS= read -r line; do
+    echo -e "    ${GREEN}+${NC} $line" >&2
   done
-  echo ""
 fi
 
-# ──────────────────────────────────────────────────────────────
-print_step 3 5 "Konfiguration sichern"
+# ── [3/5] Konfiguration sichern ──────────────────────────────
+print_step 3 5 "Daten sichern"
 
-# .env Backup
-echo ""
-TOKEN=$(read_env_value "DISCORD_TOKEN")
-TOKEN_DISPLAY="${TOKEN:0:8}...${TOKEN: -4}"
-
-echo -e "  ${BOLD}Gesicherte Einstellungen:${NC}"
-echo -e "  ${DIM}Discord Token:${NC}     $TOKEN_DISPLAY"
-echo -e "  ${DIM}Port:${NC}              $(read_env_value HOST_PORT)"
-echo -e "  ${DIM}Zeitzone:${NC}          $(read_env_value TZ)"
-echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$(read_env_value DISCORD_COMMANDS_ENABLED)" = "1" ] && echo "Aktiv" || echo "Aus")"
-echo -e "  ${DIM}Prefix:${NC}            $(read_env_value COMMAND_PREFIX)"
-echo -e "  ${DIM}Erlaubte IDs:${NC}      $(read_env_value COMMAND_ALLOWED_AUTHOR_IDS)"
-echo ""
+TOKEN=$(read_env "DISCORD_TOKEN")
+echo "" >&2
+echo -e "  ${BOLD}Wird gesichert:${NC}" >&2
+echo -e "  ${DIM}Token:${NC}      ${TOKEN:0:8}...${TOKEN: -4}" >&2
+echo -e "  ${DIM}Port:${NC}       $(read_env HOST_PORT)" >&2
+echo -e "  ${DIM}Zeitzone:${NC}   $(read_env TZ)" >&2
+echo -e "  ${DIM}User-IDs:${NC}   $(read_env COMMAND_ALLOWED_AUTHOR_IDS)" >&2
+echo "" >&2
 
 cp "$ENV_FILE" "$ENV_BACKUP"
-print_success "Konfiguration gesichert: $ENV_BACKUP"
+print_success ".env gesichert: $ENV_BACKUP"
 
-# State Backup (wenn vorhanden)
 if [ -f "$STATE_FILE" ]; then
   cp "$STATE_FILE" "$STATE_BACKUP"
   print_success "Stream-Daten gesichert: $STATE_BACKUP"
 fi
 
-# ──────────────────────────────────────────────────────────────
+# ── [4/5] Update ─────────────────────────────────────────────
 print_step 4 5 "Update durchfuehren"
-echo ""
 
-CONFIRM=$(prompt_yn "Update jetzt durchfuehren?" "y")
-if [ "$CONFIRM" = "0" ]; then
-  # Restore stash if we stashed
-  if [ "$STASHED" = true ]; then
-    git -C "$SCRIPT_DIR" stash pop 2>/dev/null || true
-    print_info "Lokale Aenderungen wiederhergestellt"
-  fi
-  print_warn "Update abgebrochen."
+echo "" >&2
+DO_IT=$(ask_yn "Jetzt updaten?" "y")
+if [ "$DO_IT" = "0" ]; then
+  [ "$STASHED" = true ] && git -C "$SCRIPT_DIR" stash pop 2>/dev/null || true
+  print_warn "Abgebrochen."
   exit 0
 fi
 
-# Git Pull
-echo ""
+echo "" >&2
 print_info "Lade neueste Version..."
-if git -C "$SCRIPT_DIR" pull --ff-only 2>&1 | while IFS= read -r line; do echo "  $line"; done; then
+if git -C "$SCRIPT_DIR" pull --ff-only 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done; then
   NEW_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "?")
-  print_success "Code aktualisiert auf: $NEW_COMMIT"
+  print_success "Aktualisiert auf: $NEW_COMMIT"
 else
   print_error "Git Pull fehlgeschlagen!"
-  echo ""
-  print_info "Moegliche Loesung: git stash && git pull && git stash pop"
-
-  # Restore .env
-  if [ -f "$ENV_BACKUP" ]; then
-    cp "$ENV_BACKUP" "$ENV_FILE"
-    print_success "Konfiguration wiederhergestellt"
-  fi
+  [ -f "$ENV_BACKUP" ] && cp "$ENV_BACKUP" "$ENV_FILE" && print_success ".env wiederhergestellt"
   exit 1
 fi
 
-# .env wiederherstellen (wird durch git pull NICHT ueberschrieben da in .gitignore)
+# .env sicher stellen
 if [ ! -f "$ENV_FILE" ] && [ -f "$ENV_BACKUP" ]; then
   cp "$ENV_BACKUP" "$ENV_FILE"
-  print_success "Konfiguration aus Backup wiederhergestellt"
+  print_success ".env aus Backup wiederhergestellt"
 else
   print_success "Konfiguration beibehalten"
 fi
 
-# Stash wiederherstellen (optional)
+# Stash zurueck?
 if [ "$STASHED" = true ]; then
-  echo ""
-  RESTORE_STASH=$(prompt_yn "Deine lokalen Aenderungen wiederherstellen?" "y")
-  if [ "$RESTORE_STASH" = "1" ]; then
+  echo "" >&2
+  RESTORE=$(ask_yn "Lokale Aenderungen wiederherstellen?" "y")
+  if [ "$RESTORE" = "1" ]; then
     if git -C "$SCRIPT_DIR" stash pop 2>/dev/null; then
-      print_success "Lokale Aenderungen wiederhergestellt"
+      print_success "Aenderungen wiederhergestellt"
     else
-      print_warn "Stash konnte nicht angewendet werden (Konflikte?)"
-      print_info "Manuell wiederherstellen mit: git stash pop"
+      print_warn "Konflikte - manuell: git stash pop"
     fi
   else
-    print_info "Stash beibehalten. Wiederherstellen mit: git stash pop"
+    print_info "Stash behalten. Spaeter: git stash pop"
   fi
 fi
 
-# ──────────────────────────────────────────────────────────────
+# ── [5/5] Container neu bauen ────────────────────────────────
 print_step 5 5 "Container neu bauen"
-echo ""
 
-print_info "Stoppe laufende Container..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down 2>&1 | while IFS= read -r line; do
-  echo "  $line"
-done
+echo "" >&2
+print_info "Stoppe Container..."
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
-echo ""
-print_info "Baue und starte Container neu..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do
-  echo "  $line"
-done
+echo "" >&2
+print_info "Baue und starte neu..."
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
-echo ""
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do
-  echo "  $line"
-done
+echo "" >&2
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
-HOST_PORT=$(read_env_value "HOST_PORT")
+HOST_PORT=$(read_env "HOST_PORT")
 
-echo ""
-echo -e "${GREEN}${BOLD}"
-echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║                                                      ║"
-echo "  ║   Update erfolgreich!                                ║"
-echo "  ║                                                      ║"
-echo "  ╚══════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-echo -e "  ${BOLD}Vorher:${NC}  $CURRENT_COMMIT ($CURRENT_DATE)"
-echo -e "  ${BOLD}Jetzt:${NC}   $NEW_COMMIT"
-echo ""
-echo -e "  ${BOLD}Deine Daten:${NC}"
-echo -e "  ${GREEN}✓${NC} Discord Token      - beibehalten"
-echo -e "  ${GREEN}✓${NC} User-IDs           - beibehalten"
-echo -e "  ${GREEN}✓${NC} Alle Einstellungen - beibehalten"
-echo -e "  ${GREEN}✓${NC} Stream-Daten       - beibehalten"
-echo ""
-echo -e "  ${BOLD}Control Panel:${NC}  http://localhost:${HOST_PORT:-3099}"
-echo ""
-echo -e "  ${DIM}Backup-Dateien:${NC}"
-echo -e "  ${DIM}  $ENV_BACKUP${NC}"
-[ -f "$STATE_BACKUP" ] && echo -e "  ${DIM}  $STATE_BACKUP${NC}"
-echo ""
+echo "" >&2
+echo -e "${GREEN}${BOLD}" >&2
+echo "  ╔══════════════════════════════════════════════════════╗" >&2
+echo "  ║                                                      ║" >&2
+echo "  ║   Update erfolgreich!                                ║" >&2
+echo "  ║                                                      ║" >&2
+echo "  ╚══════════════════════════════════════════════════════╝" >&2
+echo -e "${NC}" >&2
+echo -e "  ${BOLD}Vorher:${NC}  $CURRENT_COMMIT ($CURRENT_DATE)" >&2
+echo -e "  ${BOLD}Jetzt:${NC}   $NEW_COMMIT" >&2
+echo "" >&2
+echo -e "  ${GREEN}✓${NC} Discord Token      - beibehalten" >&2
+echo -e "  ${GREEN}✓${NC} User-IDs           - beibehalten" >&2
+echo -e "  ${GREEN}✓${NC} Alle Einstellungen - beibehalten" >&2
+echo -e "  ${GREEN}✓${NC} Stream-Daten       - beibehalten" >&2
+echo "" >&2
+echo -e "  ${BOLD}Control Panel:${NC}  http://localhost:${HOST_PORT:-3099}" >&2
+echo "" >&2
