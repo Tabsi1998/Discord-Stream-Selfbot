@@ -10,3 +10,7 @@ examples/*/*.log
 deploy/.env
 deploy/data/*
 !deploy/data/.gitkeep
+-e 
+# Environment files
+*.env
+*.env.*
