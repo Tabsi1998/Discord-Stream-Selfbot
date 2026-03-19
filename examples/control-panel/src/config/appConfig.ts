@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 function hasWorkingBinary(command: string): boolean {
-  const result = spawnSync(command, ["-version"], {
+  const flag = command === "yt-dlp" ? "--version" : "-version";
+  const result = spawnSync(command, [flag], {
     stdio: "ignore",
     shell: false,
   });
