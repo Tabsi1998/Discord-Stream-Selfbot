@@ -315,8 +315,24 @@ export function prepareStream(
           "-reconnect 1",
           "-reconnect_at_eof 1",
           "-reconnect_streamed 1",
-          "-reconnect_delay_max 4294",
+          "-reconnect_on_network_error 1",
+          "-reconnect_on_http_error 4xx,5xx",
+          "-reconnect_delay_max 30",
         ]);
+      }
+
+      // Throttle read speed to ~1x realtime to prevent buffer overflow on
+      // fast connections. readrate_initial_burst covers the initial fill.
+      if (!minimizeLatency) {
+        command.inputOptions(["-readrate 1"]);
+        if (
+          isFiniteNonZero(opts.readrateInitialBurst) &&
+          opts.readrateInitialBurst > 0
+        ) {
+          command.inputOptions([
+            `-readrate_initial_burst ${opts.readrateInitialBurst}`,
+          ]);
+        }
       }
     }
 
