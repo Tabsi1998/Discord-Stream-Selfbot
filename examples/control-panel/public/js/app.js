@@ -4,14 +4,6 @@ const state = {
 };
 
 const QUALITY_PROFILES = {
-  original: {
-    label: "Original",
-    description: "Aufloesung und FPS der Quelle werden beibehalten.",
-    width: 1920,
-    height: 1080,
-    fps: 60,
-    preserveSource: true,
-  },
   "720p30": {
     label: "720p / 30 FPS",
     description: "Solide Standardwahl fuer lange, stabile Streams.",
@@ -57,6 +49,22 @@ const QUALITY_PROFILES = {
     description: "Sehr hohe Last, nur fuer starke Systeme sinnvoll.",
     width: 2560,
     height: 1440,
+    fps: 60,
+    preserveSource: false,
+  },
+  "2160p30": {
+    label: "4K / 30 FPS",
+    description: "Ultra HD, braucht sehr viel Bandbreite und CPU-Power.",
+    width: 3840,
+    height: 2160,
+    fps: 30,
+    preserveSource: false,
+  },
+  "2160p60": {
+    label: "4K / 60 FPS",
+    description: "Maximale Qualitaet, nur fuer sehr starke Systeme.",
+    width: 3840,
+    height: 2160,
     fps: 60,
     preserveSource: false,
   },
@@ -251,18 +259,15 @@ function getBufferStrategy(profile) {
 }
 
 function getRecommendedBitrates(width, height, fps, codec, qualityProfile = "custom") {
-  if (qualityProfile === "original") {
-    return codec === "H265"
-      ? { video: 7500, videoMax: 9000, audio: 160 }
-      : { video: 9000, videoMax: 10000, audio: 160 };
-  }
-
   const pixels = width * height;
   const highFrameRate = fps >= 50;
   let video = 2500;
   let videoMax = 3500;
 
-  if (pixels >= 2560 * 1440) {
+  if (pixels >= 3840 * 2160) {
+    video = highFrameRate ? 14000 : 10000;
+    videoMax = highFrameRate ? 18000 : 14000;
+  } else if (pixels >= 2560 * 1440) {
     video = highFrameRate ? 9000 : 8000;
     videoMax = 10000;
   } else if (pixels >= 1920 * 1080) {
@@ -295,7 +300,6 @@ function getEffectiveBufferProfile(sourceMode, qualityProfile, width, height, fp
   if (selectedProfile && selectedProfile !== "auto") {
     return selectedProfile;
   }
-  if (qualityProfile === "original") return "stable";
   if (sourceMode === "yt-dlp" && fps >= 60) return "stable";
   if (fps >= 60) return "stable";
   if (height >= 1080 || width >= 1920) return "stable";
