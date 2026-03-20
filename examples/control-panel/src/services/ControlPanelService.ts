@@ -12,6 +12,7 @@ import type {
   EventInput,
   EventStatus,
   ManualRunInput,
+  QueueItem,
   RecurrenceRule,
   PresetInput,
   ScheduledEvent,
@@ -77,12 +78,20 @@ type EventMutationResult = {
 };
 
 export class ControlPanelService {
+  private queueAdvancing = false;
+
   constructor(
     private readonly store: AppStateStore,
     private readonly runtime: StreamRuntime,
   ) {
-    this.runtime.on("runEnded", (info: RunEndedInfo) => this.onRunEnded(info));
-    this.runtime.on("runFailed", (info: RunFailedInfo) => this.onRunFailed(info));
+    this.runtime.on("runEnded", (info: RunEndedInfo) => {
+      this.onRunEnded(info);
+      this.onQueueRunEnded(info);
+    });
+    this.runtime.on("runFailed", (info: RunFailedInfo) => {
+      this.onRunFailed(info);
+      this.onQueueRunFailed(info);
+    });
   }
 
   public snapshot(): ControlPanelState {
@@ -513,11 +522,23 @@ export class ControlPanelService {
       channel,
       preset,
       plannedStopAt,
+    }).then((result) => {
+      this.sendNotification(
+        `Stream gestartet: ${channel.name} mit ${preset.name}`,
+      ).catch(() => {});
+      return result;
     });
   }
 
   public stopActive(reason = "manual-stop") {
-    return this.runtime.stopActive(reason);
+    const run = this.runtime.getActiveRun();
+    const stopped = this.runtime.stopActive(reason);
+    if (stopped && run) {
+      this.sendNotification(`Stream gestoppt: ${run.channelName}`).catch(
+        () => {},
+      );
+    }
+    return stopped;
   }
 
   public hasActiveRun() {
@@ -897,6 +918,297 @@ export class ControlPanelService {
         "Discord Event Completed-Update fehlgeschlagen",
         { error: msg },
       );
+    }
+  }
+
+  // ── Queue Management ──────────────────────────────────────────
+
+  public addToQueue(
+    url: string,
+    name?: string,
+    sourceMode?: "direct" | "yt-dlp",
+  ): QueueItem {
+    assertNonEmpty(url, "url");
+    const item: QueueItem = {
+      id: randomUUID(),
+      url: url.trim(),
+      name: (name?.trim() || url.trim()).slice(0, 120),
+      sourceMode: sourceMode ?? (isYouTubeUrl(url) ? "yt-dlp" : "direct"),
+      addedAt: nowIso(),
+      status: "pending",
+    };
+    this.store.update((draft) => {
+      draft.queue.push(item);
+    });
+    this.store.appendLog("info", "Queue: Item hinzugefuegt", {
+      name: item.name,
+    });
+    return item;
+  }
+
+  public removeFromQueue(id: string) {
+    this.store.update((draft) => {
+      const idx = draft.queue.findIndex((i) => i.id === id);
+      if (idx < 0) throw new Error("Queue item not found");
+      draft.queue.splice(idx, 1);
+      if (draft.queueConfig.currentIndex >= draft.queue.length) {
+        draft.queueConfig.currentIndex = Math.max(0, draft.queue.length - 1);
+      }
+    });
+  }
+
+  public clearQueue() {
+    this.store.update((draft) => {
+      draft.queue = [];
+      draft.queueConfig = {
+        active: false,
+        loop: draft.queueConfig.loop,
+        currentIndex: 0,
+      };
+    });
+    this.store.appendLog("info", "Queue geleert");
+  }
+
+  public setQueueLoop(enabled: boolean) {
+    this.store.update((draft) => {
+      draft.queueConfig.loop = enabled;
+    });
+  }
+
+  public async startQueue(channelId: string, presetId: string) {
+    const state = this.store.snapshot();
+    if (!state.queue.length) throw new Error("Queue is empty");
+    const channel = state.channels.find((c) => c.id === channelId);
+    if (!channel) throw new Error("Channel not found");
+    const preset = state.presets.find((p) => p.id === presetId);
+    if (!preset) throw new Error("Preset not found");
+
+    this.store.update((draft) => {
+      draft.queueConfig.active = true;
+      draft.queueConfig.channelId = channelId;
+      draft.queueConfig.presetId = presetId;
+      draft.queueConfig.currentIndex = 0;
+      for (const item of draft.queue) {
+        item.status = "pending";
+      }
+    });
+
+    this.store.appendLog("info", "Queue gestartet", {
+      items: String(state.queue.length),
+      channel: channel.name,
+    });
+    await this.sendNotification(
+      `Queue gestartet: ${state.queue.length} Items in ${channel.name}`,
+    );
+    await this.playCurrentQueueItem();
+  }
+
+  public async skipQueueItem() {
+    const state = this.store.snapshot();
+    if (!state.queueConfig.active) throw new Error("Queue is not active");
+
+    this.store.update((draft) => {
+      const item = draft.queue[draft.queueConfig.currentIndex];
+      if (item && item.status === "playing") {
+        item.status = "skipped";
+      }
+    });
+
+    if (this.runtime.getActiveRun()) {
+      this.stopActive();
+    } else {
+      await this.advanceQueue();
+    }
+  }
+
+  public stopQueue() {
+    this.store.update((draft) => {
+      draft.queueConfig.active = false;
+    });
+    if (this.runtime.getActiveRun()) {
+      this.stopActive();
+    }
+    this.store.appendLog("info", "Queue gestoppt");
+  }
+
+  public reorderQueue(id: string, newIndex: number) {
+    this.store.update((draft) => {
+      const idx = draft.queue.findIndex((i) => i.id === id);
+      if (idx < 0) throw new Error("Queue item not found");
+      const [item] = draft.queue.splice(idx, 1);
+      const clampedIndex = Math.max(
+        0,
+        Math.min(newIndex, draft.queue.length),
+      );
+      draft.queue.splice(clampedIndex, 0, item);
+    });
+  }
+
+  private async playCurrentQueueItem() {
+    const state = this.store.snapshot();
+    const { queueConfig, queue } = state;
+    if (!queueConfig.active || !queueConfig.channelId || !queueConfig.presetId)
+      return;
+    if (queueConfig.currentIndex >= queue.length) return;
+
+    const item = queue[queueConfig.currentIndex];
+    if (!item) return;
+
+    const channel = state.channels.find(
+      (c) => c.id === queueConfig.channelId,
+    );
+    const basePreset = state.presets.find(
+      (p) => p.id === queueConfig.presetId,
+    );
+    if (!channel || !basePreset) {
+      this.stopQueue();
+      return;
+    }
+
+    const queuePreset: StreamPreset = {
+      ...basePreset,
+      id: `queue-${item.id}`,
+      name: `Queue: ${item.name}`,
+      sourceUrl: item.url,
+      sourceMode: item.sourceMode,
+    };
+
+    this.store.update((draft) => {
+      const qi = draft.queue[draft.queueConfig.currentIndex];
+      if (qi) qi.status = "playing";
+    });
+
+    try {
+      await this.runtime.startRun({
+        kind: "manual",
+        channel,
+        preset: queuePreset,
+      });
+      await this.sendNotification(
+        `Queue [${queueConfig.currentIndex + 1}/${queue.length}]: ${item.name}`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.update((draft) => {
+        const qi = draft.queue[draft.queueConfig.currentIndex];
+        if (qi) qi.status = "failed";
+      });
+      this.store.appendLog("error", "Queue Item Fehler", {
+        name: item.name,
+        error: msg,
+      });
+      await this.advanceQueue();
+    }
+  }
+
+  private async advanceQueue() {
+    if (this.queueAdvancing) return;
+    this.queueAdvancing = true;
+    try {
+      const state = this.store.snapshot();
+      if (!state.queueConfig.active) return;
+
+      const nextIndex = state.queueConfig.currentIndex + 1;
+      if (nextIndex >= state.queue.length) {
+        if (state.queueConfig.loop && state.queue.length > 0) {
+          this.store.update((draft) => {
+            draft.queueConfig.currentIndex = 0;
+            for (const item of draft.queue) {
+              if (item.status !== "pending") item.status = "pending";
+            }
+          });
+          this.store.appendLog("info", "Queue: Loop - starte von vorne");
+          await this.playCurrentQueueItem();
+        } else {
+          this.store.update((draft) => {
+            draft.queueConfig.active = false;
+          });
+          this.store.appendLog("info", "Queue abgeschlossen");
+          await this.sendNotification("Queue abgeschlossen - alle Items gespielt");
+        }
+      } else {
+        this.store.update((draft) => {
+          draft.queueConfig.currentIndex = nextIndex;
+        });
+        await this.playCurrentQueueItem();
+      }
+    } finally {
+      this.queueAdvancing = false;
+    }
+  }
+
+  private onQueueRunEnded(_info: RunEndedInfo) {
+    const state = this.store.snapshot();
+    if (!state.queueConfig.active) return;
+
+    this.store.update((draft) => {
+      const item = draft.queue[draft.queueConfig.currentIndex];
+      if (item && item.status === "playing") {
+        item.status = "completed";
+      }
+    });
+
+    setTimeout(() => this.advanceQueue().catch(() => {}), 1500);
+  }
+
+  private onQueueRunFailed(_info: RunFailedInfo) {
+    const state = this.store.snapshot();
+    if (!state.queueConfig.active) return;
+
+    this.store.update((draft) => {
+      const item = draft.queue[draft.queueConfig.currentIndex];
+      if (item && item.status === "playing") {
+        item.status = "failed";
+      }
+    });
+
+    setTimeout(() => this.advanceQueue().catch(() => {}), 2000);
+  }
+
+  // ── Notifications ─────────────────────────────────────────────
+
+  public async sendNotification(message: string) {
+    const tasks: Promise<void>[] = [];
+
+    if (appConfig.notificationWebhookUrl) {
+      tasks.push(this.sendWebhookNotification(message));
+    }
+    if (appConfig.notificationDmEnabled) {
+      tasks.push(this.sendDmNotification(message));
+    }
+
+    await Promise.allSettled(tasks);
+  }
+
+  private async sendWebhookNotification(message: string) {
+    try {
+      await fetch(appConfig.notificationWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: message,
+          username: "Stream Bot",
+        }),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.appendLog("warn", "Webhook Benachrichtigung fehlgeschlagen", {
+        error: msg,
+      });
+    }
+  }
+
+  private async sendDmNotification(message: string) {
+    try {
+      const client = this.runtime.getClient();
+      if (!client.user) return;
+      const dmChannel = await client.user.createDM();
+      await dmChannel.send(message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      this.store.appendLog("warn", "DM Benachrichtigung fehlgeschlagen", {
+        error: msg,
+      });
     }
   }
 }

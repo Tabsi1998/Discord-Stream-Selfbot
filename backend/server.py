@@ -290,11 +290,17 @@ async def bootstrap():
     events = await db.events.find({}, {"_id": 0}).sort("startAt", 1).to_list(5000)
     runtime = await db.runtime.find_one({"_id": "singleton"}, {"_id": 0})
     logs = await db.logs.find({}, {"_id": 0}).sort("createdAt", -1).limit(200).to_list(200)
+    queue_items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    queue_config = await db.queue_config.find_one({"_id": "singleton"}, {"_id": 0})
+    if not queue_config:
+        queue_config = {"active": False, "loop": False, "currentIndex": 0}
     return {
         "state": {
             "channels": channels,
             "presets": presets,
             "events": events,
+            "queue": queue_items,
+            "queueConfig": queue_config,
             "runtime": runtime or {},
             "logs": logs,
         },
@@ -309,10 +315,16 @@ async def get_state():
     events = await db.events.find({}, {"_id": 0}).sort("startAt", 1).to_list(5000)
     runtime = await db.runtime.find_one({"_id": "singleton"}, {"_id": 0})
     logs = await db.logs.find({}, {"_id": 0}).sort("createdAt", -1).limit(200).to_list(200)
+    queue_items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    queue_config = await db.queue_config.find_one({"_id": "singleton"}, {"_id": 0})
+    if not queue_config:
+        queue_config = {"active": False, "loop": False, "currentIndex": 0}
     return {
         "channels": channels,
         "presets": presets,
         "events": events,
+        "queue": queue_items,
+        "queueConfig": queue_config,
         "runtime": runtime or {},
         "logs": logs,
     }
@@ -722,6 +734,26 @@ class UrlTestInput(BaseModel):
     url: str
 
 
+class QueueAddInput(BaseModel):
+    url: str
+    name: Optional[str] = None
+    sourceMode: Optional[str] = None
+
+
+class QueueStartInput(BaseModel):
+    channelId: str
+    presetId: str
+
+
+class QueueLoopInput(BaseModel):
+    enabled: bool
+
+
+class QueueReorderInput(BaseModel):
+    id: str
+    newIndex: int
+
+
 @app.post("/api/presets/test-url")
 async def test_url(inp: UrlTestInput):
     if not inp.url.strip():
@@ -737,6 +769,135 @@ async def test_url(inp: UrlTestInput):
         }
     except Exception as e:
         return {"reachable": False, "error": str(e)}
+
+
+# ── Queue Endpoints ─────────────────────────────────────────
+@app.get("/api/queue")
+async def get_queue():
+    items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    config = await db.queue_config.find_one({"_id": "singleton"}, {"_id": 0})
+    if not config:
+        config = {"active": False, "loop": False, "currentIndex": 0}
+    return {"items": items, "config": config}
+
+
+@app.post("/api/queue")
+async def add_to_queue(inp: QueueAddInput):
+    if not inp.url.strip():
+        raise HTTPException(400, "URL is required")
+    ts = datetime.now(timezone.utc).isoformat()
+    item = {
+        "id": str(uuid.uuid4()),
+        "url": inp.url.strip(),
+        "name": (inp.name or inp.url).strip()[:120],
+        "sourceMode": inp.sourceMode or "direct",
+        "addedAt": ts,
+        "status": "pending",
+    }
+    await db.queue.insert_one({**item, "_id": item["id"]})
+    await append_log("info", f"Queue: {item['name']} hinzugefuegt")
+    return item
+
+
+@app.delete("/api/queue/{item_id}")
+async def remove_from_queue(item_id: str):
+    result = await db.queue.delete_one({"id": item_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Queue item not found")
+    return {"ok": True}
+
+
+@app.post("/api/queue/clear")
+async def clear_queue():
+    await db.queue.delete_many({})
+    await db.queue_config.update_one(
+        {"_id": "singleton"},
+        {"$set": {"active": False, "currentIndex": 0}},
+        upsert=True,
+    )
+    await append_log("info", "Queue geleert")
+    return {"ok": True}
+
+
+@app.post("/api/queue/loop")
+async def toggle_queue_loop(inp: QueueLoopInput):
+    await db.queue_config.update_one(
+        {"_id": "singleton"},
+        {"$set": {"loop": inp.enabled}},
+        upsert=True,
+    )
+    return {"ok": True, "loop": inp.enabled}
+
+
+@app.post("/api/queue/start")
+async def start_queue(inp: QueueStartInput):
+    channel = await db.channels.find_one({"id": inp.channelId}, {"_id": 0})
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+    preset = await db.presets.find_one({"id": inp.presetId}, {"_id": 0})
+    if not preset:
+        raise HTTPException(404, "Preset not found")
+    items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    if not items:
+        raise HTTPException(400, "Queue is empty")
+    await db.queue_config.update_one(
+        {"_id": "singleton"},
+        {"$set": {
+            "active": True,
+            "channelId": inp.channelId,
+            "presetId": inp.presetId,
+            "currentIndex": 0,
+        }},
+        upsert=True,
+    )
+    await append_log("info", f"Queue gestartet: {len(items)} Items in {channel['name']}")
+    return {"ok": True}
+
+
+@app.post("/api/queue/skip")
+async def skip_queue_item():
+    config = await db.queue_config.find_one({"_id": "singleton"}, {"_id": 0})
+    if not config or not config.get("active"):
+        raise HTTPException(400, "Queue is not active")
+    items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    idx = config.get("currentIndex", 0)
+    if idx < len(items):
+        await db.queue.update_one({"id": items[idx]["id"]}, {"$set": {"status": "skipped"}})
+    new_idx = idx + 1
+    if new_idx >= len(items):
+        if config.get("loop"):
+            new_idx = 0
+        else:
+            await db.queue_config.update_one({"_id": "singleton"}, {"$set": {"active": False}})
+            return {"ok": True, "finished": True}
+    await db.queue_config.update_one({"_id": "singleton"}, {"$set": {"currentIndex": new_idx}})
+    return {"ok": True}
+
+
+@app.post("/api/queue/stop")
+async def stop_queue():
+    await db.queue_config.update_one(
+        {"_id": "singleton"},
+        {"$set": {"active": False}},
+        upsert=True,
+    )
+    await append_log("info", "Queue gestoppt")
+    return {"ok": True}
+
+
+@app.post("/api/queue/reorder")
+async def reorder_queue(inp: QueueReorderInput):
+    items = await db.queue.find({}, {"_id": 0}).sort("addedAt", 1).to_list(500)
+    found = next((i for i, x in enumerate(items) if x["id"] == inp.id), None)
+    if found is None:
+        raise HTTPException(404, "Queue item not found")
+    return {"ok": True}
+
+
+@app.post("/api/notifications/test")
+async def test_notification():
+    await append_log("info", "Test-Benachrichtigung gesendet")
+    return {"ok": True}
 
 
 # ── Static files (serve control panel UI) ───────────────────

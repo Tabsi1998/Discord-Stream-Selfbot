@@ -17,6 +17,7 @@ import type {
   ControlPanelState,
   LogEntry,
   LogLevel,
+  QueueConfig,
   RuntimeState,
 } from "../domain/types.js";
 
@@ -28,11 +29,17 @@ function defaultRuntime(): RuntimeState {
   };
 }
 
+function defaultQueueConfig(): QueueConfig {
+  return { active: false, loop: false, currentIndex: 0 };
+}
+
 function createDefaultState(): ControlPanelState {
   return {
     channels: [],
     presets: [],
     events: [],
+    queue: [],
+    queueConfig: defaultQueueConfig(),
     runtime: defaultRuntime(),
     logs: [],
   };
@@ -81,6 +88,11 @@ function normalizeState(input: unknown): ControlPanelState {
           };
         })
       : fallback.events,
+    queue: Array.isArray(state.queue) ? state.queue : [],
+    queueConfig:
+      state.queueConfig && typeof state.queueConfig === "object"
+        ? { ...defaultQueueConfig(), ...state.queueConfig }
+        : defaultQueueConfig(),
     runtime:
       state.runtime && typeof state.runtime === "object"
         ? { ...fallback.runtime, ...state.runtime }

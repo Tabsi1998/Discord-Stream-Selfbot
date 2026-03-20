@@ -117,6 +117,26 @@ export default function Dashboard({ state, api, refresh }) {
         </div>
       </div>
 
+      {/* Queue Summary */}
+      {(state?.queue?.length > 0 || state?.queueConfig?.active) && (
+        <div className="mt-4 bg-surface rounded-xl p-4 border border-border-dark flex items-center justify-between" data-testid="queue-summary-card">
+          <div className="flex items-center gap-3">
+            <Activity className="w-4 h-4 text-primary" />
+            <span className="text-sm font-bold text-txt-bright">Queue</span>
+            <span className="text-xs text-txt-muted">{state.queue.length} Items</span>
+            {state.queueConfig?.active && (
+              <span className="px-2 py-0.5 bg-primary/20 text-primary rounded-full text-[10px] font-bold animate-pulse">AKTIV</span>
+            )}
+            {state.queueConfig?.loop && (
+              <span className="px-2 py-0.5 bg-warning/20 text-warning rounded-full text-[10px] font-bold">LOOP</span>
+            )}
+          </div>
+          <span className="text-xs text-txt-muted">
+            {state.queueConfig?.active ? `Item ${(state.queueConfig.currentIndex || 0) + 1}/${state.queue.length}` : 'Gestoppt'}
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-surface rounded-xl p-5 border border-border-dark" data-testid="manual-start-card">
           <div className="flex items-center gap-3 mb-4">

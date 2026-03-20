@@ -127,6 +127,8 @@ export type ControlPanelState = {
   channels: ChannelDefinition[];
   presets: StreamPreset[];
   events: ScheduledEvent[];
+  queue: QueueItem[];
+  queueConfig: QueueConfig;
   runtime: RuntimeState;
   logs: LogEntry[];
 };
@@ -187,4 +189,29 @@ export type ManualRunInput = {
   channelId: string;
   presetId: string;
   stopAt?: string;
+};
+
+// ── Queue System ────────────────────────────────────────────────
+export type QueueItemStatus =
+  | "pending"
+  | "playing"
+  | "completed"
+  | "skipped"
+  | "failed";
+
+export type QueueItem = {
+  id: string;
+  url: string;
+  name: string;
+  sourceMode: SourceMode;
+  addedAt: string;
+  status: QueueItemStatus;
+};
+
+export type QueueConfig = {
+  active: boolean;
+  loop: boolean;
+  channelId?: string;
+  presetId?: string;
+  currentIndex: number;
 };

@@ -114,6 +114,116 @@ export class DiscordCommandBridge {
         return;
       }
 
+      // ── Queue Commands ────────────────────────────────────
+      if (body === "queue") {
+        await this.sendQueue(message);
+        return;
+      }
+
+      if (body.startsWith("queue add ")) {
+        const urlPart = body.slice("queue add ".length).trim();
+        const segments = splitSegments(urlPart);
+        const url = segments[0];
+        const name = segments[1];
+        if (!url) {
+          await message.channel.send("Bitte URL angeben: queue add <url> | [name]");
+          return;
+        }
+        const item = this.service.addToQueue(url, name);
+        await message.channel.send(`Queue: "${item.name}" hinzugefuegt.`);
+        return;
+      }
+
+      if (body === "queue clear") {
+        this.service.clearQueue();
+        await message.channel.send("Queue geleert.");
+        return;
+      }
+
+      if (body === "queue skip") {
+        await this.service.skipQueueItem();
+        await message.channel.send("Queue: naechstes Item.");
+        return;
+      }
+
+      if (body.startsWith("queue start ")) {
+        const segments = splitSegments(body.slice("queue start ".length));
+        if (segments.length < 2) {
+          await message.channel.send("Nutzung: queue start <kanal> | <preset>");
+          return;
+        }
+        const state = this.store.snapshot();
+        const channel = this.resolveChannel(segments[0]);
+        const preset = this.resolvePreset(segments[1]);
+        await this.service.startQueue(channel.id, preset.id);
+        await message.channel.send(
+          `Queue gestartet: ${state.queue.length} Items in ${channel.name}`,
+        );
+        return;
+      }
+
+      if (body === "queue stop") {
+        this.service.stopQueue();
+        await message.channel.send("Queue gestoppt.");
+        return;
+      }
+
+      if (body === "queue loop on") {
+        this.service.setQueueLoop(true);
+        await message.channel.send("Queue Loop: AN");
+        return;
+      }
+
+      if (body === "queue loop off") {
+        this.service.setQueueLoop(false);
+        await message.channel.send("Queue Loop: AUS");
+        return;
+      }
+
+      // ── Info / Logs / Restart ─────────────────────────────
+      if (body === "info") {
+        await this.sendSystemInfo(message);
+        return;
+      }
+
+      if (body.startsWith("logs")) {
+        const countStr = body.slice("logs".length).trim();
+        const count = Math.min(Number.parseInt(countStr, 10) || 5, 20);
+        await this.sendLogs(message, count);
+        return;
+      }
+
+      if (body === "restart") {
+        const run = this.runtime.getActiveRun();
+        if (!run) {
+          await message.channel.send("Kein aktiver Stream zum Neustarten.");
+          return;
+        }
+        const channelName = run.channelName;
+        const presetName = run.presetName;
+        this.service.stopActive();
+        await message.channel.send(
+          `Stream wird neugestartet: ${channelName} → ${presetName}`,
+        );
+        // startRun picks up from the saved channel + preset
+        const state = this.store.snapshot();
+        const ch = state.channels.find((c) => c.name === channelName);
+        const pr = state.presets.find((p) => p.name === presetName);
+        if (ch && pr) {
+          setTimeout(async () => {
+            try {
+              await this.service.startManualRun({
+                channelId: ch.id,
+                presetId: pr.id,
+              });
+            } catch {
+              await message.channel.send("Neustart fehlgeschlagen.");
+            }
+          }, 2000);
+        }
+        return;
+      }
+
       await message.channel.send("Unbekannter Befehl. Nutze 'help'.");
     } catch (error: unknown) {
       const command = body || "help";
@@ -190,11 +300,21 @@ export class DiscordCommandBridge {
         `${prefix} status`,
         `${prefix} start <kanal|id> | <preset|id> | [zeit]`,
         `${prefix} stop`,
+        `${prefix} restart`,
         `${prefix} channels`,
         `${prefix} presets`,
         `${prefix} events`,
         `${prefix} event start <event-id>`,
         `${prefix} event cancel <event-id>`,
+        `${prefix} queue`,
+        `${prefix} queue add <url> | [name]`,
+        `${prefix} queue start <kanal> | <preset>`,
+        `${prefix} queue stop`,
+        `${prefix} queue skip`,
+        `${prefix} queue clear`,
+        `${prefix} queue loop on/off`,
+        `${prefix} info`,
+        `${prefix} logs [n]`,
       ].join("\n"),
     );
   }
@@ -279,6 +399,73 @@ export class DiscordCommandBridge {
         `Preset: ${preset.name}`,
         stopAt ? `Stop um: ${formatDate(stopAt.toISOString())}` : "Stop: manuell",
       ].join("\n"),
+    );
+  }
+
+  private async sendQueue(message: Message) {
+    const state = this.store.snapshot();
+    const { queue, queueConfig } = state;
+    if (!queue.length) {
+      await message.channel.send("Queue ist leer.");
+      return;
+    }
+    const lines = queue.slice(0, 15).map((item, i) => {
+      const marker =
+        queueConfig.active && i === queueConfig.currentIndex ? ">" : " ";
+      const status =
+        item.status === "playing"
+          ? "[SPIELT]"
+          : item.status === "completed"
+            ? "[FERTIG]"
+            : item.status === "failed"
+              ? "[FEHLER]"
+              : item.status === "skipped"
+                ? "[SKIP]"
+                : "";
+      return `${marker} ${i + 1}. ${item.name} ${status}`;
+    });
+    const header = queueConfig.active
+      ? `Queue (aktiv, ${queueConfig.loop ? "Loop AN" : "Loop AUS"})`
+      : `Queue (${queue.length} Items)`;
+    await message.channel.send([header, ...lines].join("\n"));
+  }
+
+  private async sendSystemInfo(message: Message) {
+    const state = this.store.snapshot();
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const minutes = Math.floor((uptime % 3600) / 60);
+    const mem = process.memoryUsage();
+    const rss = Math.round(mem.rss / 1024 / 1024);
+    const heap = Math.round(mem.heapUsed / 1024 / 1024);
+
+    await message.channel.send(
+      [
+        "System Info",
+        `Discord: ${state.runtime.discordStatus}`,
+        `yt-dlp: ${state.runtime.ytDlpAvailable ? "ja" : "nein"}`,
+        `Kanaele: ${state.channels.length}`,
+        `Presets: ${state.presets.length}`,
+        `Events: ${state.events.length}`,
+        `Queue: ${state.queue.length}`,
+        `Uptime: ${hours}h ${minutes}m`,
+        `RAM: ${rss} MB (Heap: ${heap} MB)`,
+      ].join("\n"),
+    );
+  }
+
+  private async sendLogs(message: Message, count: number) {
+    const logs = this.store.snapshot().logs.slice(-count);
+    if (!logs.length) {
+      await message.channel.send("Keine Logs vorhanden.");
+      return;
+    }
+    const lines = logs.map(
+      (log) => `[${log.level.toUpperCase()}] ${formatDate(log.timestamp)} ${log.message}`,
+    );
+    const text = lines.join("\n");
+    await message.channel.send(
+      text.length > 1900 ? text.slice(0, 1900) + "..." : text,
     );
   }
 }

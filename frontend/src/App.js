@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Toaster, toast } from 'sonner';
-import { Radio, Settings, Calendar, ScrollText, LayoutDashboard, Play, Square, RefreshCw, Zap } from 'lucide-react';
+import { Radio, Settings, Calendar, ScrollText, LayoutDashboard, Play, Square, RefreshCw, Zap, ListMusic, CalendarDays } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Channels from './components/Channels';
 import Presets from './components/Presets';
 import Events from './components/Events';
 import Logs from './components/Logs';
+import Queue from './components/Queue';
+import CalendarView from './components/Calendar';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -14,6 +16,8 @@ const NAV_ITEMS = [
   { key: 'channels', label: 'Kanaele', icon: Radio },
   { key: 'presets', label: 'Presets', icon: Settings },
   { key: 'events', label: 'Events', icon: Calendar },
+  { key: 'queue', label: 'Queue', icon: ListMusic },
+  { key: 'calendar', label: 'Kalender', icon: CalendarDays },
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
@@ -142,6 +146,8 @@ export default function App() {
         {page === 'channels' && <Channels state={state} api={api} refresh={fetchState} />}
         {page === 'presets' && <Presets state={state} api={api} refresh={fetchState} />}
         {page === 'events' && <Events state={state} api={api} refresh={fetchState} />}
+        {page === 'queue' && <Queue state={state} api={api} refresh={fetchState} />}
+        {page === 'calendar' && <CalendarView state={state} />}
         {page === 'logs' && <Logs state={state} />}
       </main>
     </div>

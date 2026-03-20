@@ -170,6 +170,73 @@ export function createServer(service: ControlPanelService) {
     }),
   );
 
+  // ── Queue Endpoints ─────────────────────────────────────────
+  app.get("/api/queue", (_req, res) => {
+    const state = service.snapshot();
+    res.json({ items: state.queue, config: state.queueConfig });
+  });
+
+  app.post("/api/queue", (req, res) => {
+    const { url, name, sourceMode } = req.body;
+    res.status(201).json(service.addToQueue(url, name, sourceMode));
+  });
+
+  app.delete("/api/queue/:id", (req, res) => {
+    service.removeFromQueue(getRouteParam(req.params.id, "id"));
+    res.status(204).send();
+  });
+
+  app.post("/api/queue/clear", (_req, res) => {
+    service.clearQueue();
+    res.json({ ok: true });
+  });
+
+  app.post("/api/queue/loop", (req, res) => {
+    const { enabled } = req.body;
+    service.setQueueLoop(!!enabled);
+    res.json({ ok: true, loop: !!enabled });
+  });
+
+  app.post(
+    "/api/queue/start",
+    asyncRoute(async (req, res) => {
+      const { channelId, presetId } = req.body;
+      await service.startQueue(channelId, presetId);
+      res.status(202).json({ ok: true });
+    }),
+  );
+
+  app.post(
+    "/api/queue/skip",
+    asyncRoute(async (_req, res) => {
+      await service.skipQueueItem();
+      res.json({ ok: true });
+    }),
+  );
+
+  app.post("/api/queue/stop", (_req, res) => {
+    service.stopQueue();
+    res.json({ ok: true });
+  });
+
+  app.post(
+    "/api/queue/reorder",
+    asyncRoute(async (req, res) => {
+      const { id, newIndex } = req.body;
+      service.reorderQueue(id, newIndex);
+      res.json({ ok: true });
+    }),
+  );
+
+  // ── Notification Settings ───────────────────────────────────
+  app.post(
+    "/api/notifications/test",
+    asyncRoute(async (_req, res) => {
+      await service.sendNotification("Test-Benachrichtigung vom Stream Bot");
+      res.json({ ok: true });
+    }),
+  );
+
   app.get("*", (_req, res) => {
     res.sendFile(resolve(appConfig.publicDir, "index.html"));
   });

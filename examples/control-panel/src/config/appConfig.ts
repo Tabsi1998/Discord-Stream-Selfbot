@@ -97,4 +97,6 @@ export const appConfig = {
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),
   schedulerPollMs: parsePositiveIntegerEnv(process.env.SCHEDULER_POLL_MS, 1000),
   startupTimeoutMs: parsePositiveIntegerEnv(process.env.STARTUP_TIMEOUT_MS, 15000),
+  notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL?.trim() ?? "",
+  notificationDmEnabled: process.env.NOTIFICATION_DM_ENABLED === "1",
 } as const;
