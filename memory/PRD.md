@@ -23,20 +23,51 @@ Unterstuetzt YouTube, Twitch, Direkt-URLs und MPEG-TS Streams (Dispatcharr/IPTV)
 - [x] URL Test Button
 - [x] Adaptive Polling
 - [x] Discord Badge fuer synced Events
+- [x] **Queue/Playlist System** - Add/Remove/Clear/Start/Stop/Skip/Loop/Reorder
+- [x] **Kalender-Ansicht** - Wochen- und Monatsansicht mit Events
+- [x] **Neue Discord Commands** - queue, info, logs, restart
+- [x] **Benachrichtigungen** - Discord Webhook + DM Notifications
 - [x] Komplette Dokumentation (README, COMMANDS, IDEAS, SELFHOSTING)
+
+## API Endpoints
+### Core
+- GET /api/bootstrap, GET /api/state, GET /api/stream/health
+- GET/POST /api/channels, DELETE /api/channels/:id
+- GET/POST /api/presets, DELETE /api/presets/:id, POST /api/presets/test-url
+- GET/POST /api/events, PUT/DELETE /api/events/:id
+- POST /api/manual/start, POST /api/stop
+
+### Queue (NEU)
+- GET /api/queue - Queue + Config abrufen
+- POST /api/queue - Item hinzufuegen
+- DELETE /api/queue/:id - Item entfernen
+- POST /api/queue/clear - Queue leeren
+- POST /api/queue/loop - Loop an/aus
+- POST /api/queue/start - Queue starten (channelId + presetId)
+- POST /api/queue/skip - Item ueberspringen
+- POST /api/queue/stop - Queue stoppen
+- POST /api/queue/reorder - Reihenfolge aendern
+
+### Notifications (NEU)
+- POST /api/notifications/test - Test-Benachrichtigung senden
+
+## Discord Commands
+$panel help | status | start | stop | restart | channels | presets | events
+$panel event start/cancel <id>
+$panel queue | queue add | queue start | queue stop | queue skip | queue clear | queue loop on/off
+$panel info | logs [n]
 
 ## Offene Tasks
 ### P1
-- Playlist/Queue System
-- Benachrichtigungen (DM/Webhook)
-- Stream Kalender-Ansicht
-- Graceful Shutdown
+- Graceful Shutdown (FFmpeg Cleanup)
+- WebSocket statt Polling
 
 ### P2
-- WebSocket statt Polling
-- Stream-Statistiken
-- Import/Export
+- Import/Export (JSON Backup)
 - Erweiterte Wiederholungsregeln
 - Multi-Server Support
 - Automatischer Quell-Fallback
+- RTMP Ingest
+- EPG Integration
+- Stream-Statistiken
 - TypeScript Strict Mode
