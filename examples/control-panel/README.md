@@ -1,94 +1,127 @@
-# Control Panel Example
+# Control Panel
 
-Dieses Beispiel erweitert `@dank074/discord-video-stream` um ein lokales Web-Panel mit Scheduler.
+Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 
-## Funktionen
+---
 
-- gespeicherte Discord-Voice-Channels
-- gespeicherte Stream-Presets
-- direkte Medienquellen und `yt-dlp`-Quellen fuer YouTube-Videos und YouTube-Livestreams
-- manuelle Starts und Stops
-- wiederkehrende Events (`once`, `daily`, `weekly`)
-- Ueberschneidungsschutz fuer geplante Serien
-- Discord-Commands als Zusatzsteuerung
-- Qualitaetsprofile (`720p30` bis `1440p60`, `Original`, `Custom`)
-- Buffer-Profile fuer Stabilitaet oder niedrige Latenz
-- Statusseite und letzte Logs
+## Features
 
-## Struktur
+- Gespeicherte Discord Voice Channels
+- Stream-Presets (Quelle, Qualitaet, Encoder, Buffer)
+- Zeitgesteuerte Events (einmalig, taeglich, woechentlich)
+- Discord Event Synchronisation (Create, Start, Complete, Cancel, Update)
+- Manueller Start/Stop per Web Panel oder Chat-Befehl
+- YouTube / Twitch ueber yt-dlp
+- MPEG-TS / Dispatcharr / IPTV Auto-Erkennung
+- URL-Erreichbarkeitstest
+- Live Stream Health Monitoring mit Uptime-Counter
+- Adaptive Auto-Aktualisierung (schneller bei aktivem Stream)
+- Qualitaetsprofile: 720p/30 bis 4K/60, Custom
+- Buffer-Profile: Auto, Stabil, Ausgewogen, Minimale Latenz
+- Discord Chat-Befehle (help, status, start, stop, events, etc.)
 
-Das Beispiel ist jetzt bewusst nach Verantwortung aufgeteilt:
+---
 
-- `src/config`: App-Konfiguration und Binary-Erkennung
-- `src/domain`: Typen, Wiederholungslogik und Preset-Profile
-- `src/runtime`: Discord-Laufzeit, Scheduler, Commands und Source-Resolution
-- `src/server`: Express-Server und API-Routen
-- `src/services`: fachliche Steuerlogik fuer Kanaele, Presets und Events
-- `src/state`: Persistenz und Runtime-State
-- `public/css`: Styles
-- `public/js`: Frontend-Logik
+## Projektstruktur
 
-## Setup
+```
+src/
+├── config/           # appConfig.ts - Environment Variablen, Binary Detection
+├── domain/           # types.ts - Alle TypeScript Typen
+│                     # presetProfiles.ts - Qualitaets-/Buffer-Profile
+│                     # recurrence.ts - Wiederholungslogik
+├── runtime/          # StreamRuntime.ts - FFmpeg + Discord Streaming
+│                     # DiscordCommandBridge.ts - Chat-Befehle
+│                     # Scheduler.ts - Event-Scheduler
+│                     # SourceResolver.ts - URL → FFmpeg Input
+├── server/           # createServer.ts - Express API Routen
+├── services/         # ControlPanelService.ts - CRUD + Discord Sync
+├── state/            # AppStateStore.ts - JSON Persistenz
+└── index.ts          # Einstiegspunkt
 
-1. `.env.example` nach `.env` kopieren
-2. `DISCORD_TOKEN` setzen
-3. optional `YT_DLP_PATH` setzen, falls `yt-dlp` nicht automatisch erkannt wird
-4. `npm install`
-5. `npm run build`
-6. `npm run start`
+public/
+├── index.html        # Haupt-HTML
+├── css/app.css       # Styling (Dark Theme)
+└── js/app.js         # Frontend Logik
+```
 
-Die Weboberflaeche laeuft standardmaessig auf `http://localhost:3099`.
+---
 
-## Docker / Self-hosting
+## API Endpoints
 
-Wenn du das Projekt als fertigen Dienst betreiben willst, nutze die Root-Skripte:
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| GET | `/api/bootstrap` | Gesamtstatus (Channels, Presets, Events, Runtime, Logs) |
+| GET | `/api/stream/health` | Stream Health (aktiv/inaktiv, Uptime, Kanal, Preset) |
+| GET | `/api/channels` | Alle Kanaele |
+| POST | `/api/channels` | Kanal erstellen/aktualisieren |
+| DELETE | `/api/channels/:id` | Kanal loeschen |
+| GET | `/api/presets` | Alle Presets |
+| POST | `/api/presets` | Preset erstellen/aktualisieren |
+| DELETE | `/api/presets/:id` | Preset loeschen |
+| POST | `/api/presets/test-url` | URL Erreichbarkeit testen |
+| GET | `/api/events` | Alle Events |
+| POST | `/api/events` | Event erstellen |
+| PUT | `/api/events/:id` | Event bearbeiten |
+| DELETE | `/api/events/:id` | Event loeschen |
+| POST | `/api/events/:id/cancel` | Event abbrechen |
+| POST | `/api/events/:id/start` | Event sofort starten |
+| POST | `/api/manual/start` | Manuellen Stream starten |
+| POST | `/api/stop` | Aktiven Stream stoppen |
+| GET | `/api/logs` | Letzte Log-Eintraege |
+| GET | `/api/voice-channels` | Verfuegbare Discord Voice Channels |
 
-1. `./install.sh`
-2. spaeter Konfiguration anpassen mit `./config.sh`
-3. Updates einspielen mit `./update.sh`
+---
 
-Die komplette Anleitung steht in `SELFHOSTING.md`.
+## Setup (Entwicklung)
 
-## YouTube
+```bash
+# 1. .env.example nach .env kopieren
+cp .env.example .env
 
-Normale YouTube-Links funktionieren nur ueber den Preset-Modus `yt-dlp`.
+# 2. DISCORD_TOKEN in .env setzen
 
-- `sourceMode = direct`: direkte MP4/HLS/M3U8-Quellen
-- `sourceMode = yt-dlp`: YouTube-Videos und YouTube-Livestreams
+# 3. Dependencies installieren
+npm install
 
-Hinweis: das Panel kann fuer `yt-dlp` jetzt sowohl kombinierte Medienquellen als auch getrennte Video-/Audio-Streams zusammenfuehren. Damit bleiben hohe Aufloesungen und hohe FPS bei YouTube nicht mehr auf progressive Fallbacks limitiert.
+# 4. TypeScript kompilieren
+npm run build
 
-## Qualitaets- und Buffer-Profile
+# 5. Server starten
+npm run start
+```
 
-Presets koennen jetzt fast komplett ueber Auswahlfelder gesteuert werden.
+Web Panel: **http://localhost:3099**
 
-- Qualitaetsprofil waehlt Ziel-Aufloesung, FPS und die passende Standard-Bitrate
-- Buffer-Profil steuert Burst, Queue-Groessen und Startverhalten
-- `Original` behaelt Quell-Aufloesung und Quell-FPS bei
-- `Custom` schaltet die manuellen Zahlenfelder wieder frei
+---
 
-## Wiederkehrende Events
+## Docker / Self-Hosting
 
-Wiederkehrende Regeln werden beim Speichern in konkrete Event-Instanzen aufgeloest.
+Fuer den produktiven Betrieb: siehe [SELFHOSTING.md](../../SELFHOSTING.md)
 
-- `once`: einzelnes Event
-- `daily`: alle `n` Tage bis `until`
-- `weekly`: an den gewaehlten Wochentagen alle `n` Wochen bis `until`
+```bash
+# Kurzversion:
+./install.sh          # Ersteinrichtung
+./config.sh           # Konfiguration aendern
+./update.sh           # Updates einspielen
+```
 
-Beim Bearbeiten oder Loeschen einer Serie wirkt die Aktion ab der gewaehlten Instanz nach vorne.
+---
 
-## Discord-Commands
+## Discord Chat-Befehle
 
 Standard-Prefix: `$panel`
 
-- `$panel help`
-- `$panel status`
-- `$panel start <kanal|id> | <preset|id> | [stopAt]`
-- `$panel stop`
-- `$panel channels`
-- `$panel presets`
-- `$panel events`
-- `$panel event start <event-id>`
-- `$panel event cancel <event-id>`
+| Befehl | Beschreibung |
+|--------|-------------|
+| `$panel help` | Alle Befehle |
+| `$panel status` | Stream-Status |
+| `$panel start <kanal> \| <preset> \| [zeit]` | Stream starten |
+| `$panel stop` | Stream stoppen |
+| `$panel channels` | Kanaele auflisten |
+| `$panel presets` | Presets auflisten |
+| `$panel events` | Events auflisten |
+| `$panel event start <id>` | Event sofort starten |
+| `$panel event cancel <id>` | Event abbrechen |
 
-Wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer ist, darf immer noch der eingeloggte Self-Account die Befehle senden.
+Vollstaendige Referenz: [COMMANDS.md](../../COMMANDS.md)

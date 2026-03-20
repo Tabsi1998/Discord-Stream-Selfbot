@@ -1,303 +1,369 @@
-# Discord self-bot video
+# Discord Stream Selfbot
 
-[![pkg.pr.new](https://pkg.pr.new/badge/Discord-RE/Discord-video-stream)](https://pkg.pr.new/~/Discord-RE/Discord-video-stream)
+> Automatisches Streaming auf Discord - YouTube, Twitch, IPTV, Direktlinks - alles per Web Panel oder Chat-Befehl steuerbar.
 
-Fork: [Discord-video-experiment](https://github.com/mrjvs/Discord-video-experiment)
+---
 
-> [!CAUTION]
-> Using any kind of automation programs on your account can result in your account getting permanently banned by Discord. Use at your own risk
+## Was ist das?
+
+Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Das Ganze laeuft als Docker Container auf deinem Server und wird ueber ein modernes Web Panel oder Discord Chat-Befehle gesteuert.
+
+**Wichtig:** Self-Bots verstossen gegen die Discord ToS. Nutzung auf eigene Gefahr.
+
+---
 
 ## Features
 
-- Playing video & audio in a voice channel (`Go Live`, or webcam video)
+| Feature | Beschreibung |
+|---------|-------------|
+| Web Panel | Modernes Dark-Theme Dashboard zum Verwalten von allem |
+| Scheduler | Streams zeitgesteuert planen - einmalig, taeglich, woechentlich |
+| Discord Events | Geplante Streams werden automatisch als Discord Events erstellt |
+| YouTube / Twitch | Automatisch ueber yt-dlp, einfach URL reinkopieren |
+| MPEG-TS / IPTV | Dispatcharr, Tvheadend und andere TS-Proxies direkt nutzen |
+| Direkt-URLs | Jede MP4, HLS, M3U8 oder sonstige Media-URL |
+| Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
+| Stream Health | Live Uptime-Anzeige und Status im Dashboard |
+| URL-Test | Vor dem Streamen pruefen ob die Quelle erreichbar ist |
+| Qualitaetsprofile | 720p bis 4K, 30/60fps, Custom Encoder-Settings |
+| Buffer-Profile | Auto, Stabil, Ausgewogen, Minimale Latenz |
+| Go Live / Camera | Beide Discord Stream-Modi unterstuetzt |
 
-## Implementation
+---
 
-What I implemented and what I did not.
+## Schnellstart
 
-### Video codecs
+### Voraussetzungen
 
-- [ ] VP8 (once supported, removed for maintainability)
-- [ ] VP9
-- [X] H.264
-- [X] H.265
-- [ ] AV1
+- Docker + Docker Compose
+- Git
+- Discord Self-Token ([Wie finde ich den?](#discord-token-finden))
 
-### Packet types
+### Installation
 
-- [X] RTP (sending of realtime data)
-- [ ] RTX (retransmission)
-
-### Connection types
-
-- [X] Regular Voice Connection
-- [X] Go Live
-
-### Encryption
-
-- [X] Transport Encryption
-- [X] [End-to-end Encryption](https://github.com/dank074/Discord-video-stream/issues/102)
-
-### Extras
-
-- [X] Figure out RTP header extensions (discord specific) (discord seems to use [one-byte RTP header extension](https://www.rfc-editor.org/rfc/rfc8285.html#section-4.2))
-
-Extensions supported by Discord (taken from the webrtc sdp exchange)
-
-```
-"a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level"
-"a=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
-"a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
-"a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid"
-"a=extmap:5 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
-"a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type"
-"a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing"
-"a=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space"
-"a=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
-"a=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
-"a=extmap:13 urn:3gpp:video-orientation"
-"a=extmap:14 urn:ietf:params:rtp-hdrext:toffset"
+```bash
+git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
+cd Discord-Stream-Selfbot
+./install.sh
 ```
 
-## Requirements
+Das Install-Script fragt alles interaktiv ab:
 
-For full functionality, this library requires an FFmpeg build with `libzmq` enabled. Here is our recommendation:
+1. Discord Token
+2. Zeitzone (Standard: Europe/Vienna)
+3. Chat-Befehle an/aus
+4. Erlaubte User-IDs
 
-- Windows & Linux: [BtbN's FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds)
-- macOS (Intel): [evermeet.cx](https://evermeet.cx/ffmpeg/)
-- macOS (Apple Silicon): Install from Homebrew
+Danach laeuft das Panel auf **http://localhost:3099**
 
-## Usage
+### Einstellungen aendern
 
-Install the package, alongside its peer-dependency discord.js-selfbot-v13:
-
-```
-npm install @dank074/discord-video-stream@latest
-npm install discord.js-selfbot-v13@latest
+```bash
+./config.sh
 ```
 
-> [!IMPORTANT]
-> This library makes use of native dependencies (`node-av` and `node-datachannel`). If you use package managers that don't run install scripts by default (`pnpm`, `bun`, etc.), you'll need to allow running install scripts for `node-av` and `node-datachannel` for proper operation.
+Zeigt die aktuelle Konfiguration und laesst dich einzelne Werte oder alles auf einmal aendern.
 
-Create a new Streamer, and pass it a selfbot Client
+### Updates einspielen
 
-```typescript
-import { Client } from "discord.js-selfbot-v13";
-import { Streamer } from '@dank074/discord-video-stream';
-
-const streamer = new Streamer(new Client());
-await streamer.client.login('TOKEN HERE');
+```bash
+./update.sh
 ```
 
-Make client join a voice channel
+Holt die neueste Version von GitHub, sichert vorher alles (Token, Einstellungen, Stream-Daten) und baut den Container neu.
 
-```typescript
-await streamer.joinVoice("GUILD ID HERE", "CHANNEL ID HERE");
-```
+---
 
-Start sending media
+## Web Panel Bedienung
 
-```typescript
-import { prepareStream, playStream, Utils, Encoders } from "@dank074/discord-video-stream"
-try {
-    // NVENC is also available, change Encoders.software to Encoders.nvenc and
-    // adapt the settings
-    let encoder = Encoders.software({
-        x264: {
-            preset: "superfast"
-        },
-        x265: {
-            preset: "superfast"
-        }
-    });
-    const { command, output } = prepareStream("DIRECT VIDEO URL OR READABLE STREAM HERE", {
-        encoder,
+### Dashboard
 
-        // Specify either width or height for aspect ratio aware scaling
-        // Specify both for stretched output
-        height: 1080,
+Die Startseite zeigt dir auf einen Blick:
 
-        // Force frame rate, or leave blank to use source frame rate
-        frameRate: 30,
-        bitrateVideo: 5000,
-        bitrateVideoMax: 7500,
-        videoCodec: Utils.normalizeVideoCodec("H264" /* or H265 */),
-    });
-    command.on("error", (err, stdout, stderr) => {
-        // Handle ffmpeg errors here
-    });
+- **Discord Status** - Verbunden/Offline
+- **Aktiver Stream** - Was gerade laeuft, mit Live-Uptime-Counter
+- **Naechstes Event** - Wann der naechste geplante Stream startet
+- **Manueller Start** - Kanal + Preset auswaehlen und sofort starten
+- **Letzte Logs** - Was zuletzt passiert ist
 
-    await playStream(output, streamer, {
-        type: "go-live" // use "camera" for camera stream
-    });
+### Kanaele
 
-    console.log("Finished playing video");
-} catch (e) {
-    console.log(e);
-}
-```
+Hier konfigurierst du die Discord Voice Channels in denen gestreamt werden soll.
 
-## Encoder options available
+| Feld | Beschreibung |
+|------|-------------|
+| Name | Frei waehlbarer Name (z.B. "Gaming Kanal") |
+| Guild ID | Server-ID (Rechtsklick auf Server → ID kopieren) |
+| Voice Channel ID | Kanal-ID (Rechtsklick auf Voice Channel → ID kopieren) |
+| Stream-Modus | `Go Live` oder `Camera` |
 
-```typescript
-/**
- * A function returning encoder settings for a specific avg and max bitrate
- * You can define your own, or use the pre-made functions in the library
- */
-encoder: EncoderSettingsGetter;
-/**
- * Disable transcoding of the video stream. If specified, all video related
- * options have no effects
- * 
- * Only use this if your video stream is Discord streaming friendly, otherwise
- * you'll get a glitchy output
- */
-noTranscoding?: boolean;
-/**
- * Video output width
- */
-width?: number;
-/**
- * Video output height
- */
-height?: number;
-/**
- * Video output frames per second
- */
-fps?: number;
-/**
- * Video average bitrate in kbps
- */
-bitrateVideo?: number;
-/**
- * Video max bitrate in kbps
- */
-bitrateVideoMax?: number;
-/**
- * Audio bitrate in kbps
- */
-bitrateAudio?: number;
-/**
- * Enable audio output
- */
-includeAudio?: boolean;
-/**
- * Enables hardware accelerated video decoding. Enabling this option might result in an exception
- * being thrown by Ffmpeg process if your system does not support hardware acceleration
- */
-hardwareAcceleratedDecoding?: boolean;
-/**
- * Output video codec. **Only** supports H264, H265, and VP8 currently
- */
-videoCodec?: SupportedVideoCodec;
-/**
- * Adds ffmpeg params to minimize latency and start outputting video as fast as possible.
- * Might create lag in video output in some rare cases
- */
-minimizeLatency?: boolean;
-/**
- * Custom headers for HTTP requests
- */
-customHeaders?: Record<string, string>;
-/**
-   * Custom input options to pass directly to ffmpeg
-   * These will be added to the command *before* other options
- */
-customInputOptions?: string[];
-/**
- * Custom ffmpeg flags/options to pass directly to ffmpeg
- * These will be added to the command *after* other options
- */
-customFfmpegFlags?: string[];
-```
+**Tipp:** Developer Mode muss in Discord aktiviert sein (Einstellungen → Erweitert → Entwicklermodus).
 
-## `playStream` options available
+### Presets
 
-```typescript
-/**
- * Set stream type as "Go Live" or camera stream
- */
-type?: "go-live" | "camera",
+Stream-Vorlagen mit Quelle, Qualitaet und Encoder-Einstellungen.
 
-/**
- * Override video width sent to Discord.
- * 
- * DO NOT SPECIFY UNLESS YOU KNOW WHAT YOU'RE DOING!
- */
-width?: number,
+| Tab | Was du einstellst |
+|-----|------------------|
+| **Allgemein** | Name, URL, Quelltyp, Qualitaet, Buffer-Verhalten |
+| **Video** | Aufloesung, FPS, Bitrate, Codec (H264/H265) |
+| **Audio** | Audio-Bitrate, Audio an/aus |
+| **Erweitert** | Hardware-Decoding, Minimale Latenz |
 
-/**
- * Override video height sent to Discord.
- * 
- * DO NOT SPECIFY UNLESS YOU KNOW WHAT YOU'RE DOING!
- */
-height?: number,
+#### Quelltypen
 
-/**
- * Override video frame rate sent to Discord.
- * 
- * DO NOT SPECIFY UNLESS YOU KNOW WHAT YOU'RE DOING!
- */
-frameRate?: number,
+| Typ | Wann verwenden |
+|-----|---------------|
+| **Direkte Media-URL** | MP4, HLS/M3U8, MPEG-TS, RTMP - alles was FFmpeg direkt oeffnen kann |
+| **yt-dlp** | YouTube Videos, YouTube Livestreams, Twitch Streams |
 
-/**
- * Same as ffmpeg's `readrate_initial_burst` command line flag
- * 
- * See https://ffmpeg.org/ffmpeg.html#:~:text=%2Dreadrate_initial_burst
- */
-readrateInitialBurst?: number,
-```
+**Auto-Erkennung:** Das Panel erkennt automatisch:
+- YouTube/Twitch URLs → schaltet auf yt-dlp um
+- MPEG-TS Proxy URLs (Dispatcharr) → setzt Buffer auf Stabil
 
-## Performance tips
+#### Qualitaetsprofile
 
-See [this page](./PERFORMANCE.md) for some tips on improving performance
+| Profil | Aufloesung | FPS | Standard-Bitrate |
+|--------|-----------|-----|-----------------|
+| 720p/30 | 1280x720 | 30 | 3000 kbps |
+| 720p/60 | 1280x720 | 60 | 4500 kbps |
+| 1080p/30 | 1920x1080 | 30 | 5000 kbps |
+| 1080p/60 | 1920x1080 | 60 | 7500 kbps |
+| 1440p/30 | 2560x1440 | 30 | 8500 kbps |
+| 1440p/60 | 2560x1440 | 60 | 12000 kbps |
+| 4K/30 | 3840x2160 | 30 | 15000 kbps |
+| 4K/60 | 3840x2160 | 60 | 20000 kbps |
+| Custom | frei | frei | frei |
 
-## Self-hosted control panel
+#### Buffer-Profile
 
-This repo now also includes a full scheduler and web UI under `examples/control-panel`.
+| Profil | Beschreibung | Wann verwenden |
+|--------|-------------|---------------|
+| **Auto** | Intelligenter Default | Meistens die beste Wahl |
+| **Maximale Stabilitaet** | Grosser Buffer, langsamer Start | IPTV, lange Streams, instabile Quellen |
+| **Ausgewogen** | Mittlerer Buffer | Normaler Betrieb |
+| **Minimale Latenz** | Kleiner Buffer, schneller Start | Live Events wo Verzoegerung stoert |
 
-- Local setup: see `examples/control-panel/README.md`
-- Docker/self-hosted setup: see `SELFHOSTING.md`
+#### URL Test
 
-## Running example
+Der **Testen** Button neben dem URL-Feld prueft ob die Quelle erreichbar ist und zeigt dir:
+- HTTP Status Code
+- Content-Type (video/mp2t, video/mp4, application/vnd.apple.mpegurl, etc.)
 
-`examples/basic/src/config.json`:
+### Events
 
-```json
-"token": "SELF TOKEN HERE",
-"acceptedAuthors": ["USER_ID_HERE"],
-```
+Streams zeitgesteuert planen.
 
-1. Configure your `config.json` with your accepted authors ids, and your self token
-2. Generate js files with ```npm run build```
-3. Start program with: ```npm run start```
-4. Join a voice channel
-5. Start streaming with commands:
+| Feld | Beschreibung |
+|------|-------------|
+| Name | Name des Events (wird auch in Discord angezeigt) |
+| Kanal | In welchem Voice Channel gestreamt wird |
+| Preset | Welche Stream-Vorlage verwendet wird |
+| Start/Ende | Zeitraum des Streams |
+| Wiederholung | Einmalig, Taeglich, Woechentlich |
+| Wochentage | Bei woechentlich: an welchen Tagen |
+| Intervall | Alle X Tage/Wochen |
+| Wiederholen bis | Bis wann die Serie laeuft |
 
-for go-live
+#### Discord Event Sync
+
+Wenn ein Event erstellt wird, wird automatisch ein **Discord Scheduled Event** auf dem Server erstellt. Das funktioniert in beide Richtungen:
+
+- Event erstellen → Discord Event wird erstellt
+- Event starten → Discord Event Status wird auf "Active" gesetzt
+- Event beenden → Discord Event Status wird auf "Completed" gesetzt
+- Event abbrechen → Discord Event wird geloescht
+- Event bearbeiten → Altes Discord Event wird geloescht, neues erstellt
+
+Events mit Discord-Sync zeigen ein **DISCORD** Badge in der Event-Liste.
+
+### Logs
+
+Alle Systemereignisse mit Filtern:
+- **INFO** - Normale Vorgaenge (Stream gestartet, Event erstellt)
+- **WARN** - Warnungen (Discord Event Sync fehlgeschlagen)
+- **ERROR** - Fehler (Stream abgestuerzt, Verbindungsprobleme)
+
+---
+
+## MPEG-TS / Dispatcharr / IPTV Integration
+
+Du hast einen IPTV-Proxy wie Dispatcharr, Tvheadend oder aehnliches? Perfekt.
+
+### So funktioniert es
+
+1. Kopiere die TS-Stream URL in das Preset, z.B.:
+   ```
+   http://192.168.2.104:9191/proxy/ts/stream/412ccfb1-8868-42c1-aaf3-b0e3565c1a74
+   ```
+2. Das Panel erkennt automatisch dass es ein MPEG-TS Proxy ist
+3. Quelltyp wird auf "Direkt" gesetzt
+4. Buffer-Profil wird auf "Stabil" gesetzt
+5. FFmpeg bekommt spezielle Flags:
+   - `-fflags +genpts+discardcorrupt` (fehlende Timestamps generieren, kaputte Pakete verwerfen)
+   - Kein `-readrate` (Live-Stream ist bereits in Echtzeit)
+   - Reconnect bei Verbindungsabbruch
+
+### Warum das gut ist
+
+| Vorteil | Erklaerung |
+|---------|-----------|
+| Kein Token sichtbar | Der IPTV-Proxy kuemmert sich um die Authentifizierung |
+| Stabiler Stream | Dispatcharr liefert einen sauberen TS-Feed |
+| Lokal | Laeuft im Heimnetz, kein externer Traffic |
+| Kein Transcoding noetig | FFmpeg kopiert Audio/Video direkt (copy codec) |
+
+### Typische Setups
 
 ```
-$play-live <Direct video link>
+Dispatcharr (IPTV) → FFmpeg (im Docker) → Discord Voice Channel
+Tvheadend → FFmpeg → Discord
+Jellyfin → FFmpeg → Discord
 ```
 
-or for cam
+---
+
+## Discord Chat-Befehle
+
+Alle Befehle starten mit dem konfigurierten Prefix (Standard: `$panel`).
+
+Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
+
+### Kurzuebersicht
+
+| Befehl | Was es tut |
+|--------|-----------|
+| `$panel help` | Alle Befehle anzeigen |
+| `$panel status` | Aktuellen Stream-Status anzeigen |
+| `$panel start Kanal \| Preset` | Stream sofort starten |
+| `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
+| `$panel stop` | Aktiven Stream stoppen |
+| `$panel channels` | Alle konfigurierten Kanaele anzeigen |
+| `$panel presets` | Alle Presets anzeigen |
+| `$panel events` | Kommende Events anzeigen |
+| `$panel event start <id>` | Geplantes Event sofort starten |
+| `$panel event cancel <id>` | Event abbrechen |
+
+---
+
+## Discord Token finden
+
+1. Discord im Browser oeffnen (discord.com/app)
+2. **F12** druecken (Developer Tools)
+3. Tab **Network** waehlen
+4. Beliebige Aktion in Discord ausfuehren (Nachricht senden, Kanal wechseln)
+5. Auf einen der Requests klicken
+6. In den **Headers** nach `Authorization` suchen
+7. Der Wert ist dein Token
+
+**ACHTUNG:** Dein Token ist wie ein Passwort. Niemals teilen!
+
+---
+
+## Projektstruktur
 
 ```
-$play-cam <Direct video link>
+Discord-Stream-Selfbot/
+├── install.sh                  # Interaktive Ersteinrichtung
+├── update.sh                   # Git Update + Container Rebuild
+├── config.sh                   # Konfiguration aendern
+├── deploy/
+│   ├── .env                    # Deine Konfiguration (nach install.sh)
+│   ├── .env.example            # Vorlage
+│   ├── docker-compose.yml      # Container-Definition
+│   └── data/
+│       └── control-panel-state.json  # Alle Daten (Channels, Presets, Events)
+├── docker/
+│   └── control-panel.Dockerfile
+├── src/                        # Core Streaming Library
+│   └── media/
+│       └── newApi.ts           # FFmpeg + WebRTC Streaming Engine
+├── examples/
+│   └── control-panel/
+│       ├── src/                # Backend (TypeScript)
+│       │   ├── config/         # App-Konfiguration
+│       │   ├── domain/         # Typen, Profile, Wiederholungslogik
+│       │   ├── runtime/        # Discord, Scheduler, Commands, Source Resolution
+│       │   ├── server/         # Express API Server
+│       │   ├── services/       # Geschaeftslogik (CRUD, Discord Sync)
+│       │   └── state/          # Persistenz (JSON File)
+│       └── public/             # Frontend (HTML/CSS/JS)
+│           ├── index.html
+│           ├── css/app.css
+│           └── js/app.js
+├── COMMANDS.md                 # Befehlsreferenz
+├── IDEAS.md                    # Ideen & Erweiterungsmoeglichkeiten
+├── SELFHOSTING.md              # Docker/Self-Hosting Anleitung
+└── PERFORMANCE.md              # Performance Tipps
 ```
 
-for example:
+---
 
+## Konfigurationsvariablen
+
+| Variable | Beschreibung | Default |
+|----------|-------------|---------|
+| `DISCORD_TOKEN` | Dein Discord Self-Token | (Pflicht) |
+| `HOST_PORT` | Web Panel Port | 3099 |
+| `TZ` | Zeitzone | Europe/Vienna |
+| `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
+| `COMMAND_PREFIX` | Prefix fuer Chat-Befehle | $panel |
+| `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur du selbst |
+| `YT_DLP_FORMAT` | yt-dlp Formatauswahl | bestvideo+bestaudio |
+| `SCHEDULER_POLL_MS` | Wie oft der Scheduler Events prueft | 1000 |
+| `STARTUP_TIMEOUT_MS` | Max. Wartezeit bis Discord verbunden | 15000 |
+
+---
+
+## Troubleshooting
+
+### Stream haengt / buffert
+
+1. **Buffer-Profil auf "Stabil" setzen** - Mehr Buffer = stabiler
+2. **Qualitaet reduzieren** - 1080p statt 4K, 30fps statt 60fps
+3. **Bitrate senken** - Weniger kbps = weniger Bandbreite noetig
+4. **Quelle pruefen** - URL-Test im Preset verwenden
+5. **Logs checken** - Im Logs-Tab nach Fehlern suchen
+
+### YouTube funktioniert nicht
+
+- URL muss ein vollstaendiger YouTube Link sein
+- Quelltyp muss auf **yt-dlp** stehen (wird automatisch erkannt)
+- yt-dlp ist im Docker Image enthalten
+
+### Discord Event wird nicht erstellt
+
+- Bot muss auf dem Server die Berechtigung haben Events zu erstellen
+- Self-Token Accounts haben manchmal eingeschraenkte Rechte
+- Check die Logs fuer genaue Fehlermeldung
+
+### Container startet nicht
+
+```bash
+# Logs anzeigen
+docker compose -f deploy/docker-compose.yml logs -f
+
+# Container neu bauen
+docker compose -f deploy/docker-compose.yml up -d --build --force-recreate
 ```
-$play-live http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
-```
 
-## FAQs
+---
 
-- Can I stream on existing voice connection (CAM) and in a go-live connection simultaneously?
+## Technische Details
 
-Yes, just send the media packets over both connections. The voice gateway expects you to signal when a user turns on their camera, so make sure you signal using `client.signalVideo(guildId, channelId, true)` before you start sending cam media packets.
+| Komponente | Technologie |
+|-----------|-------------|
+| Streaming Engine | FFmpeg → WebRTC via discord-video-stream |
+| Discord Bibliothek | discord.js-selfbot-v13 |
+| Backend | Node.js, Express, TypeScript |
+| Frontend | Vanilla JavaScript, HTML5, CSS3 |
+| Persistenz | JSON File (kein externer DB Server noetig) |
+| Containerisierung | Docker, Docker Compose |
+| Video Codecs | H.264, H.265 |
+| Verschluesselung | Transport + E2E Encryption |
 
-- Does this library work with bot tokens?
+---
 
-No, Discord blocks video from bots which is why this library uses a selfbot library as peer dependency. You must use a user token
+## Lizenz & Haftung
+
+Dieses Projekt nutzt Self-Bot Funktionalitaet die gegen die Discord Terms of Service verstossen kann. Die Nutzung erfolgt auf eigene Verantwortung. Der Autor uebernimmt keine Haftung fuer Konsequenzen.

@@ -1,54 +1,177 @@
-# Self-hosting
+# Self-Hosting Anleitung
 
-Dieses Repo kann als persistenter Docker-Dienst betrieben werden.
+Dieses Repo kann als persistenter Docker-Dienst auf deinem eigenen Server betrieben werden.
+
+---
 
 ## Voraussetzungen
 
-- Docker mit `docker compose`
-- Git
-- auf Windows: Git Bash oder WSL fuer die `.sh`-Skripte
+- **Docker** mit `docker compose` (v2)
+- **Git**
+- Auf Windows: Git Bash oder WSL fuer die `.sh`-Skripte
+- Ein **Discord Self-Token** ([Anleitung im README](README.md#discord-token-finden))
+
+---
 
 ## Schnellstart
 
-1. Repo klonen
-2. `./install.sh`
-3. im Browser `http://localhost:3099` oder deinen gewaehlten Port aufrufen
+```bash
+# 1. Repo klonen
+git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
+cd Discord-Stream-Selfbot
 
-`install.sh` fragt interaktiv alles ab, was fuer den ersten Start noetig ist:
+# 2. Interaktive Installation
+./install.sh
 
-- Discord-Token
-- Web-Panel-Port
-- Zeitzone
-- Discord-Commands an/aus
-- Command-Prefix
-- erlaubte Discord-User-IDs
+# 3. Fertig!
+# Browser: http://localhost:3099
+```
 
-Die Konfiguration wird in `deploy/.env` gespeichert. Persistente Daten liegen unter `deploy/data/`.
+`install.sh` fragt interaktiv alles ab:
 
-## Bestehende Konfiguration aendern
+| Schritt | Was abgefragt wird |
+|---------|-------------------|
+| 1/4 | Voraussetzungen pruefen (Docker, Compose, Dateien) |
+| 2/4 | Discord Token + erlaubte User-IDs |
+| 3/4 | Zeitzone, Chat-Befehle an/aus, Prefix |
+| 4/4 | Zusammenfassung + Bestaetigung |
 
-```sh
+---
+
+## Konfiguration aendern
+
+```bash
 ./config.sh
 ```
 
-Danach wird der Container mit der neuen Konfiguration neu gebaut und neu gestartet.
+Zeigt die aktuelle Konfiguration und bietet Optionen:
+
+| Option | Was du aendern kannst |
+|--------|----------------------|
+| 1 | Discord Token |
+| 2 | Zeitzone |
+| 3 | Chat-Befehle (an/aus, Prefix) |
+| 4 | Erlaubte User-IDs |
+| 5 | yt-dlp Format |
+| 6 | Scheduler (Poll-Intervall, Timeout) |
+| a | Alles auf einmal |
+| q | Abbrechen |
+
+Danach wird optional der Container mit der neuen Konfiguration neu gebaut.
+
+---
 
 ## Updates einspielen
 
-```sh
+```bash
 ./update.sh
 ```
 
-`update.sh` fuehrt ein `git pull --ff-only` aus und startet danach den Container mit einem frischen Build neu.
+Was passiert:
+
+1. Voraussetzungen pruefen
+2. Aktuellen Stand anzeigen (Branch, Commit)
+3. Lokale Aenderungen sichern (git stash)
+4. Pruefen ob Updates verfuegbar sind
+5. Konfiguration + Stream-Daten sichern
+6. `git pull --ff-only` ausfuehren
+7. Container stoppen, neu bauen, starten
+
+**Alles wird gesichert:**
+- `.env` → `.env.pre-update`
+- `control-panel-state.json` → `control-panel-state.pre-update.json`
+- Lokale Code-Aenderungen → `git stash`
+
+---
 
 ## Wichtige Dateien
 
-- `deploy/.env.example`: Vorlage fuer alle Runtime-Variablen
-- `deploy/docker-compose.yml`: Container-Definition
-- `docker/control-panel.Dockerfile`: Build fuer den produktiven Dienst
+| Datei | Beschreibung |
+|-------|-------------|
+| `deploy/.env` | Deine Konfiguration (Token, Port, etc.) |
+| `deploy/.env.example` | Vorlage mit allen Variablen |
+| `deploy/docker-compose.yml` | Container-Definition |
+| `deploy/data/control-panel-state.json` | Alle Daten (Channels, Presets, Events, Logs) |
+| `docker/control-panel.Dockerfile` | Docker Build fuer den Dienst |
+
+---
+
+## Docker Compose manuell steuern
+
+```bash
+# Status anzeigen
+docker compose -f deploy/docker-compose.yml ps
+
+# Logs anzeigen (live)
+docker compose -f deploy/docker-compose.yml logs -f
+
+# Container stoppen
+docker compose -f deploy/docker-compose.yml down
+
+# Container starten
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+
+# Container komplett neu bauen
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build --force-recreate
+```
+
+---
+
+## Daten-Backup
+
+Die einzigen Dateien die du sichern musst:
+
+```bash
+# Konfiguration
+cp deploy/.env ~/backup/
+
+# Stream-Daten (Channels, Presets, Events)
+cp deploy/data/control-panel-state.json ~/backup/
+```
+
+Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
+
+---
 
 ## Hinweise
 
-- Der Dienst speichert seinen Zustand in `deploy/data/control-panel-state.json`.
-- YouTube-Quellen laufen ueber `yt-dlp`, das im Docker-Image bereits installiert ist.
-- Fuer Aenderungen an Code oder Abhaengigkeiten solltest du danach `./update.sh` ausfuehren.
+- Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
+- YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bereits installiert ist
+- MPEG-TS Streams (Dispatcharr, IPTV) werden automatisch erkannt und optimiert
+- FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten
+- Die State-Datei wird bei jedem Schreibvorgang automatisch gespeichert
+- Fuer Aenderungen an Code oder Abhaengigkeiten: `./update.sh` ausfuehren
+
+---
+
+## Reverse Proxy (optional)
+
+Wenn du das Panel ueber eine Domain erreichbar machen willst:
+
+### nginx Beispiel
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name stream.deinedomain.at;
+
+    ssl_certificate     /etc/ssl/certs/stream.pem;
+    ssl_certificate_key /etc/ssl/private/stream.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:3099;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+### Caddy Beispiel
+
+```
+stream.deinedomain.at {
+    reverse_proxy localhost:3099
+}
+```
+
+**Empfehlung:** Passwortschutz einrichten (z.B. Basic Auth), da das Panel volle Kontrolle ueber den Stream-Bot hat.
