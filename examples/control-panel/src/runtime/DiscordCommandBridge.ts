@@ -461,7 +461,7 @@ export class DiscordCommandBridge {
       return;
     }
     const lines = logs.map(
-      (log) => `[${log.level.toUpperCase()}] ${formatDate(log.timestamp)} ${log.message}`,
+      (log) => `[${log.level.toUpperCase()}] ${formatDate(log.createdAt)} ${log.message}`,
     );
     const text = lines.join("\n");
     await message.channel.send(
