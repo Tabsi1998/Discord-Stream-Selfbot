@@ -91,6 +91,13 @@ npm run build
 npm run start
 ```
 
+Wenn YouTube mit `Sign in to confirm you're not a bot` blockiert, kannst du jetzt direkt Cookies konfigurieren:
+
+- `YT_DLP_COOKIES_FROM_BROWSER=edge` oder `chrome:Default` fuer lokale Starts
+- `YT_DLP_COOKIES_FILE=/pfad/zu/cookies.txt` fuer exportierte Netscape-Cookies
+
+Das Panel gibt in diesem Fall jetzt auch eine konkrete Konfigurationshilfe zurueck.
+
 Web Panel: **http://localhost:3099**
 
 ---

@@ -29,6 +29,16 @@ print_info()    { echo -e "  ${BLUE}i${NC} $1" >&2; }
 print_warn()    { echo -e "  ${YELLOW}!${NC} $1" >&2; }
 print_error()   { echo -e "  ${RED}✗${NC} $1" >&2; }
 
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  if grep -q "^${key}=" "$ENV_FILE"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+  fi
+}
+
 ask() {
   local label="$1"
   local default="$2"
@@ -84,6 +94,8 @@ CUR_TZ=$(read_env "TZ")
 CUR_CMD=$(read_env "DISCORD_COMMANDS_ENABLED")
 CUR_PREFIX=$(read_env "COMMAND_PREFIX")
 CUR_IDS=$(read_env "COMMAND_ALLOWED_AUTHOR_IDS")
+CUR_YTDLP_BROWSER=$(read_env "YT_DLP_COOKIES_FROM_BROWSER")
+CUR_YTDLP_COOKIE_FILE=$(read_env "YT_DLP_COOKIES_FILE")
 CUR_YTDLP=$(read_env "YT_DLP_FORMAT")
 CUR_POLL=$(read_env "SCHEDULER_POLL_MS")
 CUR_TIMEOUT=$(read_env "STARTUP_TIMEOUT_MS")
@@ -95,14 +107,16 @@ echo -e "  ${DIM}1)${NC} Discord Token:     ${CUR_TOKEN:0:8}...${CUR_TOKEN: -4}"
 echo -e "  ${DIM}2)${NC} Zeitzone:          $CUR_TZ" >&2
 echo -e "  ${DIM}3)${NC} Chat-Befehle:      $([ "$CUR_CMD" = "1" ] && echo "Aktiv ($CUR_PREFIX)" || echo "Aus")" >&2
 echo -e "  ${DIM}4)${NC} Erlaubte User-IDs: ${CUR_IDS:-nur du selbst}" >&2
-echo -e "  ${DIM}5)${NC} yt-dlp Format:     ${CUR_YTDLP:0:40}..." >&2
-echo -e "  ${DIM}6)${NC} Scheduler:         Poll ${CUR_POLL}ms / Timeout ${CUR_TIMEOUT}ms" >&2
+echo -e "  ${DIM}5)${NC} yt-dlp Cookies:    ${CUR_YTDLP_BROWSER:-${CUR_YTDLP_COOKIE_FILE:-keine}}" >&2
+echo -e "  ${DIM}6)${NC} yt-dlp Format:     ${CUR_YTDLP:0:40}..." >&2
+echo -e "  ${DIM}7)${NC} Scheduler:         Poll ${CUR_POLL}ms / Timeout ${CUR_TIMEOUT}ms" >&2
 echo "" >&2
 echo -e "  ${BOLD}Was aendern?${NC}" >&2
 echo "" >&2
 echo -e "  ${CYAN}1${NC} - Discord Token       ${CYAN}4${NC} - Erlaubte User-IDs" >&2
-echo -e "  ${CYAN}2${NC} - Zeitzone            ${CYAN}5${NC} - yt-dlp Format" >&2
-echo -e "  ${CYAN}3${NC} - Chat-Befehle        ${CYAN}6${NC} - Scheduler" >&2
+echo -e "  ${CYAN}2${NC} - Zeitzone            ${CYAN}5${NC} - yt-dlp Cookies" >&2
+echo -e "  ${CYAN}3${NC} - Chat-Befehle        ${CYAN}6${NC} - yt-dlp Format" >&2
+echo -e "  ${CYAN}7${NC} - Scheduler" >&2
 echo -e "  ${CYAN}a${NC} - Alles               ${CYAN}q${NC} - Abbrechen" >&2
 echo "" >&2
 printf "  ${BOLD}Auswahl${NC}: " >&2
@@ -114,37 +128,44 @@ cp "$ENV_FILE" "$ENV_BACKUP"
 case "$CHOICE" in
   1)
     NEW_TOKEN=$(ask "Neuer Discord Token" "$CUR_TOKEN")
-    sed -i "s|^DISCORD_TOKEN=.*|DISCORD_TOKEN=$NEW_TOKEN|" "$ENV_FILE"
+    set_env_value "DISCORD_TOKEN" "$NEW_TOKEN"
     print_success "Token aktualisiert"
     ;;
   2)
     NEW_TZ=$(ask "Neue Zeitzone" "$CUR_TZ")
-    sed -i "s|^TZ=.*|TZ=$NEW_TZ|" "$ENV_FILE"
+    set_env_value "TZ" "$NEW_TZ"
     print_success "Zeitzone aktualisiert"
     ;;
   3)
     CMD_DEF="y"; [ "$CUR_CMD" = "0" ] && CMD_DEF="n"
     NEW_CMD=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEF")
     NEW_PREFIX=$(ask "Prefix" "$CUR_PREFIX")
-    sed -i "s|^DISCORD_COMMANDS_ENABLED=.*|DISCORD_COMMANDS_ENABLED=$NEW_CMD|" "$ENV_FILE"
-    sed -i "s|^COMMAND_PREFIX=.*|COMMAND_PREFIX=$NEW_PREFIX|" "$ENV_FILE"
+    set_env_value "DISCORD_COMMANDS_ENABLED" "$NEW_CMD"
+    set_env_value "COMMAND_PREFIX" "$NEW_PREFIX"
     print_success "Chat-Befehle aktualisiert"
     ;;
   4)
     NEW_IDS=$(ask "Erlaubte User-IDs (komma-getrennt)" "$CUR_IDS")
-    sed -i "s|^COMMAND_ALLOWED_AUTHOR_IDS=.*|COMMAND_ALLOWED_AUTHOR_IDS=$NEW_IDS|" "$ENV_FILE"
+    set_env_value "COMMAND_ALLOWED_AUTHOR_IDS" "$NEW_IDS"
     print_success "User-IDs aktualisiert"
     ;;
   5)
-    NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
-    sed -i "s|^YT_DLP_FORMAT=.*|YT_DLP_FORMAT=$NEW_YTDLP|" "$ENV_FILE"
-    print_success "yt-dlp Format aktualisiert"
+    NEW_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$CUR_YTDLP_BROWSER")
+    NEW_COOKIE_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$CUR_YTDLP_COOKIE_FILE")
+    set_env_value "YT_DLP_COOKIES_FROM_BROWSER" "$NEW_BROWSER"
+    set_env_value "YT_DLP_COOKIES_FILE" "$NEW_COOKIE_FILE"
+    print_success "yt-dlp Cookies aktualisiert"
     ;;
   6)
+    NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
+    set_env_value "YT_DLP_FORMAT" "$NEW_YTDLP"
+    print_success "yt-dlp Format aktualisiert"
+    ;;
+  7)
     NEW_POLL=$(ask "Scheduler Poll (ms)" "$CUR_POLL")
     NEW_TIMEOUT=$(ask "Startup Timeout (ms)" "$CUR_TIMEOUT")
-    sed -i "s|^SCHEDULER_POLL_MS=.*|SCHEDULER_POLL_MS=$NEW_POLL|" "$ENV_FILE"
-    sed -i "s|^STARTUP_TIMEOUT_MS=.*|STARTUP_TIMEOUT_MS=$NEW_TIMEOUT|" "$ENV_FILE"
+    set_env_value "SCHEDULER_POLL_MS" "$NEW_POLL"
+    set_env_value "STARTUP_TIMEOUT_MS" "$NEW_TIMEOUT"
     print_success "Scheduler aktualisiert"
     ;;
   a|A)
@@ -155,11 +176,21 @@ case "$CHOICE" in
     NEW_CMD=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEF")
     NEW_PREFIX=$(ask "Prefix" "$CUR_PREFIX")
     NEW_IDS=$(ask "Erlaubte User-IDs" "$CUR_IDS")
-    sed -i "s|^DISCORD_TOKEN=.*|DISCORD_TOKEN=$NEW_TOKEN|" "$ENV_FILE"
-    sed -i "s|^TZ=.*|TZ=$NEW_TZ|" "$ENV_FILE"
-    sed -i "s|^DISCORD_COMMANDS_ENABLED=.*|DISCORD_COMMANDS_ENABLED=$NEW_CMD|" "$ENV_FILE"
-    sed -i "s|^COMMAND_PREFIX=.*|COMMAND_PREFIX=$NEW_PREFIX|" "$ENV_FILE"
-    sed -i "s|^COMMAND_ALLOWED_AUTHOR_IDS=.*|COMMAND_ALLOWED_AUTHOR_IDS=$NEW_IDS|" "$ENV_FILE"
+    NEW_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$CUR_YTDLP_BROWSER")
+    NEW_COOKIE_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$CUR_YTDLP_COOKIE_FILE")
+    NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
+    NEW_POLL=$(ask "Scheduler Poll (ms)" "$CUR_POLL")
+    NEW_TIMEOUT=$(ask "Startup Timeout (ms)" "$CUR_TIMEOUT")
+    set_env_value "DISCORD_TOKEN" "$NEW_TOKEN"
+    set_env_value "TZ" "$NEW_TZ"
+    set_env_value "DISCORD_COMMANDS_ENABLED" "$NEW_CMD"
+    set_env_value "COMMAND_PREFIX" "$NEW_PREFIX"
+    set_env_value "COMMAND_ALLOWED_AUTHOR_IDS" "$NEW_IDS"
+    set_env_value "YT_DLP_COOKIES_FROM_BROWSER" "$NEW_BROWSER"
+    set_env_value "YT_DLP_COOKIES_FILE" "$NEW_COOKIE_FILE"
+    set_env_value "YT_DLP_FORMAT" "$NEW_YTDLP"
+    set_env_value "SCHEDULER_POLL_MS" "$NEW_POLL"
+    set_env_value "STARTUP_TIMEOUT_MS" "$NEW_TIMEOUT"
     print_success "Alles aktualisiert"
     ;;
   q|Q)

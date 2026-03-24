@@ -33,7 +33,7 @@ cd Discord-Stream-Selfbot
 |---------|-------------------|
 | 1/4 | Voraussetzungen pruefen (Docker, Compose, Dateien) |
 | 2/4 | Discord Token + erlaubte User-IDs |
-| 3/4 | Zeitzone, Chat-Befehle an/aus, Prefix |
+| 3/4 | Zeitzone, Chat-Befehle an/aus, Prefix, yt-dlp Cookies |
 | 4/4 | Zusammenfassung + Bestaetigung |
 
 ---
@@ -52,8 +52,9 @@ Zeigt die aktuelle Konfiguration und bietet Optionen:
 | 2 | Zeitzone |
 | 3 | Chat-Befehle (an/aus, Prefix) |
 | 4 | Erlaubte User-IDs |
-| 5 | yt-dlp Format |
-| 6 | Scheduler (Poll-Intervall, Timeout) |
+| 5 | yt-dlp Cookies |
+| 6 | yt-dlp Format |
+| 7 | Scheduler (Poll-Intervall, Timeout) |
 | a | Alles auf einmal |
 | q | Abbrechen |
 
@@ -137,6 +138,10 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 
 - Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
 - YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bereits installiert ist
+- Wenn YouTube `Sign in to confirm you're not a bot` meldet, setze in `deploy/.env` entweder:
+  - `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
+  - oder `YT_DLP_COOKIES_FROM_BROWSER=...` wenn du den Browser-Profile-Zugriff selbst in den Container bringst
+- Fuer die Cookie-Datei kannst du eine Netscape-Cookies-Datei unter `deploy/cookies/yt-dlp-cookies.txt` ablegen. Dieser Ordner wird read-only in den Container gemountet.
 - MPEG-TS Streams (Dispatcharr, IPTV) werden automatisch erkannt und optimiert
 - FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten
 - Die State-Datei wird bei jedem Schreibvorgang automatisch gespeichert

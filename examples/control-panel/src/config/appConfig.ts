@@ -66,6 +66,16 @@ function parsePositiveIntegerEnv(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function normalizeOptionalEnv(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function resolveOptionalPath(value: string | undefined, baseDir: string) {
+  if (!value) return undefined;
+  return isAbsolute(value) ? value : resolve(baseDir, value);
+}
+
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dataFileEnv = process.env.DATA_FILE ?? "./data/control-panel-state.json";
 const dataFile = isAbsolute(dataFileEnv)
@@ -75,6 +85,13 @@ const dataFile = isAbsolute(dataFileEnv)
 const ffmpegPath = resolveBinaryPath("FFMPEG_PATH", "ffmpeg", /ffmpeg/i);
 const ffprobePath = resolveBinaryPath("FFPROBE_PATH", "ffprobe", /ffmpeg/i);
 const ytDlpPath = resolveBinaryPath("YT_DLP_PATH", "yt-dlp", /yt-dlp/i);
+const ytDlpCookiesFile = resolveOptionalPath(
+  normalizeOptionalEnv(process.env.YT_DLP_COOKIES_FILE),
+  appDir,
+);
+const ytDlpCookiesFromBrowser = normalizeOptionalEnv(
+  process.env.YT_DLP_COOKIES_FROM_BROWSER,
+);
 
 if (ffmpegPath) process.env.FFMPEG_PATH = ffmpegPath;
 if (ffprobePath) process.env.FFPROBE_PATH = ffprobePath;
@@ -89,6 +106,8 @@ export const appConfig = {
   ffmpegPath,
   ffprobePath,
   ytDlpPath,
+  ytDlpCookiesFile,
+  ytDlpCookiesFromBrowser,
   ytDlpFormat:
     process.env.YT_DLP_FORMAT ??
     "bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",

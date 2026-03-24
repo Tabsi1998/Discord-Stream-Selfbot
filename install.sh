@@ -23,6 +23,7 @@ DEPLOY_DIR="$SCRIPT_DIR/deploy"
 ENV_FILE="$DEPLOY_DIR/.env"
 ENV_BACKUP="$DEPLOY_DIR/.env.backup"
 DATA_DIR="$DEPLOY_DIR/data"
+COOKIES_DIR="$DEPLOY_DIR/cookies"
 COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
 
 # ── Feste Werte (nicht abgefragt) ──────────────────────────────
@@ -218,6 +219,13 @@ CMD_DEFAULT="y"
 
 CONF_COMMANDS_ENABLED=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEFAULT")
 CONF_PREFIX=$(ask "Befehl-Prefix" "$(get_or_default COMMAND_PREFIX "$DEFAULT_COMMAND_PREFIX")")
+echo "" >&2
+print_info "Optional: yt-dlp Cookies helfen gegen YouTube-Bot-Checks"
+print_info "  Browser: z.B. edge oder chrome:Default"
+print_info "  Docker Cookie-Datei: z.B. /app/examples/control-panel/cookies/yt-dlp-cookies.txt"
+echo "" >&2
+CONF_YT_DLP_COOKIES_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$(get_or_default YT_DLP_COOKIES_FROM_BROWSER "")")
+CONF_YT_DLP_COOKIES_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$(get_or_default YT_DLP_COOKIES_FILE "")")
 
 # ── [4/4] Zusammenfassung ─────────────────────────────────────
 print_step 4 4 "Zusammenfassung"
@@ -229,6 +237,7 @@ echo -e "  ${DIM}Erlaubte IDs:${NC}      ${CONF_ALLOWED_IDS:-nur du selbst}" >&2
 echo -e "  ${DIM}Web Panel Port:${NC}    $FIXED_HOST_PORT (fest)" >&2
 echo -e "  ${DIM}Zeitzone:${NC}          $CONF_TZ" >&2
 echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$CONF_COMMANDS_ENABLED" = "1" ] && echo "Aktiv ($CONF_PREFIX)" || echo "Aus")" >&2
+echo -e "  ${DIM}yt-dlp Cookies:${NC}    ${CONF_YT_DLP_COOKIES_BROWSER:-${CONF_YT_DLP_COOKIES_FILE:-keine}}" >&2
 echo "" >&2
 
 CONFIRM=$(ask_yn "Konfiguration speichern und Installation starten?" "y")
@@ -239,7 +248,9 @@ fi
 
 # ── .env schreiben ─────────────────────────────────────────────
 mkdir -p "$DATA_DIR"
+mkdir -p "$COOKIES_DIR"
 touch "$DATA_DIR/.gitkeep" 2>/dev/null || true
+touch "$COOKIES_DIR/.gitkeep" 2>/dev/null || true
 
 if [ -f "$ENV_FILE" ]; then
   cp "$ENV_FILE" "$ENV_BACKUP"
@@ -263,6 +274,8 @@ DATA_FILE=/app/examples/control-panel/data/control-panel-state.json
 DISCORD_COMMANDS_ENABLED=$CONF_COMMANDS_ENABLED
 COMMAND_PREFIX=$CONF_PREFIX
 COMMAND_ALLOWED_AUTHOR_IDS=$CONF_ALLOWED_IDS
+YT_DLP_COOKIES_FROM_BROWSER=$CONF_YT_DLP_COOKIES_BROWSER
+YT_DLP_COOKIES_FILE=$CONF_YT_DLP_COOKIES_FILE
 YT_DLP_FORMAT=$CONF_YT_DLP_FORMAT
 SCHEDULER_POLL_MS=$CONF_SCHEDULER_POLL
 STARTUP_TIMEOUT_MS=$CONF_STARTUP_TIMEOUT

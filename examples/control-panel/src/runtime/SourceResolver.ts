@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { appConfig } from "../config/appConfig.js";
 import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
@@ -24,6 +25,8 @@ const YOUTUBE_HOSTS = new Set([
   "youtu.be",
   "www.youtu.be",
 ]);
+const YOUTUBE_BOT_CHECK_PATTERN = /not a bot/i;
+const BROWSER_COOKIE_COPY_PATTERN = /could not copy .*cookie database/i;
 
 export function isYouTubeUrl(input: string) {
   try {
@@ -32,6 +35,49 @@ export function isYouTubeUrl(input: string) {
   } catch {
     return false;
   }
+}
+
+function getCookieSourceLabel() {
+  if (appConfig.ytDlpCookiesFile) {
+    return `file:${appConfig.ytDlpCookiesFile}`;
+  }
+  if (appConfig.ytDlpCookiesFromBrowser) {
+    return `browser:${appConfig.ytDlpCookiesFromBrowser}`;
+  }
+  return "none";
+}
+
+function buildCookieArgs() {
+  if (appConfig.ytDlpCookiesFile) {
+    if (!existsSync(appConfig.ytDlpCookiesFile)) {
+      throw new Error(
+        `YT_DLP_COOKIES_FILE does not exist: ${appConfig.ytDlpCookiesFile}`,
+      );
+    }
+    return ["--cookies", appConfig.ytDlpCookiesFile];
+  }
+
+  if (appConfig.ytDlpCookiesFromBrowser) {
+    return ["--cookies-from-browser", appConfig.ytDlpCookiesFromBrowser];
+  }
+
+  return [];
+}
+
+function enhanceYtDlpError(message: string) {
+  if (BROWSER_COOKIE_COPY_PATTERN.test(message)) {
+    return `${message}\nConfigured cookie source: ${getCookieSourceLabel()}. Close the browser completely and try again, or switch to YT_DLP_COOKIES_FILE with an exported Netscape cookies file.`;
+  }
+
+  if (YOUTUBE_BOT_CHECK_PATTERN.test(message)) {
+    if (appConfig.ytDlpCookiesFile || appConfig.ytDlpCookiesFromBrowser) {
+      return `${message}\nConfigured cookie source: ${getCookieSourceLabel()}. Refresh the cookies or verify that the selected browser profile is logged into YouTube.`;
+    }
+
+    return `${message}\nConfigure YT_DLP_COOKIES_FROM_BROWSER=edge (or chrome/firefox) or YT_DLP_COOKIES_FILE=/path/to/cookies.txt and restart the control panel.`;
+  }
+
+  return message;
 }
 
 export class SourceResolver {
@@ -55,9 +101,11 @@ export class SourceResolver {
       throw new Error("yt-dlp is required for this preset but was not detected");
     }
 
+    const cookieArgs = buildCookieArgs();
     const args = [
       "--no-warnings",
       "--no-playlist",
+      ...cookieArgs,
       "--format",
       buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
@@ -71,6 +119,7 @@ export class SourceResolver {
     this.store.appendLog("info", "Resolving source via yt-dlp", {
       preset: preset.name,
       url: preset.sourceUrl,
+      cookieSource: getCookieSourceLabel(),
     });
 
     const child = spawn(appConfig.ytDlpPath, args, {
@@ -104,7 +153,9 @@ export class SourceResolver {
             const stderr = stderrChunks.join("").trim();
             reject(
               new Error(
-                stderr || `yt-dlp exited with status ${code ?? "unknown"}`,
+                enhanceYtDlpError(
+                  stderr || `yt-dlp exited with status ${code ?? "unknown"}`,
+                ),
               ),
             );
             return;
