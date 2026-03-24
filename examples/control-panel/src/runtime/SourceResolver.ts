@@ -16,6 +16,7 @@ export type ResolvedSource = {
   sourceMode: SourceMode;
   resolvedTitle?: string;
   isLive?: boolean;
+  resolverKind: "yt-dlp";
 };
 
 const YOUTUBE_HOSTS = new Set([
@@ -94,10 +95,71 @@ export class SourceResolver {
         input: preset.sourceUrl,
         inputUrl: preset.sourceUrl,
         sourceMode: preset.sourceMode,
+        resolverKind: "yt-dlp",
       };
     }
 
-    if (!appConfig.ytDlpPath) {
+    const ytDlpPath = appConfig.ytDlpPath;
+
+    if (!ytDlpPath) {
+      throw new Error("yt-dlp is required for this preset but was not detected");
+    }
+
+    const attempts = [
+      {
+        label: "default",
+        extractorArgs: undefined as string | undefined,
+      },
+    ];
+
+    if (isYouTubeUrl(preset.sourceUrl) && appConfig.ytDlpYouTubeExtractorArgs) {
+      attempts.push({
+        label: "youtube-client-retry",
+        extractorArgs: appConfig.ytDlpYouTubeExtractorArgs,
+      });
+    }
+
+    const errors: string[] = [];
+
+    for (const attempt of attempts) {
+      try {
+        return await this.resolveViaYtDlp(
+          preset,
+          cancelSignal,
+          attempt.extractorArgs,
+        );
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "yt-dlp resolution failed";
+        errors.push(message);
+
+        if (!attempt.extractorArgs) {
+          continue;
+        }
+
+        this.store.appendLog("warn", "yt-dlp retry failed", {
+          preset: preset.name,
+          url: preset.sourceUrl,
+          extractorArgs: attempt.extractorArgs,
+          error: message,
+        });
+      }
+    }
+
+    if (errors.length > 1) {
+      throw new Error(`${errors[0]}\nRetry with alternate YouTube client also failed: ${errors[1]}`);
+    }
+
+    throw new Error(errors[0] ?? "yt-dlp resolution failed");
+  }
+
+  private async resolveViaYtDlp(
+    preset: StreamPreset,
+    cancelSignal?: AbortSignal,
+    extractorArgs?: string,
+  ): Promise<ResolvedSource> {
+    const ytDlpPath = appConfig.ytDlpPath;
+    if (!ytDlpPath) {
       throw new Error("yt-dlp is required for this preset but was not detected");
     }
 
@@ -106,6 +168,7 @@ export class SourceResolver {
       "--no-warnings",
       "--no-playlist",
       ...cookieArgs,
+      ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
       "--format",
       buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
@@ -120,10 +183,11 @@ export class SourceResolver {
       preset: preset.name,
       url: preset.sourceUrl,
       cookieSource: getCookieSourceLabel(),
+      extractorArgs: extractorArgs ?? "",
     });
 
-    const child = spawn(appConfig.ytDlpPath, args, {
-      stdio: ["ignore", "pipe", "pipe"],
+    const child = spawn(ytDlpPath, args, {
+      stdio: "pipe",
       windowsHide: true,
     });
 
@@ -148,7 +212,7 @@ export class SourceResolver {
     try {
       const stdout = await new Promise<string>((resolve, reject) => {
         child.once("error", reject);
-        child.once("close", (code) => {
+        child.once("close", (code: number | null) => {
           if (code !== 0) {
             const stderr = stderrChunks.join("").trim();
             reject(
@@ -200,6 +264,7 @@ export class SourceResolver {
         sourceMode: preset.sourceMode,
         resolvedTitle,
         isLive: isLiveFlag.toLowerCase() === "true",
+        resolverKind: "yt-dlp",
       };
     } finally {
       cancelSignal?.removeEventListener("abort", abortChild);

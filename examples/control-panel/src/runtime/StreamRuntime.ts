@@ -18,6 +18,12 @@ import type {
 import { AppStateStore } from "../state/AppStateStore.js";
 import { SourceResolver } from "./SourceResolver.js";
 
+function isSplitMediaInput(
+  input: Awaited<ReturnType<SourceResolver["resolve"]>>["input"],
+): input is { video: string; audio?: string } {
+  return typeof input === "object" && input !== null && "video" in input;
+}
+
 type StartRunOptions = {
   kind: RunKind;
   eventId?: string;
@@ -256,13 +262,12 @@ export class StreamRuntime extends EventEmitter {
 
       this.store.appendLog("info", "Source resolved", {
         preset: options.preset.name,
-        mode: resolvedSource.sourceMode,
+        mode: resolvedSource.resolverKind,
         title: resolvedSource.resolvedTitle ?? "",
         live: resolvedSource.isLive ? "true" : "false",
-        separateAudio:
-          typeof resolvedSource.input === "object" && resolvedSource.input.audio
-            ? "true"
-            : "false",
+        separateAudio: isSplitMediaInput(resolvedSource.input) && resolvedSource.input.audio
+          ? "true"
+          : "false",
         qualityProfile: resolvedPreset.qualityProfile,
         bufferProfile: resolvedPreset.effectiveBufferProfile,
       });

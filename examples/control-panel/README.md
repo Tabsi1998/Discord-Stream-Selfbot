@@ -12,6 +12,7 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 - Discord Event Synchronisation (Create, Start, Complete, Cancel, Update)
 - Manueller Start/Stop per Web Panel oder Chat-Befehl
 - YouTube / Twitch ueber yt-dlp
+- Automatischer YouTube-Client-Retry fuer yt-dlp, wenn Standard-Requests an Bot-Checks scheitern
 - MPEG-TS / Dispatcharr / IPTV Auto-Erkennung
 - URL-Erreichbarkeitstest
 - Live Stream Health Monitoring mit Uptime-Counter
@@ -91,7 +92,12 @@ npm run build
 npm run start
 ```
 
-Wenn YouTube mit `Sign in to confirm you're not a bot` blockiert, kannst du jetzt direkt Cookies konfigurieren:
+Wenn YouTube mit `Sign in to confirm you're not a bot` blockiert, versucht das Panel automatisch einen alternativen YouTube-Client ueber `yt-dlp`:
+
+- Standard: `YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android`
+- fuer viele Live-Streams ist dadurch keine manuelle Cookie-Konfiguration mehr noetig
+
+Wenn YouTube trotzdem weiter blockiert, kannst du zusaetzlich Cookies konfigurieren:
 
 - `YT_DLP_COOKIES_FROM_BROWSER=edge` oder `chrome:Default` fuer lokale Starts
 - `YT_DLP_COOKIES_FILE=/pfad/zu/cookies.txt` fuer exportierte Netscape-Cookies

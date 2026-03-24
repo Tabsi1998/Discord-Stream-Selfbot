@@ -141,6 +141,7 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 - Wenn YouTube `Sign in to confirm you're not a bot` meldet, setze in `deploy/.env` entweder:
   - `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
   - oder `YT_DLP_COOKIES_FROM_BROWSER=...` wenn du den Browser-Profile-Zugriff selbst in den Container bringst
+- Vor diesem Cookie-Fallback versucht das Panel automatisch `YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android`, was viele Livestreams bereits ohne Cookies aufloest.
 - Fuer die Cookie-Datei kannst du eine Netscape-Cookies-Datei unter `deploy/cookies/yt-dlp-cookies.txt` ablegen. Dieser Ordner wird read-only in den Container gemountet.
 - MPEG-TS Streams (Dispatcharr, IPTV) werden automatisch erkannt und optimiert
 - FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten

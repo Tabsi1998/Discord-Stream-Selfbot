@@ -108,6 +108,9 @@ export const appConfig = {
   ytDlpPath,
   ytDlpCookiesFile,
   ytDlpCookiesFromBrowser,
+  ytDlpYouTubeExtractorArgs:
+    process.env.YT_DLP_YOUTUBE_EXTRACTOR_ARGS?.trim()
+    || "youtube:player_client=android",
   ytDlpFormat:
     process.env.YT_DLP_FORMAT ??
     "bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",
