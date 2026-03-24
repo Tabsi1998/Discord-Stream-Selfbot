@@ -46,6 +46,14 @@ store.appendLog("info", "Control panel booting", {
   port: String(appConfig.port),
 });
 
+store.setRuntime((runtime) => {
+  runtime.ffmpegPath = appConfig.ffmpegPath;
+  runtime.ffprobePath = appConfig.ffprobePath;
+  runtime.ytDlpPath = appConfig.ytDlpPath;
+  runtime.ytDlpVersion = appConfig.ytDlpVersion;
+  runtime.ytDlpAvailable = !!appConfig.ytDlpPath;
+});
+
 if (!appConfig.ffmpegPath) {
   store.appendLog("warn", "FFmpeg binary was not auto-detected");
 }
@@ -54,6 +62,11 @@ if (!appConfig.ffprobePath) {
 }
 if (!appConfig.ytDlpPath) {
   store.appendLog("warn", "yt-dlp binary was not auto-detected");
+} else {
+  store.appendLog("info", "yt-dlp binary detected", {
+    path: appConfig.ytDlpPath,
+    version: appConfig.ytDlpVersion ?? "unknown",
+  });
 }
 if (!appConfig.discordToken) {
   store.appendLog("warn", "DISCORD_TOKEN is missing");

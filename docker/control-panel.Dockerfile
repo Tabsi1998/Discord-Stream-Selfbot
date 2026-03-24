@@ -4,6 +4,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
+ARG YT_DLP_PACKAGE=yt-dlp[default]
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     build-essential \
@@ -16,7 +18,8 @@ RUN apt-get update \
     python3-pip \
     tini \
     libzmq3-dev \
- && python3 -m pip install --no-cache-dir --break-system-packages yt-dlp \
+ && python3 -m pip install --no-cache-dir --break-system-packages --pre -U "${YT_DLP_PACKAGE}" \
+ && yt-dlp --version \
  && rm -rf /var/lib/apt/lists/*
 
 COPY . .

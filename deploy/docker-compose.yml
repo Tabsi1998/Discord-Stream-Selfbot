@@ -4,6 +4,8 @@ services:
     build:
       context: ..
       dockerfile: docker/control-panel.Dockerfile
+      args:
+        YT_DLP_PACKAGE: ${YT_DLP_PACKAGE:-yt-dlp[default]}
     restart: unless-stopped
     env_file:
       - ./.env

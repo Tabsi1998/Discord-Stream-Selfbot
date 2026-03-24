@@ -52,6 +52,23 @@ function resolveBinaryPath(
   return resolveWingetBinary(command, packagePattern);
 }
 
+function resolveBinaryVersion(commandPath: string | undefined, flag: string) {
+  if (!commandPath) return undefined;
+
+  const result = spawnSync(commandPath, [flag], {
+    encoding: "utf-8",
+    shell: false,
+  });
+
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
+  const firstLine = output.split(/\r?\n/).find((line) => line.trim());
+  return firstLine?.trim() || undefined;
+}
+
 function parseCsvList(value: string | undefined) {
   if (!value) return [];
   return value
@@ -85,6 +102,7 @@ const dataFile = isAbsolute(dataFileEnv)
 const ffmpegPath = resolveBinaryPath("FFMPEG_PATH", "ffmpeg", /ffmpeg/i);
 const ffprobePath = resolveBinaryPath("FFPROBE_PATH", "ffprobe", /ffmpeg/i);
 const ytDlpPath = resolveBinaryPath("YT_DLP_PATH", "yt-dlp", /yt-dlp/i);
+const ytDlpVersion = resolveBinaryVersion(ytDlpPath, "--version");
 const ytDlpCookiesFile = resolveOptionalPath(
   normalizeOptionalEnv(process.env.YT_DLP_COOKIES_FILE),
   appDir,
@@ -106,6 +124,7 @@ export const appConfig = {
   ffmpegPath,
   ffprobePath,
   ytDlpPath,
+  ytDlpVersion,
   ytDlpCookiesFile,
   ytDlpCookiesFromBrowser,
   ytDlpYouTubeExtractorArgs:

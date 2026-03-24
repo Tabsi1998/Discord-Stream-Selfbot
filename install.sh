@@ -33,6 +33,7 @@ FIXED_PORT=3099
 # ── Defaults ────────────────────────────────────────────────────
 DEFAULT_TZ="Europe/Vienna"
 DEFAULT_COMMAND_PREFIX='$panel'
+DEFAULT_YT_DLP_PACKAGE='yt-dlp[default]'
 DEFAULT_YT_DLP_FORMAT='bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best'
 DEFAULT_SCHEDULER_POLL_MS=1000
 DEFAULT_STARTUP_TIMEOUT_MS=15000
@@ -259,6 +260,7 @@ fi
 
 # yt-dlp und Scheduler mit Defaults (nicht abgefragt)
 CONF_YT_DLP_FORMAT=$(get_or_default YT_DLP_FORMAT "$DEFAULT_YT_DLP_FORMAT")
+CONF_YT_DLP_PACKAGE=$(get_or_default YT_DLP_PACKAGE "$DEFAULT_YT_DLP_PACKAGE")
 CONF_SCHEDULER_POLL=$(get_or_default SCHEDULER_POLL_MS "$DEFAULT_SCHEDULER_POLL_MS")
 CONF_STARTUP_TIMEOUT=$(get_or_default STARTUP_TIMEOUT_MS "$DEFAULT_STARTUP_TIMEOUT_MS")
 
@@ -276,6 +278,7 @@ COMMAND_PREFIX=$CONF_PREFIX
 COMMAND_ALLOWED_AUTHOR_IDS=$CONF_ALLOWED_IDS
 YT_DLP_COOKIES_FROM_BROWSER=$CONF_YT_DLP_COOKIES_BROWSER
 YT_DLP_COOKIES_FILE=$CONF_YT_DLP_COOKIES_FILE
+YT_DLP_PACKAGE=$CONF_YT_DLP_PACKAGE
 YT_DLP_FORMAT=$CONF_YT_DLP_FORMAT
 SCHEDULER_POLL_MS=$CONF_SCHEDULER_POLL
 STARTUP_TIMEOUT_MS=$CONF_STARTUP_TIMEOUT
@@ -284,9 +287,16 @@ ENVEOF
 print_success "Konfiguration gespeichert: $ENV_FILE"
 
 echo "" >&2
+echo -e "  ${BOLD}Baue Docker Image frisch...${NC}" >&2
+echo "" >&2
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do
+  echo "  $line" >&2
+done
+
+echo "" >&2
 echo -e "  ${BOLD}Starte Docker Container...${NC}" >&2
 echo "" >&2
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d 2>&1 | while IFS= read -r line; do
   echo "  $line" >&2
 done
 
@@ -294,6 +304,12 @@ echo "" >&2
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do
   echo "  $line" >&2
 done
+
+YT_DLP_VERSION=$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T control-panel yt-dlp --version 2>/dev/null || true)
+if [ -n "$YT_DLP_VERSION" ]; then
+  echo "" >&2
+  print_success "yt-dlp im Container: $YT_DLP_VERSION"
+fi
 
 echo "" >&2
 echo -e "${GREEN}${BOLD}" >&2

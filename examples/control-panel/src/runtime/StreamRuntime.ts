@@ -87,6 +87,7 @@ export class StreamRuntime extends EventEmitter {
       runtime.ffmpegPath = appConfig.ffmpegPath;
       runtime.ffprobePath = appConfig.ffprobePath;
       runtime.ytDlpPath = appConfig.ytDlpPath;
+      runtime.ytDlpVersion = appConfig.ytDlpVersion;
       runtime.ytDlpAvailable = !!appConfig.ytDlpPath;
       runtime.commandPrefix = appConfig.commandEnabled
         ? appConfig.commandPrefix

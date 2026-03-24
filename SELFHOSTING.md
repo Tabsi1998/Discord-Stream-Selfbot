@@ -137,7 +137,8 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 ## Hinweise
 
 - Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
-- YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bereits installiert ist
+- YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bei jedem `./update.sh` frisch ohne Build-Cache neu gebaut wird
+- Standard fuer Docker ist jetzt der offizielle `pip`-Pfad `--pre "yt-dlp[default]"`, damit YouTube-Fixes schneller im Server landen
 - Wenn YouTube `Sign in to confirm you're not a bot` meldet, setze in `deploy/.env` entweder:
   - `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
   - oder `YT_DLP_COOKIES_FROM_BROWSER=...` wenn du den Browser-Profile-Zugriff selbst in den Container bringst

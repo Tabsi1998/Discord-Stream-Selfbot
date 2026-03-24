@@ -22,6 +22,7 @@ DEFAULT_HOST_PORT=3099
 DEFAULT_PORT=3099
 DEFAULT_TZ=Europe/Vienna
 DEFAULT_COMMAND_PREFIX='$panel'
+DEFAULT_YT_DLP_PACKAGE='yt-dlp[default]'
 DEFAULT_YT_DLP_FORMAT='bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best'
 DEFAULT_SCHEDULER_POLL_MS=1000
 DEFAULT_STARTUP_TIMEOUT_MS=15000
@@ -186,9 +187,10 @@ write_env_file() {
   allowed_author_ids=$7
   yt_dlp_cookies_from_browser=$8
   yt_dlp_cookies_file=$9
-  yt_dlp_format=${10}
-  scheduler_poll_ms=${11}
-  startup_timeout_ms=${12}
+  yt_dlp_package=${10}
+  yt_dlp_format=${11}
+  scheduler_poll_ms=${12}
+  startup_timeout_ms=${13}
 
   ensure_layout
   umask 077
@@ -205,6 +207,7 @@ write_env_file() {
     printf 'COMMAND_ALLOWED_AUTHOR_IDS=%s\n' "$allowed_author_ids"
     printf 'YT_DLP_COOKIES_FROM_BROWSER=%s\n' "$yt_dlp_cookies_from_browser"
     printf 'YT_DLP_COOKIES_FILE=%s\n' "$yt_dlp_cookies_file"
+    printf 'YT_DLP_PACKAGE=%s\n' "$yt_dlp_package"
     printf 'YT_DLP_FORMAT=%s\n' "$yt_dlp_format"
     printf 'SCHEDULER_POLL_MS=%s\n' "$scheduler_poll_ms"
     printf 'STARTUP_TIMEOUT_MS=%s\n' "$startup_timeout_ms"
@@ -220,6 +223,7 @@ configure_env() {
   current_allowed=$(current_or_default COMMAND_ALLOWED_AUTHOR_IDS "")
   current_cookies_from_browser=$(current_or_default YT_DLP_COOKIES_FROM_BROWSER "")
   current_cookies_file=$(current_or_default YT_DLP_COOKIES_FILE "")
+  current_ytdlp_package=$(current_or_default YT_DLP_PACKAGE "$DEFAULT_YT_DLP_PACKAGE")
   current_format=$(current_or_default YT_DLP_FORMAT "$DEFAULT_YT_DLP_FORMAT")
   current_poll=$(current_or_default SCHEDULER_POLL_MS "$DEFAULT_SCHEDULER_POLL_MS")
   current_timeout=$(current_or_default STARTUP_TIMEOUT_MS "$DEFAULT_STARTUP_TIMEOUT_MS")
@@ -247,6 +251,7 @@ configure_env() {
   allowed_author_ids=$(prompt_with_default "Allowed Discord author IDs (comma separated, blank = self only)" "$current_allowed")
   yt_dlp_cookies_from_browser=$(prompt_with_default "yt-dlp browser cookies (optional, e.g. edge or chrome:Default)" "$current_cookies_from_browser")
   yt_dlp_cookies_file=$(prompt_with_default "yt-dlp cookies file (optional, e.g. /app/examples/control-panel/cookies/yt-dlp-cookies.txt)" "$current_cookies_file")
+  yt_dlp_package=$(prompt_with_default "yt-dlp package spec for Docker builds" "$current_ytdlp_package")
   yt_dlp_format=$(prompt_with_default "yt-dlp format selector" "$current_format")
   scheduler_poll_ms=$(prompt_with_default "Scheduler poll interval in ms" "$current_poll")
   startup_timeout_ms=$(prompt_with_default "Stream startup timeout in ms" "$current_timeout")
@@ -266,6 +271,7 @@ configure_env() {
     "$allowed_author_ids" \
     "$yt_dlp_cookies_from_browser" \
     "$yt_dlp_cookies_file" \
+    "$yt_dlp_package" \
     "$yt_dlp_format" \
     "$scheduler_poll_ms" \
     "$startup_timeout_ms"

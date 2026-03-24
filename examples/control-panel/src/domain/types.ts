@@ -106,6 +106,7 @@ export type RuntimeState = {
   ffmpegPath?: string;
   ffprobePath?: string;
   ytDlpPath?: string;
+  ytDlpVersion?: string;
   ytDlpAvailable?: boolean;
   commandPrefix?: string;
   commandAuthorIds?: string[];

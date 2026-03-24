@@ -96,6 +96,7 @@ Wenn YouTube mit `Sign in to confirm you're not a bot` blockiert, versucht das P
 
 - Standard: `YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android`
 - fuer viele Live-Streams ist dadurch keine manuelle Cookie-Konfiguration mehr noetig
+- fuer Docker-Betrieb wird `yt-dlp` ueber `--pre "yt-dlp[default]"` frisch gebaut, damit YouTube-Fixes nicht an altem Build-Cache haengen
 
 Wenn YouTube trotzdem weiter blockiert, kannst du zusaetzlich Cookies konfigurieren:
 

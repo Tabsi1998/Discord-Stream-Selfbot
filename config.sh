@@ -96,6 +96,7 @@ CUR_PREFIX=$(read_env "COMMAND_PREFIX")
 CUR_IDS=$(read_env "COMMAND_ALLOWED_AUTHOR_IDS")
 CUR_YTDLP_BROWSER=$(read_env "YT_DLP_COOKIES_FROM_BROWSER")
 CUR_YTDLP_COOKIE_FILE=$(read_env "YT_DLP_COOKIES_FILE")
+CUR_YTDLP_PACKAGE=$(read_env "YT_DLP_PACKAGE")
 CUR_YTDLP=$(read_env "YT_DLP_FORMAT")
 CUR_POLL=$(read_env "SCHEDULER_POLL_MS")
 CUR_TIMEOUT=$(read_env "STARTUP_TIMEOUT_MS")
@@ -108,15 +109,16 @@ echo -e "  ${DIM}2)${NC} Zeitzone:          $CUR_TZ" >&2
 echo -e "  ${DIM}3)${NC} Chat-Befehle:      $([ "$CUR_CMD" = "1" ] && echo "Aktiv ($CUR_PREFIX)" || echo "Aus")" >&2
 echo -e "  ${DIM}4)${NC} Erlaubte User-IDs: ${CUR_IDS:-nur du selbst}" >&2
 echo -e "  ${DIM}5)${NC} yt-dlp Cookies:    ${CUR_YTDLP_BROWSER:-${CUR_YTDLP_COOKIE_FILE:-keine}}" >&2
-echo -e "  ${DIM}6)${NC} yt-dlp Format:     ${CUR_YTDLP:0:40}..." >&2
-echo -e "  ${DIM}7)${NC} Scheduler:         Poll ${CUR_POLL}ms / Timeout ${CUR_TIMEOUT}ms" >&2
+echo -e "  ${DIM}6)${NC} yt-dlp Paket:     ${CUR_YTDLP_PACKAGE:-yt-dlp[default]}" >&2
+echo -e "  ${DIM}7)${NC} yt-dlp Format:     ${CUR_YTDLP:0:40}..." >&2
+echo -e "  ${DIM}8)${NC} Scheduler:         Poll ${CUR_POLL}ms / Timeout ${CUR_TIMEOUT}ms" >&2
 echo "" >&2
 echo -e "  ${BOLD}Was aendern?${NC}" >&2
 echo "" >&2
 echo -e "  ${CYAN}1${NC} - Discord Token       ${CYAN}4${NC} - Erlaubte User-IDs" >&2
 echo -e "  ${CYAN}2${NC} - Zeitzone            ${CYAN}5${NC} - yt-dlp Cookies" >&2
-echo -e "  ${CYAN}3${NC} - Chat-Befehle        ${CYAN}6${NC} - yt-dlp Format" >&2
-echo -e "  ${CYAN}7${NC} - Scheduler" >&2
+echo -e "  ${CYAN}3${NC} - Chat-Befehle        ${CYAN}6${NC} - yt-dlp Paket" >&2
+echo -e "  ${CYAN}7${NC} - yt-dlp Format       ${CYAN}8${NC} - Scheduler" >&2
 echo -e "  ${CYAN}a${NC} - Alles               ${CYAN}q${NC} - Abbrechen" >&2
 echo "" >&2
 printf "  ${BOLD}Auswahl${NC}: " >&2
@@ -157,11 +159,16 @@ case "$CHOICE" in
     print_success "yt-dlp Cookies aktualisiert"
     ;;
   6)
+    NEW_YTDLP_PACKAGE=$(ask "yt-dlp Paket/Spec" "${CUR_YTDLP_PACKAGE:-yt-dlp[default]}")
+    set_env_value "YT_DLP_PACKAGE" "$NEW_YTDLP_PACKAGE"
+    print_success "yt-dlp Paket aktualisiert"
+    ;;
+  7)
     NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
     set_env_value "YT_DLP_FORMAT" "$NEW_YTDLP"
     print_success "yt-dlp Format aktualisiert"
     ;;
-  7)
+  8)
     NEW_POLL=$(ask "Scheduler Poll (ms)" "$CUR_POLL")
     NEW_TIMEOUT=$(ask "Startup Timeout (ms)" "$CUR_TIMEOUT")
     set_env_value "SCHEDULER_POLL_MS" "$NEW_POLL"
@@ -178,6 +185,7 @@ case "$CHOICE" in
     NEW_IDS=$(ask "Erlaubte User-IDs" "$CUR_IDS")
     NEW_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$CUR_YTDLP_BROWSER")
     NEW_COOKIE_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$CUR_YTDLP_COOKIE_FILE")
+    NEW_YTDLP_PACKAGE=$(ask "yt-dlp Paket/Spec" "${CUR_YTDLP_PACKAGE:-yt-dlp[default]}")
     NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
     NEW_POLL=$(ask "Scheduler Poll (ms)" "$CUR_POLL")
     NEW_TIMEOUT=$(ask "Startup Timeout (ms)" "$CUR_TIMEOUT")
@@ -188,6 +196,7 @@ case "$CHOICE" in
     set_env_value "COMMAND_ALLOWED_AUTHOR_IDS" "$NEW_IDS"
     set_env_value "YT_DLP_COOKIES_FROM_BROWSER" "$NEW_BROWSER"
     set_env_value "YT_DLP_COOKIES_FILE" "$NEW_COOKIE_FILE"
+    set_env_value "YT_DLP_PACKAGE" "$NEW_YTDLP_PACKAGE"
     set_env_value "YT_DLP_FORMAT" "$NEW_YTDLP"
     set_env_value "SCHEDULER_POLL_MS" "$NEW_POLL"
     set_env_value "STARTUP_TIMEOUT_MS" "$NEW_TIMEOUT"
@@ -206,11 +215,16 @@ esac
 echo "" >&2
 REBUILD=$(ask_yn "Container mit neuer Konfiguration neu starten?" "y")
 if [ "$REBUILD" = "1" ]; then
-  print_info "Starte Container neu..." >&2
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+  print_info "Baue und starte Container neu..." >&2
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
   echo "" >&2
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
   echo "" >&2
+  YT_DLP_VERSION=$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T control-panel yt-dlp --version 2>/dev/null || true)
+  if [ -n "$YT_DLP_VERSION" ]; then
+    print_success "yt-dlp im Container: $YT_DLP_VERSION"
+  fi
   print_success "Container neu gestartet"
 else
   print_warn "Container laeuft mit alter Konfiguration!"

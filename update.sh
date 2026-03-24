@@ -240,11 +240,21 @@ print_info "Stoppe Container..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
 echo "" >&2
-print_info "Baue und starte neu..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+print_info "Baue Image frisch ohne Cache, damit yt-dlp und Systempakete wirklich aktualisiert werden..."
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+
+echo "" >&2
+print_info "Starte Container..."
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
 echo "" >&2
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+
+YT_DLP_VERSION=$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T control-panel yt-dlp --version 2>/dev/null || true)
+if [ -n "$YT_DLP_VERSION" ]; then
+  echo "" >&2
+  print_success "yt-dlp im Container: $YT_DLP_VERSION"
+fi
 
 HOST_PORT=$(read_env "HOST_PORT")
 

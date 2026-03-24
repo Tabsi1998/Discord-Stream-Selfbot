@@ -443,7 +443,7 @@ export class DiscordCommandBridge {
       [
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
-        `yt-dlp: ${state.runtime.ytDlpAvailable ? "ja" : "nein"}`,
+        `yt-dlp: ${state.runtime.ytDlpAvailable ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})` : "nein"}`,
         `Kanaele: ${state.channels.length}`,
         `Presets: ${state.presets.length}`,
         `Events: ${state.events.length}`,
