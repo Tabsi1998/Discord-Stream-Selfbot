@@ -250,6 +250,7 @@ fi
 # ── .env schreiben ─────────────────────────────────────────────
 mkdir -p "$DATA_DIR"
 mkdir -p "$COOKIES_DIR"
+mkdir -p "$DEPLOY_DIR/yt-dlp-cache"
 touch "$DATA_DIR/.gitkeep" 2>/dev/null || true
 touch "$COOKIES_DIR/.gitkeep" 2>/dev/null || true
 

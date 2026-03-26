@@ -169,6 +169,7 @@ assert_positive_integer() {
 ensure_layout() {
   mkdir -p "$DATA_DIR"
   mkdir -p "$COOKIES_DIR"
+  mkdir -p "$DEPLOY_DIR/yt-dlp-cache"
   if [ ! -f "$DATA_DIR/.gitkeep" ]; then
     : > "$DATA_DIR/.gitkeep"
   fi

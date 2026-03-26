@@ -1,9 +1,22 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { appConfig } from "../config/appConfig.js";
 import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
 import type { SourceMode, StreamPreset } from "../domain/types.js";
 import { AppStateStore } from "../state/AppStateStore.js";
+
+// Auto-discover cookie file in the cookies directory
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const AUTO_COOKIE_PATH = resolve(appDir, "cookies", "yt-dlp-cookies.txt");
+const OAUTH2_TOKEN_PATH = resolve(
+  process.env.HOME || "/root",
+  ".cache",
+  "yt-dlp",
+  "youtube-oauth2",
+  "token_data.json",
+);
 
 export type ResolvedSource = {
   input:
@@ -45,10 +58,15 @@ function getCookieSourceLabel() {
   if (appConfig.ytDlpCookiesFromBrowser) {
     return `browser:${appConfig.ytDlpCookiesFromBrowser}`;
   }
+  // Check auto-discovered cookie file
+  if (existsSync(AUTO_COOKIE_PATH)) {
+    return `file:${AUTO_COOKIE_PATH} (auto)`;
+  }
   return "none";
 }
 
 function buildCookieArgs() {
+  // Priority 1: Explicitly configured cookie file
   if (appConfig.ytDlpCookiesFile) {
     if (!existsSync(appConfig.ytDlpCookiesFile)) {
       throw new Error(
@@ -58,8 +76,14 @@ function buildCookieArgs() {
     return ["--cookies", appConfig.ytDlpCookiesFile];
   }
 
+  // Priority 2: Browser cookies
   if (appConfig.ytDlpCookiesFromBrowser) {
     return ["--cookies-from-browser", appConfig.ytDlpCookiesFromBrowser];
+  }
+
+  // Priority 3: Auto-discovered cookie file in cookies/ directory
+  if (existsSync(AUTO_COOKIE_PATH)) {
+    return ["--cookies", AUTO_COOKIE_PATH];
   }
 
   return [];
@@ -76,6 +100,16 @@ function enhanceYtDlpError(message: string) {
     }
 
     return `${message}\nConfigure YT_DLP_COOKIES_FROM_BROWSER=edge (or chrome/firefox) or YT_DLP_COOKIES_FILE=/path/to/cookies.txt and restart the control panel.`;
+  }
+
+  // Detect rate-limiting or HTTP 429 errors
+  if (/429|too many requests|rate.?limit/i.test(message)) {
+    return `${message}\nYouTube rate-limiting detected. Wait a few minutes before retrying, or use cookies for authenticated access.`;
+  }
+
+  // Detect geo-restriction errors
+  if (/geo.?restrict|not available in your country|blocked.*country/i.test(message)) {
+    return `${message}\nThis content appears to be geo-restricted. A VPN or proxy may be needed.`;
   }
 
   return message;
@@ -105,24 +139,45 @@ export class SourceResolver {
       throw new Error("yt-dlp is required for this preset but was not detected");
     }
 
-    const attempts = [
-      {
-        label: "default",
-        extractorArgs: undefined as string | undefined,
-      },
+    // Build a list of YouTube client attempts for resilient resolution.
+    // YouTube frequently blocks individual clients with bot-checks; cycling
+    // through multiple clients dramatically improves success rates.
+    const attempts: { label: string; extractorArgs: string | undefined }[] = [
+      { label: "default", extractorArgs: undefined },
     ];
 
-    if (isYouTubeUrl(preset.sourceUrl) && appConfig.ytDlpYouTubeExtractorArgs) {
-      attempts.push({
-        label: "youtube-client-retry",
-        extractorArgs: appConfig.ytDlpYouTubeExtractorArgs,
-      });
+    if (isYouTubeUrl(preset.sourceUrl)) {
+      // Primary retry: configured extractor args (default: android)
+      if (appConfig.ytDlpYouTubeExtractorArgs) {
+        attempts.push({
+          label: "youtube-client-android",
+          extractorArgs: appConfig.ytDlpYouTubeExtractorArgs,
+        });
+      }
+
+      // Additional YouTube client fallbacks for bot-check resilience
+      const additionalClients = [
+        "youtube:player_client=ios",
+        "youtube:player_client=web_creator",
+        "youtube:player_client=mweb",
+        "youtube:player_client=tv",
+      ];
+      for (const client of additionalClients) {
+        if (client !== appConfig.ytDlpYouTubeExtractorArgs) {
+          attempts.push({
+            label: `youtube-client-${client.split("=")[1]}`,
+            extractorArgs: client,
+          });
+        }
+      }
     }
 
     const errors: string[] = [];
+    let lastBotCheck = false;
 
     for (const attempt of attempts) {
       try {
+        cancelSignal?.throwIfAborted();
         return await this.resolveViaYtDlp(
           preset,
           cancelSignal,
@@ -132,25 +187,37 @@ export class SourceResolver {
         const message =
           error instanceof Error ? error.message : "yt-dlp resolution failed";
         errors.push(message);
+        lastBotCheck = YOUTUBE_BOT_CHECK_PATTERN.test(message);
 
-        if (!attempt.extractorArgs) {
-          continue;
+        if (attempt.extractorArgs) {
+          this.store.appendLog("warn", "yt-dlp retry failed", {
+            preset: preset.name,
+            url: preset.sourceUrl,
+            extractorArgs: attempt.extractorArgs,
+            error: message.slice(0, 200),
+          });
         }
 
-        this.store.appendLog("warn", "yt-dlp retry failed", {
-          preset: preset.name,
-          url: preset.sourceUrl,
-          extractorArgs: attempt.extractorArgs,
-          error: message,
-        });
+        // If it's not a bot-check error, don't bother trying more clients
+        if (!lastBotCheck && attempts.indexOf(attempt) > 0) {
+          break;
+        }
       }
     }
 
-    if (errors.length > 1) {
-      throw new Error(`${errors[0]}\nRetry with alternate YouTube client also failed: ${errors[1]}`);
+    // Provide a clear, actionable error message
+    const baseError = errors[0] ?? "yt-dlp resolution failed";
+    if (errors.length > 1 && lastBotCheck) {
+      throw new Error(
+        `All ${errors.length} YouTube client attempts failed with bot-check.\n${baseError}`,
+      );
     }
-
-    throw new Error(errors[0] ?? "yt-dlp resolution failed");
+    if (errors.length > 1) {
+      throw new Error(
+        `${baseError}\nRetry with ${errors.length - 1} alternate YouTube client(s) also failed.`,
+      );
+    }
+    throw new Error(baseError);
   }
 
   private async resolveViaYtDlp(
@@ -164,9 +231,14 @@ export class SourceResolver {
     }
 
     const cookieArgs = buildCookieArgs();
+    // Auto-add OAuth2 credentials if token is available
+    const oauth2Args = existsSync(OAUTH2_TOKEN_PATH)
+      ? ["--username", "oauth2", "--password", ""]
+      : [];
     const args = [
       "--no-warnings",
       "--no-playlist",
+      ...oauth2Args,
       ...cookieArgs,
       ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
       "--format",
@@ -179,10 +251,14 @@ export class SourceResolver {
       preset.sourceUrl,
     ];
 
+    const authSource = oauth2Args.length
+      ? "oauth2"
+      : getCookieSourceLabel();
+
     this.store.appendLog("info", "Resolving source via yt-dlp", {
       preset: preset.name,
       url: preset.sourceUrl,
-      cookieSource: getCookieSourceLabel(),
+      cookieSource: authSource,
       extractorArgs: extractorArgs ?? "",
     });
 

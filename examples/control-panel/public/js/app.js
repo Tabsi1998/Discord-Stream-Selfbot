@@ -1312,6 +1312,7 @@ async function init() {
   resetChannelForm();
   resetPresetForm();
   resetEventForm();
+  initYouTubeAuth();
   await refresh();
 
   // Auto-poll: faster when a stream is actively running
@@ -1336,6 +1337,161 @@ async function init() {
       els.streamUptime.textContent = formatUptime(uptimeMs);
     }
   }, 1000);
+}
+
+// ── YouTube Authentication (OAuth2 + Cookies) ─────────────────
+function initYouTubeAuth() {
+  const banner = document.querySelector("#authStatusBanner");
+  const codeArea = document.querySelector("#oauth2DeviceCodeArea");
+  const codeEl = document.querySelector("#oauth2DeviceCode");
+  const linkEl = document.querySelector("#oauth2VerifyLink");
+  const oauth2Actions = document.querySelector("#oauth2Actions");
+  const cookieToggle = document.querySelector("#cookieToggle");
+  const cookieArrow = document.querySelector("#cookieToggleArrow");
+  const cookieArea = document.querySelector("#cookieUploadArea");
+  const cookieFileInput = document.querySelector("#cookieFileInput");
+  const cookieTextarea = document.querySelector("#cookieContentArea");
+  const cookieActions = document.querySelector("#cookieActions");
+
+  let oauth2Polling = null;
+
+  // Toggle cookie section
+  cookieToggle.addEventListener("click", () => {
+    cookieArea.classList.toggle("hidden");
+    cookieArrow.innerHTML = cookieArea.classList.contains("hidden") ? "&#9660;" : "&#9650;";
+  });
+
+  // File upload handler
+  cookieFileInput.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { cookieTextarea.value = ev.target?.result || ""; };
+    reader.readAsText(file);
+  });
+
+  async function loadAuthStatus() {
+    let oauth2 = { status: "idle", tokenConfigured: false };
+    let cookies = { configured: false, cookieEntries: 0 };
+    try { oauth2 = await api("/api/oauth2/status"); } catch {}
+    try { cookies = await api("/api/cookies/status"); } catch {}
+
+    const isAuth = oauth2.tokenConfigured || cookies.configured;
+
+    // Update status banner
+    banner.style.background = isAuth ? "var(--success-soft)" : "var(--warning-soft)";
+    banner.style.border = `1px solid ${isAuth ? "var(--success)" : "var(--warning)"}33`;
+    banner.innerHTML = `
+      <p style="color:${isAuth ? "var(--success)" : "var(--warning)"};font-weight:600;margin-bottom:4px">
+        ${oauth2.tokenConfigured
+          ? "OAuth2 aktiv - YouTube laeuft automatisch!"
+          : cookies.configured
+            ? `Cookies aktiv (${cookies.cookieEntries} Eintraege)`
+            : 'Nicht authentifiziert - YouTube kann "not a bot" Fehler zeigen'}
+      </p>
+      <p class="muted" style="font-size:0.85rem">
+        ${oauth2.tokenConfigured
+          ? "Token erneuert sich automatisch. Kein manuelles Eingreifen noetig."
+          : cookies.configured
+            ? "Cookies muessen manuell erneuert werden wenn sie ablaufen."
+            : "Waehle eine der Optionen unten um YouTube zu authentifizieren."}
+      </p>`;
+
+    // Update OAuth2 actions
+    if (oauth2.status === "waiting" && oauth2.deviceCode) {
+      codeArea.classList.remove("hidden");
+      codeEl.textContent = oauth2.deviceCode;
+      linkEl.href = oauth2.verifyUrl;
+      linkEl.textContent = oauth2.verifyUrl;
+      oauth2Actions.innerHTML = "";
+    } else {
+      codeArea.classList.add("hidden");
+      if (oauth2.tokenConfigured) {
+        oauth2Actions.innerHTML = `
+          <button class="ghost-button" type="button" id="oauth2RefreshBtn">Token erneuern</button>
+          <button class="danger-button" type="button" id="oauth2RevokeBtn">Token loeschen</button>`;
+        document.querySelector("#oauth2RefreshBtn")?.addEventListener("click", startOAuth2);
+        document.querySelector("#oauth2RevokeBtn")?.addEventListener("click", revokeOAuth2);
+      } else {
+        oauth2Actions.innerHTML = `
+          <button class="primary-button" type="button" id="oauth2StartBtn" style="padding:12px 24px;font-size:1rem">
+            Jetzt mit Google anmelden
+          </button>`;
+        document.querySelector("#oauth2StartBtn")?.addEventListener("click", startOAuth2);
+      }
+    }
+
+    // Update cookie actions
+    cookieActions.innerHTML = `
+      <button class="primary-button" type="button" id="cookieUploadBtn">Cookies hochladen</button>
+      ${cookies.configured ? '<button class="danger-button" type="button" id="cookieDeleteBtn">Cookies loeschen</button>' : ""}`;
+    document.querySelector("#cookieUploadBtn")?.addEventListener("click", uploadCookies);
+    document.querySelector("#cookieDeleteBtn")?.addEventListener("click", deleteCookies);
+  }
+
+  async function startOAuth2() {
+    const btn = document.querySelector("#oauth2StartBtn") || document.querySelector("#oauth2RefreshBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Wird gestartet..."; }
+    try {
+      const result = await api("/api/oauth2/start", { method: "POST" });
+      showNotice(result.message, "success");
+      await loadAuthStatus();
+
+      // Poll for completion
+      if (oauth2Polling) clearInterval(oauth2Polling);
+      oauth2Polling = setInterval(async () => {
+        try {
+          const s = await api("/api/oauth2/status");
+          if (s.status === "success" || s.tokenConfigured) {
+            clearInterval(oauth2Polling);
+            oauth2Polling = null;
+            showNotice("OAuth2 erfolgreich! YouTube funktioniert jetzt automatisch.", "success");
+            await loadAuthStatus();
+          } else if (s.status === "error" || s.status === "idle") {
+            clearInterval(oauth2Polling);
+            oauth2Polling = null;
+            await loadAuthStatus();
+          }
+        } catch {}
+      }, 3000);
+      setTimeout(() => { if (oauth2Polling) { clearInterval(oauth2Polling); oauth2Polling = null; } }, 300000);
+    } catch (err) {
+      showNotice(err.message, "danger");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Jetzt mit Google anmelden"; }
+    }
+  }
+
+  async function revokeOAuth2() {
+    try {
+      await api("/api/oauth2/revoke", { method: "POST" });
+      showNotice("OAuth2 Token geloescht.", "success");
+      await loadAuthStatus();
+    } catch (err) { showNotice(err.message, "danger"); }
+  }
+
+  async function uploadCookies() {
+    const content = cookieTextarea.value.trim();
+    if (!content) { showNotice("Bitte Cookie-Inhalt einfuegen!", "danger"); return; }
+    try {
+      const result = await api("/api/cookies/upload", { method: "POST", body: JSON.stringify({ content }) });
+      showNotice(result.message, "success");
+      cookieTextarea.value = "";
+      cookieFileInput.value = "";
+      await loadAuthStatus();
+    } catch (err) { showNotice(err.message, "danger"); }
+  }
+
+  async function deleteCookies() {
+    try {
+      await api("/api/cookies/delete", { method: "POST" });
+      showNotice("Cookies geloescht.", "success");
+      await loadAuthStatus();
+    } catch (err) { showNotice(err.message, "danger"); }
+  }
+
+  // Initial load
+  loadAuthStatus();
 }
 
 void init().catch(handleError);

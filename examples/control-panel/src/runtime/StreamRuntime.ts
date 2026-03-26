@@ -396,7 +396,7 @@ export class StreamRuntime extends EventEmitter {
         reason: session.stopReason ?? "unknown",
       });
       this.completeSession(session, "aborted", session.stopReason ?? "forced-stop");
-    }, 5_000);
+    }, 10_000);
   }
 
   private createStartupWatcher(

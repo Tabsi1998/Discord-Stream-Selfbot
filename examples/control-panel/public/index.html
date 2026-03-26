@@ -105,6 +105,56 @@
           <p id="voiceChannelDiscoveryInfo" class="muted"></p>
         </section>
 
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">YouTube Authentifizierung</p>
+              <h2>YouTube Login</h2>
+            </div>
+          </div>
+          <div id="authStatusBanner" style="margin-bottom:16px;padding:12px;border-radius:var(--radius-small)"></div>
+
+          <div style="margin-bottom:20px;padding:16px;background:var(--panel-strong);border-radius:var(--radius-small);border:1px solid rgba(88,101,242,0.2)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div>
+                <h3 style="font-size:1rem;color:var(--bright);margin-bottom:4px">Option 1: Google OAuth2 <span style="color:var(--success);font-size:0.8rem;font-weight:400">(Empfohlen)</span></h3>
+                <p class="muted" style="font-size:0.85rem">Einmal einrichten, laeuft dann fuer immer automatisch. Token erneuert sich selbst.</p>
+              </div>
+            </div>
+            <div id="oauth2DeviceCodeArea" class="hidden" style="background:var(--panel);padding:16px;border-radius:var(--radius-small);text-align:center">
+              <p style="font-size:0.95rem;margin-bottom:12px;color:var(--bright)">Gehe jetzt zu:</p>
+              <a id="oauth2VerifyLink" href="#" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:10px 24px;background:var(--primary);color:white;border-radius:var(--radius-small);text-decoration:none;font-weight:600;font-size:1.1rem;margin-bottom:16px"></a>
+              <p style="margin-bottom:8px;color:var(--text)">und gib diesen Code ein:</p>
+              <p id="oauth2DeviceCode" style="font-size:2rem;font-weight:700;font-family:var(--font-mono);color:var(--bright);letter-spacing:4px;padding:8px;background:var(--panel-strong);border-radius:var(--radius-small);display:inline-block"></p>
+              <p class="muted" style="margin-top:12px;font-size:0.85rem">Warte auf Bestaetigung... (nach Eingabe des Codes dauert es einen Moment)</p>
+            </div>
+            <div id="oauth2Actions" class="form-actions"></div>
+          </div>
+
+          <div style="padding:16px;background:var(--panel-strong);border-radius:var(--radius-small)">
+            <div id="cookieToggle" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+              <div>
+                <h3 style="font-size:1rem;color:var(--bright);margin-bottom:4px">Option 2: Cookie Upload <span class="muted" style="font-size:0.8rem;font-weight:400">(Manuell)</span></h3>
+                <p class="muted" style="font-size:0.85rem">Falls OAuth2 nicht funktioniert - Cookies aus dem Browser exportieren.</p>
+              </div>
+              <span id="cookieToggleArrow" style="color:var(--muted);font-size:1.2rem">&#9660;</span>
+            </div>
+            <div id="cookieUploadArea" class="hidden" style="margin-top:12px">
+              <div class="form-grid">
+                <label class="full-width">
+                  Cookie-Datei hochladen (.txt)
+                  <input id="cookieFileInput" type="file" accept=".txt" style="padding:8px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-small);color:var(--text)" />
+                </label>
+                <label class="full-width">
+                  Oder Inhalt einfuegen (Netscape cookies.txt Format)
+                  <textarea id="cookieContentArea" rows="4" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;0&#9;cookie_name&#9;cookie_value" style="width:100%;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-small);color:var(--text);font-family:var(--font-mono);font-size:0.8rem;resize:vertical"></textarea>
+                </label>
+                <div id="cookieActions" class="form-actions"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-header">
             <div>
