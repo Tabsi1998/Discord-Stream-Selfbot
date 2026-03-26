@@ -6,6 +6,7 @@ WORKDIR /app
 
 ARG YT_DLP_PACKAGE=yt-dlp[default]
 
+# Layer 1: System packages (cached unless Dockerfile changes)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     build-essential \
@@ -28,12 +29,25 @@ f.write_text(t); print('OAuth2 plugin patched: device_code fix')" \
  && yt-dlp --version \
  && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+# Layer 2: npm dependencies (cached unless package.json changes)
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+RUN npm install
 
-RUN npm install \
- && npm run build \
- && npm --prefix examples/control-panel install \
- && npm --prefix examples/control-panel run build \
+COPY examples/control-panel/package.json examples/control-panel/package-lock.json* examples/control-panel/
+
+# Layer 3: Build main library
+COPY src/ src/
+COPY tsconfig.json ./
+RUN npm run build
+
+# Layer 4: Install + build control panel (cached unless its deps change)
+RUN npm --prefix examples/control-panel install
+
+# Layer 5: Copy remaining code + build control panel
+COPY examples/control-panel/src/ examples/control-panel/src/
+COPY examples/control-panel/tsconfig.json examples/control-panel/
+COPY examples/control-panel/public/ examples/control-panel/public/
+RUN npm --prefix examples/control-panel run build \
  && mkdir -p /app/examples/control-panel/data \
  && npm cache clean --force
 
