@@ -139,111 +139,105 @@ export class SourceResolver {
       throw new Error("yt-dlp is required for this preset but was not detected");
     }
 
-    // Build a list of YouTube client attempts for resilient resolution.
-    // When OAuth2 is active, skip alternate player clients - they conflict
-    // with OAuth2 tokens (android/ios clients reject OAuth2 auth headers).
+    // Smart auth strategy:
+    // 1. First try WITHOUT any auth (fastest, works when IP is not flagged)
+    // 2. If bot-check → retry with OAuth2 (if available)
+    // 3. If still failing → retry with alternate YouTube clients
     const hasOAuth2 = existsSync(OAUTH2_TOKEN_PATH);
-    const attempts: { label: string; extractorArgs: string | undefined }[] = [
-      { label: "default", extractorArgs: undefined },
-    ];
-
-    if (isYouTubeUrl(preset.sourceUrl) && !hasOAuth2) {
-      // Only add client fallbacks when NOT using OAuth2
-      if (appConfig.ytDlpYouTubeExtractorArgs) {
-        attempts.push({
-          label: "youtube-client-android",
-          extractorArgs: appConfig.ytDlpYouTubeExtractorArgs,
-        });
-      }
-
-      const additionalClients = [
-        "youtube:player_client=ios",
-        "youtube:player_client=web_creator",
-        "youtube:player_client=mweb",
-        "youtube:player_client=tv",
-      ];
-      for (const client of additionalClients) {
-        if (client !== appConfig.ytDlpYouTubeExtractorArgs) {
-          attempts.push({
-            label: `youtube-client-${client.split("=")[1]}`,
-            extractorArgs: client,
-          });
-        }
-      }
-    }
+    const hasCookies = buildCookieArgs().length > 0;
 
     const errors: string[] = [];
     let lastBotCheck = false;
 
-    for (const attempt of attempts) {
+    // Phase 1: Try without any special auth
+    try {
+      cancelSignal?.throwIfAborted();
+      return await this.resolveViaYtDlp(preset, cancelSignal, undefined, false);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "yt-dlp failed";
+      errors.push(message);
+      lastBotCheck = YOUTUBE_BOT_CHECK_PATTERN.test(message);
+
+      // If it worked but had a different error (not bot-check), throw immediately
+      if (!lastBotCheck && !isYouTubeUrl(preset.sourceUrl)) {
+        throw error;
+      }
+    }
+
+    // Phase 2: If bot-check and OAuth2 is available, try with OAuth2
+    if (lastBotCheck && hasOAuth2) {
+      this.store.appendLog("info", "Bot-check detected, retrying with OAuth2", {
+        preset: preset.name,
+      });
       try {
         cancelSignal?.throwIfAborted();
-        return await this.resolveViaYtDlp(
-          preset,
-          cancelSignal,
-          attempt.extractorArgs,
-        );
+        return await this.resolveViaYtDlp(preset, cancelSignal, undefined, true);
       } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : "yt-dlp resolution failed";
+        const message = error instanceof Error ? error.message : "OAuth2 attempt failed";
         errors.push(message);
-        lastBotCheck = YOUTUBE_BOT_CHECK_PATTERN.test(message);
+        this.store.appendLog("warn", "OAuth2 attempt failed, trying client fallbacks", {
+          error: message.slice(0, 150),
+        });
+      }
+    }
 
-        if (attempt.extractorArgs) {
+    // Phase 3: Try alternate YouTube clients (without OAuth2)
+    if (isYouTubeUrl(preset.sourceUrl)) {
+      const clients = [
+        appConfig.ytDlpYouTubeExtractorArgs,
+        "youtube:player_client=ios",
+        "youtube:player_client=web_creator",
+        "youtube:player_client=mweb",
+        "youtube:player_client=tv",
+      ].filter(Boolean) as string[];
+
+      for (const client of clients) {
+        try {
+          cancelSignal?.throwIfAborted();
+          return await this.resolveViaYtDlp(preset, cancelSignal, client, false);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "client retry failed";
+          errors.push(message);
           this.store.appendLog("warn", "yt-dlp retry failed", {
             preset: preset.name,
-            url: preset.sourceUrl,
-            extractorArgs: attempt.extractorArgs,
-            error: message.slice(0, 200),
+            extractorArgs: client,
+            error: message.slice(0, 150),
           });
-        }
-
-        // If it's not a bot-check error, don't bother trying more clients
-        if (!lastBotCheck && attempts.indexOf(attempt) > 0) {
-          break;
+          if (!YOUTUBE_BOT_CHECK_PATTERN.test(message)) break;
         }
       }
     }
 
-    // Provide a clear, actionable error message
+    // All attempts failed
     const baseError = errors[0] ?? "yt-dlp resolution failed";
-    if (errors.length > 1 && lastBotCheck) {
-      throw new Error(
-        `All ${errors.length} YouTube client attempts failed with bot-check.\n${baseError}`,
-      );
-    }
-    if (errors.length > 1) {
-      throw new Error(
-        `${baseError}\nRetry with ${errors.length - 1} alternate YouTube client(s) also failed.`,
-      );
-    }
-    throw new Error(baseError);
+    throw new Error(
+      errors.length > 1
+        ? `${baseError}\n${errors.length - 1} retry attempt(s) also failed.`
+        : baseError,
+    );
   }
 
   private async resolveViaYtDlp(
     preset: StreamPreset,
     cancelSignal?: AbortSignal,
     extractorArgs?: string,
+    forceOAuth2 = false,
   ): Promise<ResolvedSource> {
     const ytDlpPath = appConfig.ytDlpPath;
     if (!ytDlpPath) {
       throw new Error("yt-dlp is required for this preset but was not detected");
     }
 
-    const cookieArgs = buildCookieArgs();
-    // Auto-add OAuth2 credentials if token is available
-    const hasOAuth2Token = existsSync(OAUTH2_TOKEN_PATH);
-    const oauth2Args = hasOAuth2Token
+    const cookieArgs = forceOAuth2 ? [] : buildCookieArgs();
+    const oauth2Args = forceOAuth2 && existsSync(OAUTH2_TOKEN_PATH)
       ? ["--username", "oauth2", "--password", ""]
       : [];
-    // When OAuth2 is active, skip extractor-args (they conflict with OAuth2)
-    const effectiveExtractorArgs = hasOAuth2Token ? undefined : extractorArgs;
     const args = [
       "--no-warnings",
       "--no-playlist",
       ...oauth2Args,
       ...cookieArgs,
-      ...(effectiveExtractorArgs ? ["--extractor-args", effectiveExtractorArgs] : []),
+      ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
       "--format",
       buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
