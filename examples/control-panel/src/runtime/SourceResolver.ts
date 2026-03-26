@@ -140,14 +140,15 @@ export class SourceResolver {
     }
 
     // Build a list of YouTube client attempts for resilient resolution.
-    // YouTube frequently blocks individual clients with bot-checks; cycling
-    // through multiple clients dramatically improves success rates.
+    // When OAuth2 is active, skip alternate player clients - they conflict
+    // with OAuth2 tokens (android/ios clients reject OAuth2 auth headers).
+    const hasOAuth2 = existsSync(OAUTH2_TOKEN_PATH);
     const attempts: { label: string; extractorArgs: string | undefined }[] = [
       { label: "default", extractorArgs: undefined },
     ];
 
-    if (isYouTubeUrl(preset.sourceUrl)) {
-      // Primary retry: configured extractor args (default: android)
+    if (isYouTubeUrl(preset.sourceUrl) && !hasOAuth2) {
+      // Only add client fallbacks when NOT using OAuth2
       if (appConfig.ytDlpYouTubeExtractorArgs) {
         attempts.push({
           label: "youtube-client-android",
@@ -155,7 +156,6 @@ export class SourceResolver {
         });
       }
 
-      // Additional YouTube client fallbacks for bot-check resilience
       const additionalClients = [
         "youtube:player_client=ios",
         "youtube:player_client=web_creator",
@@ -232,15 +232,18 @@ export class SourceResolver {
 
     const cookieArgs = buildCookieArgs();
     // Auto-add OAuth2 credentials if token is available
-    const oauth2Args = existsSync(OAUTH2_TOKEN_PATH)
+    const hasOAuth2Token = existsSync(OAUTH2_TOKEN_PATH);
+    const oauth2Args = hasOAuth2Token
       ? ["--username", "oauth2", "--password", ""]
       : [];
+    // When OAuth2 is active, skip extractor-args (they conflict with OAuth2)
+    const effectiveExtractorArgs = hasOAuth2Token ? undefined : extractorArgs;
     const args = [
       "--no-warnings",
       "--no-playlist",
       ...oauth2Args,
       ...cookieArgs,
-      ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
+      ...(effectiveExtractorArgs ? ["--extractor-args", effectiveExtractorArgs] : []),
       "--format",
       buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
