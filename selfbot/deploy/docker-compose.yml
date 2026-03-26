@@ -18,7 +18,8 @@ services:
       - "${HOST_PORT:-3099}:${PORT:-3099}"
     volumes:
       - ./data:/app/examples/control-panel/data
-      - ./cookies:/app/examples/control-panel/cookies:ro
+      - ./cookies:/app/examples/control-panel/cookies
+      - ./yt-dlp-cache:/root/.cache/yt-dlp
     healthcheck:
       test:
         [

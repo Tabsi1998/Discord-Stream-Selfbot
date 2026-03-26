@@ -215,9 +215,8 @@ esac
 echo "" >&2
 REBUILD=$(ask_yn "Container mit neuer Konfiguration neu starten?" "y")
 if [ "$REBUILD" = "1" ]; then
-  print_info "Baue und starte Container neu..." >&2
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+  print_info "Starte Container mit neuer Konfiguration neu (kein Rebuild noetig)..." >&2
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
   echo "" >&2
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
   echo "" >&2
@@ -225,7 +224,7 @@ if [ "$REBUILD" = "1" ]; then
   if [ -n "$YT_DLP_VERSION" ]; then
     print_success "yt-dlp im Container: $YT_DLP_VERSION"
   fi
-  print_success "Container neu gestartet"
+  print_success "Container neu gestartet (nur Konfiguration aktualisiert, kein Image-Neubau)"
 else
   print_warn "Container laeuft mit alter Konfiguration!"
 fi

@@ -1,20 +1,28 @@
 # Discord Stream Selfbot - PRD
 
-## Original Problem Statement
-Discord Stream Selfbot from https://github.com/Tabsi1998/Discord-Stream-Selfbot - install, run, fix YouTube bot-detection issues.
+## Aenderungen (11 Dateien)
 
-## Changes Made (6 files)
+### Neue Features:
+- YouTube OAuth2 Login (einmal einrichten, laeuft fuer immer)
+- Cookie Upload/Delete ueber Web-Panel
+- 6 YouTube-Client Fallbacks gegen Bot-Detection
+- Smart Update (mit Cache statt --no-cache)
+- Config aendern ohne komplett neu zu bauen
 
-### Backend TypeScript (need rebuild):
-1. `examples/control-panel/src/server/createServer.ts` - Added OAuth2 + Cookie management API endpoints
-2. `examples/control-panel/src/runtime/SourceResolver.ts` - 6 YouTube client fallbacks + auto OAuth2 token usage + auto cookie discovery
-3. `examples/control-panel/src/runtime/StreamRuntime.ts` - Force-close timeout 5s → 10s
-4. `examples/control-panel/src/services/ControlPanelService.ts` - Added public appendLog method
+### Geaenderte Dateien:
+1. `examples/control-panel/src/server/createServer.ts` - OAuth2 + Cookie API
+2. `examples/control-panel/src/runtime/SourceResolver.ts` - Multi-Client Retry + Auto-OAuth2
+3. `examples/control-panel/src/runtime/StreamRuntime.ts` - Timeout Fix
+4. `examples/control-panel/src/services/ControlPanelService.ts` - appendLog
+5. `examples/control-panel/public/index.html` - YouTube Login UI
+6. `examples/control-panel/public/js/app.js` - OAuth2 + Cookie JS
+7. `docker/control-panel.Dockerfile` - OAuth2 Plugin
+8. `deploy/docker-compose.yml` - Token Persistenz Volume
+9. `config.sh` - Kein unnoetigr Rebuild
+10. `update.sh` - Smart Build
+11. `install.sh` + `deploy/deploy-lib.sh` - Cache Dir
 
-### Frontend (no rebuild needed):
-5. `examples/control-panel/public/index.html` - YouTube Login section HTML
-6. `examples/control-panel/public/js/app.js` - OAuth2 + Cookie management JavaScript
-
-## Deployment
-1. Push changes to GitHub
-2. On server: `./update.sh` (pulls + rebuilds + restarts Docker)
+### Deployment:
+1. Save to GitHub (hier im Chat)
+2. Auf Server: `./update.sh`
+3. Im Panel: "Jetzt mit Google anmelden" klicken

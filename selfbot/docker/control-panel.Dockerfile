@@ -19,6 +19,7 @@ RUN apt-get update \
     tini \
     libzmq3-dev \
  && python3 -m pip install --no-cache-dir --break-system-packages --pre -U "${YT_DLP_PACKAGE}" \
+ && python3 -m pip install --no-cache-dir --break-system-packages yt-dlp-youtube-oauth2 \
  && yt-dlp --version \
  && rm -rf /var/lib/apt/lists/*
 

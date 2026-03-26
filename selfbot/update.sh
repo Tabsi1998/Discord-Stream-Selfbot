@@ -236,12 +236,28 @@ fi
 print_step 5 5 "Container neu bauen"
 
 echo "" >&2
+
+# Pruefen ob ein frischer Bau noetig ist (yt-dlp update etc.)
+FRESH_BUILD=false
+if [ "${1:-}" = "--fresh" ] || [ "${1:-}" = "-f" ]; then
+  FRESH_BUILD=true
+fi
+
+# Nur stoppen wenn noetig
 print_info "Stoppe Container..."
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
 
 echo "" >&2
-print_info "Baue Image frisch ohne Cache, damit yt-dlp und Systempakete wirklich aktualisiert werden..."
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+mkdir -p "$DEPLOY_DIR/yt-dlp-cache"
+
+if [ "$FRESH_BUILD" = true ]; then
+  print_info "Frischer Bau ohne Cache (--fresh Flag) - yt-dlp wird aktualisiert..."
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull --no-cache 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+else
+  print_info "Baue Image mit Cache (Code-Update)..."
+  print_info "Fuer kompletten Neubau mit yt-dlp Update: ./update.sh --fresh"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build --pull 2>&1 | while IFS= read -r line; do echo "  $line" >&2; done
+fi
 
 echo "" >&2
 print_info "Starte Container..."
