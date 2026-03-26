@@ -1,0 +1,69 @@
+node_modules
+dist
+package-lock.json
+
+# Examples
+examples/*/node_modules
+examples/*/dist
+examples/*/.env
+examples/*/data
+examples/*/*.log
+
+# Deploy
+deploy/.env
+deploy/data/*
+!deploy/data/.gitkeep
+
+# Environment files
+*.env
+*.env.*
+
+# Emergent Platform (nicht ins Repo)
+.emergent/
+backend/
+frontend/
+memory/
+temp_repo/
+test_reports/
+design_guidelines.json
+backend_test.py
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*
+-e 
+# Environment files
+*.env
+*.env.*

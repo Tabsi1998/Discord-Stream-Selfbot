@@ -1,0 +1,11 @@
+name: Publish pkg.pr.new
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - name: Disabled
+        run: echo "Workflow deaktiviert - pkg-pr-new App nicht installiert"

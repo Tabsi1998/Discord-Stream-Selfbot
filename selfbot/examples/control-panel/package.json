@@ -1,0 +1,24 @@
+{
+  "name": "@dank074/discord-video-stream-control-panel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web control panel and scheduler for discord-video-stream",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "npm --prefix ../.. run build",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=.env ./dist/index.js"
+  },
+  "dependencies": {
+    "@dank074/discord-video-stream": "file:../..",
+    "discord.js-selfbot-v13": "^3.7.1",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^25.0.1",
+    "typescript": "^5.9.3"
+  }
+}
