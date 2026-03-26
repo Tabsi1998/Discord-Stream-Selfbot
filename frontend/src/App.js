@@ -296,61 +296,81 @@ function ManualStartSection({ channels, presets, api, refresh, setNotice }) {
 
 function CookieManagementSection({ api, setNotice }) {
   const [cookieStatus, setCookieStatus] = useState(null);
+  const [oauth2Status, setOauth2Status] = useState(null);
   const [cookieContent, setCookieContent] = useState('');
-  const [howto, setHowto] = useState(null);
-  const [showHowto, setShowHowto] = useState(false);
+  const [showCookies, setShowCookies] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [startingOAuth, setStartingOAuth] = useState(false);
 
   useEffect(() => {
-    loadStatus();
+    loadAllStatus();
     // eslint-disable-next-line
   }, []);
 
-  const loadStatus = async () => {
-    try {
-      const status = await api('/api/cookies/status');
-      setCookieStatus(status);
-    } catch {}
+  const loadAllStatus = async () => {
+    try { const s = await api('/api/cookies/status'); setCookieStatus(s); } catch {}
+    try { const o = await api('/api/oauth2/status'); setOauth2Status(o); } catch {}
   };
 
-  const loadHowto = async () => {
-    if (howto) { setShowHowto(!showHowto); return; }
+  // === OAuth2 (Empfohlen - einmal einrichten, laeuft fuer immer) ===
+  const startOAuth2 = async () => {
+    setStartingOAuth(true);
     try {
-      const data = await api('/api/cookies/howto');
-      setHowto(data);
-      setShowHowto(true);
-    } catch {}
-  };
-
-  const uploadCookies = async () => {
-    if (!cookieContent.trim()) {
-      setNotice({ message: 'Bitte Cookie-Inhalt einfuegen!', tone: 'danger' });
-      return;
-    }
-    setUploading(true);
-    try {
-      const result = await api('/api/cookies/upload', {
-        method: 'POST',
-        body: JSON.stringify({ content: cookieContent }),
-      });
+      const result = await api('/api/oauth2/start', { method: 'POST' });
+      setOauth2Status({ status: 'waiting', deviceCode: result.deviceCode, verifyUrl: result.verifyUrl, tokenConfigured: false });
       setNotice({ message: result.message, tone: 'success' });
-      setCookieContent('');
-      await loadStatus();
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const s = await api('/api/oauth2/status');
+          setOauth2Status(s);
+          if (s.status === 'success' || s.status === 'error' || s.status === 'idle') {
+            clearInterval(poll);
+            if (s.tokenConfigured) {
+              setNotice({ message: 'OAuth2 erfolgreich! YouTube funktioniert jetzt automatisch.', tone: 'success' });
+            }
+          }
+        } catch {}
+      }, 3000);
+      // Stop polling after 5 minutes
+      setTimeout(() => clearInterval(poll), 300000);
     } catch (err) {
       setNotice({ message: err.message, tone: 'danger' });
     } finally {
-      setUploading(false);
+      setStartingOAuth(false);
     }
+  };
+
+  const revokeOAuth2 = async () => {
+    try {
+      await api('/api/oauth2/revoke', { method: 'POST' });
+      setNotice({ message: 'OAuth2 Token geloescht.', tone: 'success' });
+      await loadAllStatus();
+    } catch (err) {
+      setNotice({ message: err.message, tone: 'danger' });
+    }
+  };
+
+  // === Cookies (Fallback) ===
+  const uploadCookies = async () => {
+    if (!cookieContent.trim()) { setNotice({ message: 'Bitte Cookie-Inhalt einfuegen!', tone: 'danger' }); return; }
+    setUploading(true);
+    try {
+      const result = await api('/api/cookies/upload', { method: 'POST', body: JSON.stringify({ content: cookieContent }) });
+      setNotice({ message: result.message, tone: 'success' });
+      setCookieContent('');
+      await loadAllStatus();
+    } catch (err) {
+      setNotice({ message: err.message, tone: 'danger' });
+    } finally { setUploading(false); }
   };
 
   const deleteCookies = async () => {
     try {
       await api('/api/cookies/delete', { method: 'POST' });
       setNotice({ message: 'Cookies geloescht.', tone: 'success' });
-      await loadStatus();
-    } catch (err) {
-      setNotice({ message: err.message, tone: 'danger' });
-    }
+      await loadAllStatus();
+    } catch (err) { setNotice({ message: err.message, tone: 'danger' }); }
   };
 
   const handleFileUpload = (e) => {
@@ -361,71 +381,119 @@ function CookieManagementSection({ api, setNotice }) {
     reader.readAsText(file);
   };
 
+  const isAuthenticated = oauth2Status?.tokenConfigured || cookieStatus?.configured;
+
   return (
     <section className="panel" data-testid="cookie-management-section">
       <div className="panel-header">
         <div>
           <p className="eyebrow">YouTube Authentifizierung</p>
-          <h2>Cookie Management</h2>
+          <h2>YouTube Login</h2>
         </div>
-        <button data-testid="cookie-howto-button" className="ghost-button" type="button" onClick={loadHowto}>
-          {showHowto ? 'Anleitung ausblenden' : 'Wie geht das?'}
-        </button>
       </div>
 
-      {cookieStatus && (
-        <div className="form-grid" style={{marginBottom: '16px'}}>
-          <div className="full-width">
-            <p style={{marginBottom: '8px'}}>
-              <strong>Status: </strong>
-              {cookieStatus.configured ? (
-                <span style={{color: 'var(--success)'}}>Cookies konfiguriert ({cookieStatus.cookieEntries} Eintraege)</span>
-              ) : (
-                <span style={{color: 'var(--warning)'}}>Keine Cookies konfiguriert - YouTube kann "not a bot" Fehler zeigen</span>
-              )}
-            </p>
-            {cookieStatus.lastModified && (
-              <p className="muted">Zuletzt aktualisiert: {new Date(cookieStatus.lastModified).toLocaleString('de-AT')}</p>
-            )}
+      {/* Status Overview */}
+      <div style={{marginBottom: '16px', padding: '12px', background: isAuthenticated ? 'var(--success-soft)' : 'var(--warning-soft)', borderRadius: 'var(--radius-small)', border: `1px solid ${isAuthenticated ? 'var(--success)' : 'var(--warning)'}33`}}>
+        <p style={{color: isAuthenticated ? 'var(--success)' : 'var(--warning)', fontWeight: 600, marginBottom: '4px'}}>
+          {oauth2Status?.tokenConfigured
+            ? 'OAuth2 aktiv - YouTube laeuft automatisch!'
+            : cookieStatus?.configured
+              ? `Cookies aktiv (${cookieStatus.cookieEntries} Eintraege)`
+              : 'Nicht authentifiziert - YouTube kann "not a bot" Fehler zeigen'}
+        </p>
+        <p className="muted" style={{fontSize: '0.85rem'}}>
+          {oauth2Status?.tokenConfigured
+            ? 'Token erneuert sich automatisch. Kein manuelles Eingreifen noetig.'
+            : cookieStatus?.configured
+              ? 'Cookies muessen manuell erneuert werden wenn sie ablaufen.'
+              : 'Waehle eine der Optionen unten um YouTube zu authentifizieren.'}
+        </p>
+      </div>
+
+      {/* Option 1: OAuth2 (Recommended) */}
+      <div style={{marginBottom: '20px', padding: '16px', background: 'var(--panel-strong)', borderRadius: 'var(--radius-small)', border: '1px solid var(--primary)33'}}>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px'}}>
+          <div>
+            <h3 style={{fontSize: '1rem', color: 'var(--bright)', marginBottom: '4px'}}>
+              Option 1: Google OAuth2 <span style={{color: 'var(--success)', fontSize: '0.8rem', fontWeight: 400}}>(Empfohlen)</span>
+            </h3>
+            <p className="muted" style={{fontSize: '0.85rem'}}>Einmal einrichten, laeuft dann fuer immer automatisch. Token erneuert sich selbst.</p>
           </div>
         </div>
-      )}
 
-      {showHowto && howto && (
-        <div style={{background: 'var(--panel-strong)', borderRadius: 'var(--radius-small)', padding: '16px', marginBottom: '16px'}}>
-          <h3 style={{fontSize: '0.9rem', marginBottom: '12px', color: 'var(--bright)'}}>So exportierst du YouTube Cookies:</h3>
-          <ol style={{paddingLeft: '20px', lineHeight: '1.8', color: 'var(--text)'}}>
-            {howto.steps.map((step, i) => <li key={i}>{step.replace(/^\d+\.\s*/, '')}</li>)}
-          </ol>
-          <h3 style={{fontSize: '0.9rem', margin: '12px 0 8px', color: 'var(--bright)'}}>Tipps:</h3>
-          <ul style={{paddingLeft: '20px', lineHeight: '1.8', color: 'var(--muted)'}}>
-            {howto.tips.map((tip, i) => <li key={i}>{tip}</li>)}
-          </ul>
-        </div>
-      )}
+        {oauth2Status?.status === 'waiting' && oauth2Status?.deviceCode ? (
+          <div style={{background: 'var(--panel)', padding: '16px', borderRadius: 'var(--radius-small)', textAlign: 'center'}}>
+            <p style={{fontSize: '0.95rem', marginBottom: '12px', color: 'var(--bright)'}}>Gehe jetzt zu:</p>
+            <a href={oauth2Status.verifyUrl} target="_blank" rel="noopener noreferrer"
+              data-testid="oauth2-verify-link"
+              style={{display: 'inline-block', padding: '10px 24px', background: 'var(--primary)', color: 'white', borderRadius: 'var(--radius-small)', textDecoration: 'none', fontWeight: 600, fontSize: '1.1rem', marginBottom: '16px'}}>
+              {oauth2Status.verifyUrl}
+            </a>
+            <p style={{marginBottom: '8px', color: 'var(--text)'}}>und gib diesen Code ein:</p>
+            <p data-testid="oauth2-device-code" style={{fontSize: '2rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--bright)', letterSpacing: '4px', padding: '8px', background: 'var(--panel-strong)', borderRadius: 'var(--radius-small)', display: 'inline-block'}}>
+              {oauth2Status.deviceCode}
+            </p>
+            <p className="muted" style={{marginTop: '12px', fontSize: '0.85rem'}}>Warte auf Bestaetigung... (nach Eingabe des Codes dauert es einen Moment)</p>
+          </div>
+        ) : (
+          <div className="form-actions">
+            {oauth2Status?.tokenConfigured ? (
+              <>
+                <button data-testid="oauth2-refresh-button" className="ghost-button" type="button" onClick={startOAuth2} disabled={startingOAuth}>
+                  Token erneuern
+                </button>
+                <button data-testid="oauth2-revoke-button" className="danger-button" type="button" onClick={revokeOAuth2}>
+                  Token loeschen
+                </button>
+              </>
+            ) : (
+              <button data-testid="oauth2-start-button" className="primary-button" type="button" onClick={startOAuth2} disabled={startingOAuth}
+                style={{padding: '12px 24px', fontSize: '1rem'}}>
+                {startingOAuth ? 'Wird gestartet...' : 'Jetzt mit Google anmelden'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
-      <div className="form-grid">
-        <label className="full-width">
-          Cookie-Datei hochladen (.txt)
-          <input data-testid="cookie-file-input" type="file" accept=".txt" onChange={handleFileUpload}
-            style={{padding: '8px', background: 'var(--panel-strong)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)'}} />
-        </label>
-        <label className="full-width">
-          Oder Inhalt direkt einfuegen (Netscape cookies.txt Format)
-          <textarea data-testid="cookie-content-textarea" value={cookieContent} onChange={e => setCookieContent(e.target.value)}
-            rows={6} placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;0&#9;cookie_name&#9;cookie_value"
-            style={{width: '100%', padding: '10px', background: 'var(--panel-strong)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical'}} />
-        </label>
-        <div className="form-actions">
-          <button data-testid="cookie-upload-button" className="primary-button" type="button" onClick={uploadCookies} disabled={uploading}>
-            {uploading ? 'Wird hochgeladen...' : 'Cookies hochladen'}
-          </button>
-          {cookieStatus?.configured && (
-            <button data-testid="cookie-delete-button" className="danger-button" type="button" onClick={deleteCookies}>
-              Cookies loeschen
-            </button>
-          )}
+      {/* Option 2: Cookie Upload (Fallback) */}
+      <div style={{padding: '16px', background: 'var(--panel-strong)', borderRadius: 'var(--radius-small)'}}>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showCookies ? '12px' : 0, cursor: 'pointer'}}
+          onClick={() => setShowCookies(!showCookies)}>
+          <div>
+            <h3 style={{fontSize: '1rem', color: 'var(--bright)', marginBottom: '4px'}}>
+              Option 2: Cookie Upload <span className="muted" style={{fontSize: '0.8rem', fontWeight: 400}}>(Manuell)</span>
+            </h3>
+            <p className="muted" style={{fontSize: '0.85rem'}}>Falls OAuth2 nicht funktioniert - Cookies aus dem Browser exportieren.</p>
+          </div>
+          <span style={{color: 'var(--muted)', fontSize: '1.2rem'}}>{showCookies ? '\u25B2' : '\u25BC'}</span>
         </div>
+
+        {showCookies && (
+          <div className="form-grid" style={{marginTop: '12px'}}>
+            <label className="full-width">
+              Cookie-Datei hochladen (.txt)
+              <input data-testid="cookie-file-input" type="file" accept=".txt" onChange={handleFileUpload}
+                style={{padding: '8px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)'}} />
+            </label>
+            <label className="full-width">
+              Oder Inhalt einfuegen (Netscape cookies.txt Format)
+              <textarea data-testid="cookie-content-textarea" value={cookieContent} onChange={e => setCookieContent(e.target.value)}
+                rows={4} placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;0&#9;cookie_name&#9;cookie_value"
+                style={{width: '100%', padding: '10px', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical'}} />
+            </label>
+            <div className="form-actions">
+              <button data-testid="cookie-upload-button" className="primary-button" type="button" onClick={uploadCookies} disabled={uploading}>
+                {uploading ? 'Wird hochgeladen...' : 'Cookies hochladen'}
+              </button>
+              {cookieStatus?.configured && (
+                <button data-testid="cookie-delete-button" className="danger-button" type="button" onClick={deleteCookies}>
+                  Cookies loeschen
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

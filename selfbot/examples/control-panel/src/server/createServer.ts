@@ -332,6 +332,167 @@ export function createServer(service: ControlPanelService) {
     });
   });
 
+  // ── OAuth2 YouTube Authentication ──────────────────────────────
+  // One-time setup: user visits google.com/device, enters code, done forever.
+  // yt-dlp auto-refreshes the token (~6 months valid if active).
+  let oauth2Process: ReturnType<typeof import("node:child_process").spawn> | null = null;
+  let oauth2DeviceCode: string | null = null;
+  let oauth2VerifyUrl: string | null = null;
+  let oauth2Status: "idle" | "waiting" | "success" | "error" = "idle";
+  let oauth2Error: string | null = null;
+
+  const OAUTH2_TOKEN_DIR = resolve(
+    process.env.HOME || "/root",
+    ".cache",
+    "yt-dlp",
+    "youtube-oauth2",
+  );
+
+  app.get("/api/oauth2/status", (_req, res) => {
+    // Check if a valid token exists
+    let tokenExists = false;
+    try {
+      const tokenFile = resolve(OAUTH2_TOKEN_DIR, "token_data.json");
+      tokenExists = existsSync(tokenFile);
+    } catch {}
+
+    res.json({
+      status: oauth2Status,
+      tokenConfigured: tokenExists,
+      deviceCode: oauth2DeviceCode,
+      verifyUrl: oauth2VerifyUrl,
+      error: oauth2Error,
+    });
+  });
+
+  app.post(
+    "/api/oauth2/start",
+    asyncRoute(async (_req, res) => {
+      // Kill any existing process
+      if (oauth2Process) {
+        try { oauth2Process.kill(); } catch {}
+        oauth2Process = null;
+      }
+
+      oauth2Status = "waiting";
+      oauth2DeviceCode = null;
+      oauth2VerifyUrl = null;
+      oauth2Error = null;
+
+      const ytDlpPath = appConfig.ytDlpPath;
+      if (!ytDlpPath) {
+        oauth2Status = "error";
+        oauth2Error = "yt-dlp not found";
+        res.status(400).json({ error: "yt-dlp is not available" });
+        return;
+      }
+
+      const { spawn: spawnProcess } = await import("node:child_process");
+
+      // Start yt-dlp OAuth2 flow - it will prompt for device code
+      const child = spawnProcess(ytDlpPath, [
+        "--username", "oauth2",
+        "--password", "",
+        "-v",
+        "--dump-json",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      ], {
+        stdio: "pipe",
+        env: { ...process.env, HOME: process.env.HOME || "/root" },
+      });
+
+      oauth2Process = child;
+
+      const deviceCodePattern = /enter code\s+([A-Z0-9-]+)/i;
+      const verifyUrlPattern = /go to\s+(https?:\/\/\S+)/i;
+      let outputBuffer = "";
+
+      const handleOutput = (chunk: Buffer | string) => {
+        const text = chunk.toString();
+        outputBuffer += text;
+
+        // Parse device code
+        const codeMatch = outputBuffer.match(deviceCodePattern);
+        if (codeMatch && !oauth2DeviceCode) {
+          oauth2DeviceCode = codeMatch[1];
+        }
+
+        // Parse verification URL
+        const urlMatch = outputBuffer.match(verifyUrlPattern);
+        if (urlMatch && !oauth2VerifyUrl) {
+          oauth2VerifyUrl = urlMatch[1];
+        }
+      };
+
+      child.stdout.on("data", handleOutput);
+      child.stderr.on("data", handleOutput);
+
+      child.once("close", (code: number | null) => {
+        if (code === 0) {
+          oauth2Status = "success";
+          service.appendLog("info", "YouTube OAuth2 authentication successful");
+        } else if (oauth2Status === "waiting") {
+          // Check if the token was actually saved despite the error
+          try {
+            const tokenFile = resolve(OAUTH2_TOKEN_DIR, "token_data.json");
+            if (existsSync(tokenFile)) {
+              oauth2Status = "success";
+              service.appendLog("info", "YouTube OAuth2 token saved successfully");
+            } else {
+              oauth2Status = "error";
+              const errorLines = outputBuffer.split("\n").filter(
+                (l) => l.includes("ERROR") || l.includes("error"),
+              );
+              oauth2Error = errorLines.pop() || `Process exited with code ${code}`;
+            }
+          } catch {
+            oauth2Status = "error";
+            oauth2Error = `Process exited with code ${code}`;
+          }
+        }
+        oauth2Process = null;
+      });
+
+      // Wait briefly for the device code to appear
+      await new Promise((r) => setTimeout(r, 5000));
+
+      if (oauth2DeviceCode && oauth2VerifyUrl) {
+        service.appendLog("info", "OAuth2 device code generated", {
+          code: oauth2DeviceCode,
+          url: oauth2VerifyUrl,
+        });
+        res.json({
+          status: "waiting",
+          deviceCode: oauth2DeviceCode,
+          verifyUrl: oauth2VerifyUrl,
+          message: `Gehe zu ${oauth2VerifyUrl} und gib den Code ${oauth2DeviceCode} ein. Danach funktioniert YouTube automatisch!`,
+        });
+      } else {
+        oauth2Status = "error";
+        oauth2Error = "Could not get device code. Check yt-dlp logs.";
+        res.status(500).json({
+          error: oauth2Error,
+          output: outputBuffer.slice(-500),
+        });
+      }
+    }),
+  );
+
+  app.post("/api/oauth2/revoke", (_req, res) => {
+    try {
+      const tokenFile = resolve(OAUTH2_TOKEN_DIR, "token_data.json");
+      if (existsSync(tokenFile)) {
+        unlinkSync(tokenFile);
+        service.appendLog("info", "YouTube OAuth2 token revoked");
+      }
+    } catch {}
+    oauth2Status = "idle";
+    oauth2DeviceCode = null;
+    oauth2VerifyUrl = null;
+    oauth2Error = null;
+    res.json({ ok: true });
+  });
+
   app.get("*", (_req, res) => {
     res.sendFile(resolve(appConfig.publicDir, "index.html"));
   });

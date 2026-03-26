@@ -10,6 +10,13 @@ import { AppStateStore } from "../state/AppStateStore.js";
 // Auto-discover cookie file in the cookies directory
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const AUTO_COOKIE_PATH = resolve(appDir, "cookies", "yt-dlp-cookies.txt");
+const OAUTH2_TOKEN_PATH = resolve(
+  process.env.HOME || "/root",
+  ".cache",
+  "yt-dlp",
+  "youtube-oauth2",
+  "token_data.json",
+);
 
 export type ResolvedSource = {
   input:
@@ -224,9 +231,14 @@ export class SourceResolver {
     }
 
     const cookieArgs = buildCookieArgs();
+    // Auto-add OAuth2 credentials if token is available
+    const oauth2Args = existsSync(OAUTH2_TOKEN_PATH)
+      ? ["--username", "oauth2", "--password", ""]
+      : [];
     const args = [
       "--no-warnings",
       "--no-playlist",
+      ...oauth2Args,
       ...cookieArgs,
       ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
       "--format",
@@ -239,10 +251,14 @@ export class SourceResolver {
       preset.sourceUrl,
     ];
 
+    const authSource = oauth2Args.length
+      ? "oauth2"
+      : getCookieSourceLabel();
+
     this.store.appendLog("info", "Resolving source via yt-dlp", {
       preset: preset.name,
       url: preset.sourceUrl,
-      cookieSource: getCookieSourceLabel(),
+      cookieSource: authSource,
       extractorArgs: extractorArgs ?? "",
     });
 
