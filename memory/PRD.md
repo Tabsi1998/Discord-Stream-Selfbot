@@ -3,21 +3,18 @@
 ## Original Problem Statement
 Discord Stream Selfbot from https://github.com/Tabsi1998/Discord-Stream-Selfbot - install, run, fix YouTube bot-detection issues.
 
-## Architecture
-- Node.js Control Panel (port 3099) + FastAPI Proxy (port 8001) + React Frontend (port 3000)
-- Tech: Node.js 22, TypeScript, Express, FFmpeg, yt-dlp with OAuth2 plugin
+## Changes Made (6 files)
 
-## Implemented (2026-03-26)
-- [x] Full project installation and build
-- [x] yt-dlp bot-detection fix (6 YouTube client fallbacks)
-- [x] Stuck stream session fix (10s timeout)
-- [x] **Google OAuth2 one-click authentication** (einmal einrichten, laeuft fuer immer)
-- [x] Cookie upload/delete/status as fallback
-- [x] Auto-discovery of cookie files and OAuth2 tokens
-- [x] Full React frontend with all CRUD operations
+### Backend TypeScript (need rebuild):
+1. `examples/control-panel/src/server/createServer.ts` - Added OAuth2 + Cookie management API endpoints
+2. `examples/control-panel/src/runtime/SourceResolver.ts` - 6 YouTube client fallbacks + auto OAuth2 token usage + auto cookie discovery
+3. `examples/control-panel/src/runtime/StreamRuntime.ts` - Force-close timeout 5s → 10s
+4. `examples/control-panel/src/services/ControlPanelService.ts` - Added public appendLog method
 
-## Backlog
-- [ ] DISCORD_TOKEN konfigurieren
-- [ ] OAuth2 mit echtem Google Account testen
-- [ ] Queue System Frontend UI
-- [ ] Discord Webhook Notifications
+### Frontend (no rebuild needed):
+5. `examples/control-panel/public/index.html` - YouTube Login section HTML
+6. `examples/control-panel/public/js/app.js` - OAuth2 + Cookie management JavaScript
+
+## Deployment
+1. Push changes to GitHub
+2. On server: `./update.sh` (pulls + rebuilds + restarts Docker)
