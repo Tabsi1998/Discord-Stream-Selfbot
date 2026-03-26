@@ -1,73 +1,49 @@
 # Discord Stream Selfbot - PRD
 
-## Problem Statement
-Web-basiertes Control Panel zum Planen und Verwalten von Discord Streams ueber einen Self-Bot.
-Unterstuetzt YouTube, Twitch, Direkt-URLs und MPEG-TS Streams (Dispatcharr/IPTV).
+## Original Problem Statement
+User wants to clone, install and run the Discord-Stream-Selfbot from https://github.com/Tabsi1998/Discord-Stream-Selfbot in the Emergent preview environment. The main issues from the user's logs were:
+1. YouTube yt-dlp "Sign in to confirm you're not a bot" errors
+2. "Force-closing stuck stream session" warnings
+3. Stream failures due to yt-dlp authentication issues
 
-## Architektur
-- **Production**: Node.js / Express / TypeScript + Vanilla JS Frontend + JSON File Persistenz
-- **Preview**: React Frontend + FastAPI Backend + MongoDB (Emergent)
-- **Deployment**: Docker via control-panel.Dockerfile + docker-compose.yml
+## Architecture
+- **Node.js Control Panel** (port 3099): Express server serving API + static files
+- **FastAPI Proxy** (port 8001): Proxies /api/* requests to the Node.js control panel
+- **React Frontend** (port 3000): Renders the control panel UI
+- **Tech Stack**: Node.js 22 + TypeScript, Express, discord.js-selfbot-v13, FFmpeg, yt-dlp
+- **Persistence**: JSON file-based state (no external DB)
 
-## Implementiert
-- [x] UI Dark Theme (Discord-Style)
-- [x] Quality Profiles: 720p-4K, 30/60fps
-- [x] Interactive Shell Scripts (install.sh, update.sh, config.sh)
-- [x] GitHub Actions CI Fixes
-- [x] Docker Build Fixes
-- [x] Discord Event Sync (Create, Start, Cancel, Complete, Update)
-- [x] yt-dlp Auto-Switch
-- [x] Stream Stabilitaet: FFmpeg Reconnect + MPEG-TS Erkennung
-- [x] MPEG-TS/Dispatcharr Support mit Resilience-Flags
-- [x] Stream Health Monitoring (Live Uptime Counter)
-- [x] URL Test Button
-- [x] Adaptive Polling
-- [x] Discord Badge fuer synced Events
-- [x] **Queue/Playlist System** - Add/Remove/Clear/Start/Stop/Skip/Loop/Reorder
-- [x] **Kalender-Ansicht** - Wochen- und Monatsansicht mit Events
-- [x] **Neue Discord Commands** - queue, info, logs, restart
-- [x] **Benachrichtigungen** - Discord Webhook + DM Notifications
-- [x] Komplette Dokumentation (README, COMMANDS, IDEAS, SELFHOSTING)
+## What's Been Implemented
 
-## API Endpoints
-### Core
-- GET /api/bootstrap, GET /api/state, GET /api/stream/health
-- GET/POST /api/channels, DELETE /api/channels/:id
-- GET/POST /api/presets, DELETE /api/presets/:id, POST /api/presets/test-url
-- GET/POST /api/events, PUT/DELETE /api/events/:id
-- POST /api/manual/start, POST /api/stop
+### Session 1 (2026-03-26)
+- [x] Cloned and built the full project (main library + control panel)
+- [x] Installed Node.js 22.22.2, FFmpeg 5.1.8, yt-dlp 2026.03.21.233500
+- [x] Configured supervisor to run Node.js control panel + FastAPI proxy + React frontend
+- [x] React frontend renders full control panel UI with all CRUD operations
+- [x] All API endpoints working: channels, presets, events, queue, stream control
+- [x] **Fixed yt-dlp bot-detection**: Added 6 YouTube client fallbacks (default, android, ios, web_creator, mweb, tv)
+- [x] **Fixed stuck stream sessions**: Increased force-close timeout from 5s to 10s
+- [x] **Enhanced error messages**: Added rate-limiting and geo-restriction detection
 
-### Queue (NEU)
-- GET /api/queue - Queue + Config abrufen
-- POST /api/queue - Item hinzufuegen
-- DELETE /api/queue/:id - Item entfernen
-- POST /api/queue/clear - Queue leeren
-- POST /api/queue/loop - Loop an/aus
-- POST /api/queue/start - Queue starten (channelId + presetId)
-- POST /api/queue/skip - Item ueberspringen
-- POST /api/queue/stop - Queue stoppen
-- POST /api/queue/reorder - Reihenfolge aendern
+### Session 2 (2026-03-26)
+- [x] **Cookie Management System**: Full web-based cookie upload/delete/status via API
+- [x] Cookie upload via file picker or paste (Netscape cookies.txt format)
+- [x] "Wie geht das?" how-to instructions built into the panel
+- [x] Auto-discovery of cookie files in cookies/ directory (no ENV config needed)
+- [x] Cookie validation (rejects invalid formats)
+- [x] Full lifecycle: upload -> status check -> delete
 
-### Notifications (NEU)
-- POST /api/notifications/test - Test-Benachrichtigung senden
+## Prioritized Backlog
+### P0 (Critical)
+- [ ] Configure DISCORD_TOKEN for live Discord connectivity
+- [ ] Upload real YouTube cookies via the new Cookie Management panel
 
-## Discord Commands
-$panel help | status | start | stop | restart | channels | presets | events
-$panel event start/cancel <id>
-$panel queue | queue add | queue start | queue stop | queue skip | queue clear | queue loop on/off
-$panel info | logs [n]
+### P1 (Important)
+- [ ] Test actual streaming with a real Discord account
+- [ ] Test MPEG-TS/IPTV streaming
+- [ ] Queue system frontend UI
 
-## Offene Tasks
-### P1
-- Graceful Shutdown (FFmpeg Cleanup)
-- WebSocket statt Polling
-
-### P2
-- Import/Export (JSON Backup)
-- Erweiterte Wiederholungsregeln
-- Multi-Server Support
-- Automatischer Quell-Fallback
-- RTMP Ingest
-- EPG Integration
-- Stream-Statistiken
-- TypeScript Strict Mode
+### P2 (Nice to Have)
+- [ ] Discord notification webhook
+- [ ] Auto-update yt-dlp
+- [ ] Cookie freshness monitoring/auto-refresh
