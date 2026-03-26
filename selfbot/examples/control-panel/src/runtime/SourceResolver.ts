@@ -1,9 +1,15 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { appConfig } from "../config/appConfig.js";
 import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
 import type { SourceMode, StreamPreset } from "../domain/types.js";
 import { AppStateStore } from "../state/AppStateStore.js";
+
+// Auto-discover cookie file in the cookies directory
+const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const AUTO_COOKIE_PATH = resolve(appDir, "cookies", "yt-dlp-cookies.txt");
 
 export type ResolvedSource = {
   input:
@@ -45,10 +51,15 @@ function getCookieSourceLabel() {
   if (appConfig.ytDlpCookiesFromBrowser) {
     return `browser:${appConfig.ytDlpCookiesFromBrowser}`;
   }
+  // Check auto-discovered cookie file
+  if (existsSync(AUTO_COOKIE_PATH)) {
+    return `file:${AUTO_COOKIE_PATH} (auto)`;
+  }
   return "none";
 }
 
 function buildCookieArgs() {
+  // Priority 1: Explicitly configured cookie file
   if (appConfig.ytDlpCookiesFile) {
     if (!existsSync(appConfig.ytDlpCookiesFile)) {
       throw new Error(
@@ -58,8 +69,14 @@ function buildCookieArgs() {
     return ["--cookies", appConfig.ytDlpCookiesFile];
   }
 
+  // Priority 2: Browser cookies
   if (appConfig.ytDlpCookiesFromBrowser) {
     return ["--cookies-from-browser", appConfig.ytDlpCookiesFromBrowser];
+  }
+
+  // Priority 3: Auto-discovered cookie file in cookies/ directory
+  if (existsSync(AUTO_COOKIE_PATH)) {
+    return ["--cookies", AUTO_COOKIE_PATH];
   }
 
   return [];

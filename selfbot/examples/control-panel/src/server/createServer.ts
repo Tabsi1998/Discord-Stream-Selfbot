@@ -3,7 +3,8 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { appConfig } from "../config/appConfig.js";
 import { ControlPanelService } from "../services/ControlPanelService.js";
 
@@ -236,6 +237,100 @@ export function createServer(service: ControlPanelService) {
       res.json({ ok: true });
     }),
   );
+
+  // ── Cookie Management ─────────────────────────────────────────
+  const cookiesDir = resolve(appConfig.appDir, "cookies");
+
+  app.get("/api/cookies/status", (_req, res) => {
+    const cookieFile = resolve(cookiesDir, "yt-dlp-cookies.txt");
+    const exists = existsSync(cookieFile);
+    let lines = 0;
+    let lastModified: string | undefined;
+    if (exists) {
+      try {
+        const content = readFileSync(cookieFile, "utf-8");
+        lines = content.split("\n").filter((l) => l.trim() && !l.startsWith("#")).length;
+        const stat = statSync(cookieFile);
+        lastModified = stat.mtime.toISOString();
+      } catch {}
+    }
+    res.json({
+      configured: exists && lines > 0,
+      cookieFile: exists ? cookieFile : null,
+      cookieEntries: lines,
+      lastModified,
+      envCookieFile: appConfig.ytDlpCookiesFile ?? null,
+      envCookiesBrowser: appConfig.ytDlpCookiesFromBrowser ?? null,
+    });
+  });
+
+  app.post(
+    "/api/cookies/upload",
+    asyncRoute(async (req, res) => {
+      const { content } = req.body;
+      if (!content || typeof content !== "string") {
+        res.status(400).json({ error: "Cookie content is required" });
+        return;
+      }
+
+      // Validate it looks like a Netscape cookies file
+      const lines = content.split("\n").filter((l: string) => l.trim());
+      const dataLines = lines.filter(
+        (l: string) => !l.startsWith("#") && l.includes("\t"),
+      );
+      if (dataLines.length === 0) {
+        res.status(400).json({
+          error:
+            "Invalid cookie format. Expected Netscape/Mozilla cookies.txt format with tab-separated fields.",
+        });
+        return;
+      }
+
+      mkdirSync(cookiesDir, { recursive: true });
+      const cookieFile = resolve(cookiesDir, "yt-dlp-cookies.txt");
+      writeFileSync(cookieFile, content, "utf-8");
+
+      service.appendLog("info", "YouTube cookies uploaded", {
+        entries: String(dataLines.length),
+      });
+
+      res.json({
+        ok: true,
+        cookieFile,
+        entries: dataLines.length,
+        message: `${dataLines.length} Cookie-Eintraege gespeichert. Neustart empfohlen fuer sofortige Wirkung.`,
+      });
+    }),
+  );
+
+  app.post("/api/cookies/delete", (_req, res) => {
+    const cookieFile = resolve(cookiesDir, "yt-dlp-cookies.txt");
+    if (existsSync(cookieFile)) {
+      unlinkSync(cookieFile);
+      service.appendLog("info", "YouTube cookies deleted");
+    }
+    res.json({ ok: true });
+  });
+
+  // ── How-To Info ───────────────────────────────────────────────
+  app.get("/api/cookies/howto", (_req, res) => {
+    res.json({
+      steps: [
+        "1. Oeffne Chrome/Firefox/Edge und logge dich bei YouTube ein",
+        "2. Installiere die Browser-Extension 'Get cookies.txt LOCALLY' (Chrome) oder 'cookies.txt' (Firefox)",
+        "3. Gehe auf youtube.com und klicke auf die Extension",
+        "4. Exportiere die Cookies im Netscape-Format",
+        "5. Kopiere den kompletten Inhalt der cookies.txt Datei",
+        "6. Fuege ihn hier im Upload-Feld ein und klicke 'Hochladen'",
+      ],
+      tips: [
+        "Verwende KEINEN Inkognito-Modus - Cookies werden dort nicht gespeichert",
+        "Die Cookies muessen von der GLEICHEN IP kommen wie der Server",
+        "Erneuere die Cookies wenn du wieder 'not a bot' Fehler bekommst",
+        "Frische Cookies (< 30 Minuten alt) funktionieren am besten",
+      ],
+    });
+  });
 
   app.get("*", (_req, res) => {
     res.sendFile(resolve(appConfig.publicDir, "index.html"));

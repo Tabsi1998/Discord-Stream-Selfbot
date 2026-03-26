@@ -98,6 +98,10 @@ export class ControlPanelService {
     return this.store.snapshot();
   }
 
+  public appendLog(level: "info" | "warn" | "error", message: string, context?: Record<string, string>) {
+    this.store.appendLog(level, message, context);
+  }
+
   public async listVoiceChannels(forceRefresh = false) {
     return this.runtime.listVoiceChannels(forceRefresh);
   }

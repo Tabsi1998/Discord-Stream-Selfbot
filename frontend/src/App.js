@@ -228,6 +228,7 @@ function ControlPanel({ state: initialState, backendUrl }) {
 
       <main className="layout">
         <ManualStartSection channels={channels} presets={presets} api={api} refresh={refresh} setNotice={setNotice} />
+        <CookieManagementSection api={api} setNotice={setNotice} />
         <ChannelsSection channels={channels} api={api} refresh={refresh} setNotice={setNotice} voiceChannels={voiceChannels} />
         <PresetsSection presets={presets} api={api} refresh={refresh} setNotice={setNotice} />
         <EventsSection events={events} channels={channels} presets={presets} api={api} refresh={refresh} setNotice={setNotice} formatDateTime={formatDateTime} eventStatusLabel={eventStatusLabel} />
@@ -291,6 +292,145 @@ function ManualStartSection({ channels, presets, api, refresh, setNotice }) {
     </section>
   );
 }
+
+
+function CookieManagementSection({ api, setNotice }) {
+  const [cookieStatus, setCookieStatus] = useState(null);
+  const [cookieContent, setCookieContent] = useState('');
+  const [howto, setHowto] = useState(null);
+  const [showHowto, setShowHowto] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    loadStatus();
+    // eslint-disable-next-line
+  }, []);
+
+  const loadStatus = async () => {
+    try {
+      const status = await api('/api/cookies/status');
+      setCookieStatus(status);
+    } catch {}
+  };
+
+  const loadHowto = async () => {
+    if (howto) { setShowHowto(!showHowto); return; }
+    try {
+      const data = await api('/api/cookies/howto');
+      setHowto(data);
+      setShowHowto(true);
+    } catch {}
+  };
+
+  const uploadCookies = async () => {
+    if (!cookieContent.trim()) {
+      setNotice({ message: 'Bitte Cookie-Inhalt einfuegen!', tone: 'danger' });
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await api('/api/cookies/upload', {
+        method: 'POST',
+        body: JSON.stringify({ content: cookieContent }),
+      });
+      setNotice({ message: result.message, tone: 'success' });
+      setCookieContent('');
+      await loadStatus();
+    } catch (err) {
+      setNotice({ message: err.message, tone: 'danger' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteCookies = async () => {
+    try {
+      await api('/api/cookies/delete', { method: 'POST' });
+      setNotice({ message: 'Cookies geloescht.', tone: 'success' });
+      await loadStatus();
+    } catch (err) {
+      setNotice({ message: err.message, tone: 'danger' });
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setCookieContent(ev.target?.result || '');
+    reader.readAsText(file);
+  };
+
+  return (
+    <section className="panel" data-testid="cookie-management-section">
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">YouTube Authentifizierung</p>
+          <h2>Cookie Management</h2>
+        </div>
+        <button data-testid="cookie-howto-button" className="ghost-button" type="button" onClick={loadHowto}>
+          {showHowto ? 'Anleitung ausblenden' : 'Wie geht das?'}
+        </button>
+      </div>
+
+      {cookieStatus && (
+        <div className="form-grid" style={{marginBottom: '16px'}}>
+          <div className="full-width">
+            <p style={{marginBottom: '8px'}}>
+              <strong>Status: </strong>
+              {cookieStatus.configured ? (
+                <span style={{color: 'var(--success)'}}>Cookies konfiguriert ({cookieStatus.cookieEntries} Eintraege)</span>
+              ) : (
+                <span style={{color: 'var(--warning)'}}>Keine Cookies konfiguriert - YouTube kann "not a bot" Fehler zeigen</span>
+              )}
+            </p>
+            {cookieStatus.lastModified && (
+              <p className="muted">Zuletzt aktualisiert: {new Date(cookieStatus.lastModified).toLocaleString('de-AT')}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showHowto && howto && (
+        <div style={{background: 'var(--panel-strong)', borderRadius: 'var(--radius-small)', padding: '16px', marginBottom: '16px'}}>
+          <h3 style={{fontSize: '0.9rem', marginBottom: '12px', color: 'var(--bright)'}}>So exportierst du YouTube Cookies:</h3>
+          <ol style={{paddingLeft: '20px', lineHeight: '1.8', color: 'var(--text)'}}>
+            {howto.steps.map((step, i) => <li key={i}>{step.replace(/^\d+\.\s*/, '')}</li>)}
+          </ol>
+          <h3 style={{fontSize: '0.9rem', margin: '12px 0 8px', color: 'var(--bright)'}}>Tipps:</h3>
+          <ul style={{paddingLeft: '20px', lineHeight: '1.8', color: 'var(--muted)'}}>
+            {howto.tips.map((tip, i) => <li key={i}>{tip}</li>)}
+          </ul>
+        </div>
+      )}
+
+      <div className="form-grid">
+        <label className="full-width">
+          Cookie-Datei hochladen (.txt)
+          <input data-testid="cookie-file-input" type="file" accept=".txt" onChange={handleFileUpload}
+            style={{padding: '8px', background: 'var(--panel-strong)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)'}} />
+        </label>
+        <label className="full-width">
+          Oder Inhalt direkt einfuegen (Netscape cookies.txt Format)
+          <textarea data-testid="cookie-content-textarea" value={cookieContent} onChange={e => setCookieContent(e.target.value)}
+            rows={6} placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;0&#9;cookie_name&#9;cookie_value"
+            style={{width: '100%', padding: '10px', background: 'var(--panel-strong)', border: '1px solid var(--border)', borderRadius: 'var(--radius-small)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', resize: 'vertical'}} />
+        </label>
+        <div className="form-actions">
+          <button data-testid="cookie-upload-button" className="primary-button" type="button" onClick={uploadCookies} disabled={uploading}>
+            {uploading ? 'Wird hochgeladen...' : 'Cookies hochladen'}
+          </button>
+          {cookieStatus?.configured && (
+            <button data-testid="cookie-delete-button" className="danger-button" type="button" onClick={deleteCookies}>
+              Cookies loeschen
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 
 function ChannelsSection({ channels, api, refresh, setNotice, voiceChannels }) {
   const [form, setForm] = useState({ id: '', name: '', guildId: '', channelId: '', streamMode: 'go-live', description: '' });
