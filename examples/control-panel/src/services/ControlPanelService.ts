@@ -22,12 +22,12 @@ import type {
   StreamPreset,
 } from "../domain/types.js";
 import { isYouTubeUrl } from "../runtime/SourceResolver.js";
-import {
+import type {
   StreamRuntime,
-  type RunEndedInfo,
-  type RunFailedInfo,
+  RunEndedInfo,
+  RunFailedInfo,
 } from "../runtime/StreamRuntime.js";
-import { AppStateStore } from "../state/AppStateStore.js";
+import type { AppStateStore } from "../state/AppStateStore.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -125,7 +125,11 @@ export class ControlPanelService {
     return this.store.subscribe(listener);
   }
 
-  public appendLog(level: "info" | "warn" | "error", message: string, context?: Record<string, string>) {
+  public appendLog(
+    level: "info" | "warn" | "error",
+    message: string,
+    context?: Record<string, string>,
+  ) {
     this.store.appendLog(level, message, context);
   }
 
@@ -156,10 +160,14 @@ export class ControlPanelService {
     this.store.update((draft) => {
       draft.notificationSettings = settings;
     });
-    this.store.appendLog("info", "Benachrichtigungseinstellungen aktualisiert", {
-      webhook: settings.webhookUrl ? "configured" : "disabled",
-      dmEnabled: settings.dmEnabled ? "1" : "0",
-    });
+    this.store.appendLog(
+      "info",
+      "Benachrichtigungseinstellungen aktualisiert",
+      {
+        webhook: settings.webhookUrl ? "configured" : "disabled",
+        dmEnabled: settings.dmEnabled ? "1" : "0",
+      },
+    );
     return settings;
   }
 
@@ -168,10 +176,15 @@ export class ControlPanelService {
     botId?: string,
   ) {
     const settings = input
-      ? this.resolveNotificationSettings(input, this.resolveNotificationSettings())
+      ? this.resolveNotificationSettings(
+          input,
+          this.resolveNotificationSettings(),
+        )
       : this.resolveNotificationSettings();
     if (!settings.webhookUrl && !settings.dmEnabled) {
-      throw new Error("Activate webhook or DM notifications before sending a test");
+      throw new Error(
+        "Activate webhook or DM notifications before sending a test",
+      );
     }
     await this.sendNotification(
       "Test-Benachrichtigung vom Stream Bot",
@@ -202,7 +215,9 @@ export class ControlPanelService {
 
   public importConfiguration(input: unknown) {
     if (this.runtime.getActiveRuns().length > 0) {
-      throw new Error("Stop all active streams before importing a configuration");
+      throw new Error(
+        "Stop all active streams before importing a configuration",
+      );
     }
     if (this.store.snapshot().queueConfig.active) {
       throw new Error("Stop the queue before importing a configuration");
@@ -242,20 +257,21 @@ export class ControlPanelService {
     const now = Date.now();
     const runtime = this.store.snapshot().runtime;
     const recoveredQueue = this.store.snapshot().queueConfig.active;
-    const recoveredRuns = Array.isArray(runtime.activeRuns) && runtime.activeRuns.length
-      ? runtime.activeRuns
-      : runtime.activeRun
-        ? [runtime.activeRun]
-        : [];
+    const recoveredRuns =
+      Array.isArray(runtime.activeRuns) && runtime.activeRuns.length
+        ? runtime.activeRuns
+        : runtime.activeRun
+          ? [runtime.activeRun]
+          : [];
 
     this.store.update((draft) => {
       if (
-        draft.runtime.activeRun
-        || draft.runtime.activeRuns?.length
-        || draft.runtime.telemetry
-        || Object.keys(draft.runtime.telemetryByBot ?? {}).length
-        || draft.runtime.selectedVideoEncoder
-        || Object.keys(draft.runtime.selectedVideoEncodersByBot ?? {}).length
+        draft.runtime.activeRun ||
+        draft.runtime.activeRuns?.length ||
+        draft.runtime.telemetry ||
+        Object.keys(draft.runtime.telemetryByBot ?? {}).length ||
+        draft.runtime.selectedVideoEncoder ||
+        Object.keys(draft.runtime.selectedVideoEncodersByBot ?? {}).length
       ) {
         draft.runtime.activeRun = undefined;
         draft.runtime.activeRuns = [];
@@ -291,10 +307,14 @@ export class ControlPanelService {
     });
 
     if (recoveredRuns.length) {
-      this.store.appendLog("warn", "Recovered stale active runs after restart", {
-        count: String(recoveredRuns.length),
-        bots: recoveredRuns.map((run) => run.botId).join(", "),
-      });
+      this.store.appendLog(
+        "warn",
+        "Recovered stale active runs after restart",
+        {
+          count: String(recoveredRuns.length),
+          bots: recoveredRuns.map((run) => run.botId).join(", "),
+        },
+      );
     }
     if (recoveredQueue) {
       this.store.appendLog("warn", "Recovered active queue after restart", {
@@ -310,7 +330,8 @@ export class ControlPanelService {
         if (event.status !== "scheduled") continue;
         if (Date.parse(event.endAt) > now) continue;
         event.status = "failed";
-        event.lastError = "Schedule window elapsed before the event could start";
+        event.lastError =
+          "Schedule window elapsed before the event could start";
         event.actualEndedAt = nowIso();
         event.updatedAt = nowIso();
       }
@@ -555,7 +576,9 @@ export class ControlPanelService {
         .filter((e) => replaceIds.has(e.id) && e.discordEventId)
         .map((e) => e.discordEventId!);
 
-      const retained = draft.events.filter((event) => !replaceIds.has(event.id));
+      const retained = draft.events.filter(
+        (event) => !replaceIds.has(event.id),
+      );
 
       this.assertNoOverlap(draft, retained, replacement);
 
@@ -569,7 +592,9 @@ export class ControlPanelService {
 
     // Sync to Discord: delete old events and create new ones
     if (guildId && oldDiscordEventIds.length > 0) {
-      this.deleteDiscordEvents(botId, guildId, oldDiscordEventIds).catch(() => {});
+      this.deleteDiscordEvents(botId, guildId, oldDiscordEventIds).catch(
+        () => {},
+      );
     }
     if (updated) {
       this.syncEventsToDiscord(updated.events, input.channelId).catch(() => {});
@@ -624,9 +649,9 @@ export class ControlPanelService {
 
     // Cancel Discord scheduled event
     if (event.discordEventId) {
-      this.deleteDiscordEvents(channel.botId, channel.guildId, [event.discordEventId]).catch(
-        () => {},
-      );
+      this.deleteDiscordEvents(channel.botId, channel.guildId, [
+        event.discordEventId,
+      ]).catch(() => {});
     }
 
     this.store.update((draft) => {
@@ -663,9 +688,11 @@ export class ControlPanelService {
 
     // Set Discord event to Active
     if (event.discordEventId) {
-      this.setDiscordEventActive(channel.botId, channel.guildId, event.discordEventId).catch(
-        () => {},
-      );
+      this.setDiscordEventActive(
+        channel.botId,
+        channel.guildId,
+        event.discordEventId,
+      ).catch(() => {});
     }
 
     try {
@@ -699,18 +726,20 @@ export class ControlPanelService {
       throw new Error("stopAt must be in the future");
     }
 
-    return this.runtime.startRun({
-      kind: "manual",
-      channel,
-      preset,
-      plannedStopAt,
-    }).then((result) => {
-      this.sendNotification(
-        `Stream gestartet: ${channel.name} mit ${preset.name}`,
-        channel.botId,
-      ).catch(() => {});
-      return result;
-    });
+    return this.runtime
+      .startRun({
+        kind: "manual",
+        channel,
+        preset,
+        plannedStopAt,
+      })
+      .then((result) => {
+        this.sendNotification(
+          `Stream gestartet: ${channel.name} mit ${preset.name}`,
+          channel.botId,
+        ).catch(() => {});
+        return result;
+      });
   }
 
   public stopActive(reason = "manual-stop") {
@@ -721,9 +750,10 @@ export class ControlPanelService {
     const run = this.runtime.getActiveRun(botId);
     const stopped = this.runtime.stopActive(reason, botId);
     if (stopped && run) {
-      this.sendNotification(`Stream gestoppt: ${run.channelName}`, run.botId).catch(
-        () => {},
-      );
+      this.sendNotification(
+        `Stream gestoppt: ${run.channelName}`,
+        run.botId,
+      ).catch(() => {});
     }
     return stopped;
   }
@@ -780,9 +810,11 @@ export class ControlPanelService {
       const state = this.store.snapshot();
       const channel = state.channels.find((c) => c.id === channelId);
       if (channel) {
-        this.setDiscordEventCompleted(channel.botId, channel.guildId, discordEventId).catch(
-          () => {},
-        );
+        this.setDiscordEventCompleted(
+          channel.botId,
+          channel.guildId,
+          discordEventId,
+        ).catch(() => {});
       }
     }
   }
@@ -841,9 +873,12 @@ export class ControlPanelService {
       throw new Error("endAt must be after startAt");
     }
 
-    const recurrence = normalizeRecurrenceInput(input.recurrence, input.startAt);
+    const recurrence = normalizeRecurrenceInput(
+      input.recurrence,
+      input.startAt,
+    );
     const effectiveSeriesId =
-      recurrence.kind === "once" ? undefined : seriesId ?? randomUUID();
+      recurrence.kind === "once" ? undefined : (seriesId ?? randomUUID());
     const windows = buildOccurrenceWindows(
       startAt.toISOString(),
       endAt.toISOString(),
@@ -877,10 +912,14 @@ export class ControlPanelService {
     }
 
     const targetStart = Date.parse(target.startAt);
-    const related = events.filter((event) => event.seriesId === target.seriesId);
+    const related = events.filter(
+      (event) => event.seriesId === target.seriesId,
+    );
 
     if (related.some((event) => event.status === "running")) {
-      throw new Error("Cannot edit or delete a series while one occurrence is running");
+      throw new Error(
+        "Cannot edit or delete a series while one occurrence is running",
+      );
     }
 
     return new Set(
@@ -898,15 +937,17 @@ export class ControlPanelService {
     const candidates = [...candidateEvents].sort(
       (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
     );
-    const blocking = existingEvents.filter((event) => blocksScheduling(event.status));
+    const blocking = existingEvents.filter((event) =>
+      blocksScheduling(event.status),
+    );
 
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       const candidateBotId = this.resolveEventBotId(state, candidate);
       const overlap = blocking.find(
         (event) =>
-          this.resolveEventBotId(state, event) === candidateBotId
-          && this.eventsOverlap(candidate, event),
+          this.resolveEventBotId(state, event) === candidateBotId &&
+          this.eventsOverlap(candidate, event),
       );
       if (overlap) {
         throw new Error(
@@ -918,8 +959,8 @@ export class ControlPanelService {
         .slice(index + 1)
         .find(
           (event) =>
-            this.resolveEventBotId(state, event) === candidateBotId
-            && this.eventsOverlap(candidate, event),
+            this.resolveEventBotId(state, event) === candidateBotId &&
+            this.eventsOverlap(candidate, event),
         );
       if (selfOverlap) {
         throw new Error(
@@ -933,13 +974,20 @@ export class ControlPanelService {
     state: Pick<ControlPanelState, "channels">,
     event: Pick<ScheduledEvent, "channelId">,
   ) {
-    return state.channels.find((channel) => channel.id === event.channelId)?.botId
-      ?? this.runtime.getPrimaryBotId();
+    return (
+      state.channels.find((channel) => channel.id === event.channelId)?.botId ??
+      this.runtime.getPrimaryBotId()
+    );
   }
 
-  private eventsOverlap(left: Pick<ScheduledEvent, "startAt" | "endAt">, right: Pick<ScheduledEvent, "startAt" | "endAt">) {
-    return Date.parse(left.startAt) < Date.parse(right.endAt)
-      && Date.parse(left.endAt) > Date.parse(right.startAt);
+  private eventsOverlap(
+    left: Pick<ScheduledEvent, "startAt" | "endAt">,
+    right: Pick<ScheduledEvent, "startAt" | "endAt">,
+  ) {
+    return (
+      Date.parse(left.startAt) < Date.parse(right.endAt) &&
+      Date.parse(left.endAt) > Date.parse(right.startAt)
+    );
   }
 
   private requireChannelFromDraft(state: ControlPanelState, id: string) {
@@ -1010,9 +1058,7 @@ export class ControlPanelService {
             preset
               ? `Qualitaet: ${preset.width}x${preset.height} @ ${preset.fps}fps`
               : "",
-            event.seriesId
-              ? `Serie #${event.occurrenceIndex}`
-              : "",
+            event.seriesId ? `Serie #${event.occurrenceIndex}` : "",
           ]
             .filter(Boolean)
             .join("\n")
@@ -1041,8 +1087,7 @@ export class ControlPanelService {
             { discordEventId: discordEvent.id },
           );
         } catch (err: unknown) {
-          const msg =
-            err instanceof Error ? err.message : "Unbekannter Fehler";
+          const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
           this.store.appendLog(
             "warn",
             `Discord Event konnte nicht erstellt werden: "${event.name}"`,
@@ -1111,9 +1156,13 @@ export class ControlPanelService {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
-      this.store.appendLog("warn", "Discord Event Status-Update fehlgeschlagen", {
-        error: msg,
-      });
+      this.store.appendLog(
+        "warn",
+        "Discord Event Status-Update fehlgeschlagen",
+        {
+          error: msg,
+        },
+      );
     }
   }
 
@@ -1133,9 +1182,13 @@ export class ControlPanelService {
       const discordEvent = await guild.scheduledEvents.fetch(discordEventId);
       if (discordEvent) {
         await discordEvent.setStatus("COMPLETED");
-        this.store.appendLog("info", "Discord Event als abgeschlossen markiert", {
-          discordEventId,
-        });
+        this.store.appendLog(
+          "info",
+          "Discord Event als abgeschlossen markiert",
+          {
+            discordEventId,
+          },
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
@@ -1270,10 +1323,7 @@ export class ControlPanelService {
       const idx = draft.queue.findIndex((i) => i.id === id);
       if (idx < 0) throw new Error("Queue item not found");
       const [item] = draft.queue.splice(idx, 1);
-      const clampedIndex = Math.max(
-        0,
-        Math.min(newIndex, draft.queue.length),
-      );
+      const clampedIndex = Math.max(0, Math.min(newIndex, draft.queue.length));
       draft.queue.splice(clampedIndex, 0, item);
     });
   }
@@ -1282,10 +1332,10 @@ export class ControlPanelService {
     const state = this.store.snapshot();
     const { queueConfig, queue } = state;
     if (
-      !queueConfig.active
-      || !queueConfig.botId
-      || !queueConfig.channelId
-      || !queueConfig.presetId
+      !queueConfig.active ||
+      !queueConfig.botId ||
+      !queueConfig.channelId ||
+      !queueConfig.presetId
     )
       return;
     if (queueConfig.currentIndex >= queue.length) return;
@@ -1293,12 +1343,8 @@ export class ControlPanelService {
     const item = queue[queueConfig.currentIndex];
     if (!item) return;
 
-    const channel = state.channels.find(
-      (c) => c.id === queueConfig.channelId,
-    );
-    const basePreset = state.presets.find(
-      (p) => p.id === queueConfig.presetId,
-    );
+    const channel = state.channels.find((c) => c.id === queueConfig.channelId);
+    const basePreset = state.presets.find((p) => p.id === queueConfig.presetId);
     if (!channel || !basePreset) {
       this.stopQueue();
       return;
@@ -1451,9 +1497,9 @@ export class ControlPanelService {
   private async sendDmNotification(message: string, botId?: string) {
     try {
       const resolvedBotId =
-        botId
-        ?? this.runtime.getActiveRun()?.botId
-        ?? this.runtime.getPrimaryBotId();
+        botId ??
+        this.runtime.getActiveRun()?.botId ??
+        this.runtime.getPrimaryBotId();
       await this.runtime.ensureReady(resolvedBotId);
       const client = this.runtime.getClient(resolvedBotId);
       if (!client.user) return;
@@ -1473,8 +1519,9 @@ export class ControlPanelService {
     stampUpdate = true,
   ): NotificationSettings {
     const stored = this.store.snapshot().notificationSettings;
-    const base = fallback
-      ?? (stored.updatedAt
+    const base =
+      fallback ??
+      (stored.updatedAt
         ? stored
         : {
             webhookUrl: appConfig.notificationWebhookUrl,
@@ -1506,11 +1553,7 @@ export class ControlPanelService {
       notificationSettings?: unknown;
     };
 
-    if (
-      raw.data
-      && typeof raw.data === "object"
-      && !Array.isArray(raw.data)
-    ) {
+    if (raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)) {
       return {
         version: raw.version === 1 ? 1 : 1,
         exportedAt:
@@ -1529,11 +1572,12 @@ export class ControlPanelService {
         queue: Array.isArray(raw.queue) ? raw.queue : [],
         queueConfig:
           raw.queueConfig && typeof raw.queueConfig === "object"
-            ? raw.queueConfig as ControlPanelExportPayload["data"]["queueConfig"]
+            ? (raw.queueConfig as ControlPanelExportPayload["data"]["queueConfig"])
             : { active: false, loop: false, currentIndex: 0 },
         notificationSettings:
-          raw.notificationSettings && typeof raw.notificationSettings === "object"
-            ? raw.notificationSettings as NotificationSettings
+          raw.notificationSettings &&
+          typeof raw.notificationSettings === "object"
+            ? (raw.notificationSettings as NotificationSettings)
             : this.getNotificationSettings(),
       },
     };
@@ -1543,8 +1587,12 @@ export class ControlPanelService {
     input: ControlPanelExportPayload["data"],
   ): ControlPanelExportPayload["data"] {
     const working = {
-      channels: Array.isArray(input.channels) ? structuredClone(input.channels) : [],
-      presets: Array.isArray(input.presets) ? structuredClone(input.presets) : [],
+      channels: Array.isArray(input.channels)
+        ? structuredClone(input.channels)
+        : [],
+      presets: Array.isArray(input.presets)
+        ? structuredClone(input.presets)
+        : [],
       events: Array.isArray(input.events) ? structuredClone(input.events) : [],
       queue: Array.isArray(input.queue) ? structuredClone(input.queue) : [],
       queueConfig:
@@ -1598,10 +1646,14 @@ export class ControlPanelService {
         throw new Error("Import contains an invalid event entry");
       }
       if (!channelIds.has(event.channelId)) {
-        throw new Error(`Imported event references missing channel: ${event.channelId}`);
+        throw new Error(
+          `Imported event references missing channel: ${event.channelId}`,
+        );
       }
       if (!presetIds.has(event.presetId)) {
-        throw new Error(`Imported event references missing preset: ${event.presetId}`);
+        throw new Error(
+          `Imported event references missing preset: ${event.presetId}`,
+        );
       }
 
       if (event.status === "running") {
@@ -1645,8 +1697,8 @@ export class ControlPanelService {
     });
 
     if (
-      working.queueConfig.channelId
-      && !channelIds.has(working.queueConfig.channelId)
+      working.queueConfig.channelId &&
+      !channelIds.has(working.queueConfig.channelId)
     ) {
       working.queueConfig.channelId = undefined;
       working.queueConfig.botId = undefined;
@@ -1659,8 +1711,8 @@ export class ControlPanelService {
     }
 
     if (
-      working.queueConfig.presetId
-      && !presetIds.has(working.queueConfig.presetId)
+      working.queueConfig.presetId &&
+      !presetIds.has(working.queueConfig.presetId)
     ) {
       working.queueConfig.presetId = undefined;
     }

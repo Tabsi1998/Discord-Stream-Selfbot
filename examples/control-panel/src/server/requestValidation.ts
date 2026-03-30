@@ -12,8 +12,14 @@ import type {
   VideoCodec,
 } from "../domain/types.js";
 
-const STREAM_MODES = ["go-live", "camera"] as const satisfies readonly StreamMode[];
-const SOURCE_MODES = ["direct", "yt-dlp"] as const satisfies readonly SourceMode[];
+const STREAM_MODES = [
+  "go-live",
+  "camera",
+] as const satisfies readonly StreamMode[];
+const SOURCE_MODES = [
+  "direct",
+  "yt-dlp",
+] as const satisfies readonly SourceMode[];
 const QUALITY_PROFILES = [
   "720p30",
   "720p60",
@@ -102,7 +108,11 @@ function readInteger(value: unknown, fieldName: string, minimum?: number) {
   return value;
 }
 
-function readOptionalInteger(value: unknown, fieldName: string, minimum?: number) {
+function readOptionalInteger(
+  value: unknown,
+  fieldName: string,
+  minimum?: number,
+) {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -115,7 +125,10 @@ function readEnum<T extends string>(
   allowed: readonly T[],
 ): T {
   if (typeof value !== "string" || !allowed.includes(value as T)) {
-    throw new HttpError(400, `${fieldName} must be one of: ${allowed.join(", ")}`);
+    throw new HttpError(
+      400,
+      `${fieldName} must be one of: ${allowed.join(", ")}`,
+    );
   }
   return value as T;
 }
@@ -142,7 +155,10 @@ function readOptionalWeekdays(value: unknown) {
   const weekdays = value.map((entry, index) => {
     const parsed = readInteger(entry, `recurrence.daysOfWeek[${index}]`, 0);
     if (parsed > 6) {
-      throw new HttpError(400, "recurrence.daysOfWeek values must be between 0 and 6");
+      throw new HttpError(
+        400,
+        "recurrence.daysOfWeek values must be between 0 and 6",
+      );
     }
     return parsed;
   });
@@ -150,7 +166,10 @@ function readOptionalWeekdays(value: unknown) {
   return [...new Set(weekdays)];
 }
 
-export function getRouteParam(value: string | string[] | undefined, name: string) {
+export function getRouteParam(
+  value: string | string[] | undefined,
+  name: string,
+) {
   if (typeof value === "string" && value.trim()) {
     return value.trim();
   }
@@ -172,7 +191,10 @@ export function parseVoiceChannelsQuery(query: Record<string, unknown>) {
 }
 
 export function parseLogsQuery(query: Record<string, unknown>) {
-  const raw = typeof query.limit === "string" ? Number.parseInt(query.limit, 10) : Number.NaN;
+  const raw =
+    typeof query.limit === "string"
+      ? Number.parseInt(query.limit, 10)
+      : Number.NaN;
   return Number.isInteger(raw) ? Math.min(Math.max(raw, 1), 200) : 50;
 }
 
@@ -198,18 +220,33 @@ export function parsePresetInput(value: unknown): PresetInput {
     name: readRequiredString(body.name, "name"),
     sourceUrl: readRequiredString(body.sourceUrl, "sourceUrl"),
     sourceMode: readEnum(body.sourceMode, "sourceMode", SOURCE_MODES),
-    qualityProfile: readEnum(body.qualityProfile, "qualityProfile", QUALITY_PROFILES),
-    bufferProfile: readEnum(body.bufferProfile, "bufferProfile", BUFFER_PROFILES),
+    qualityProfile: readEnum(
+      body.qualityProfile,
+      "qualityProfile",
+      QUALITY_PROFILES,
+    ),
+    bufferProfile: readEnum(
+      body.bufferProfile,
+      "bufferProfile",
+      BUFFER_PROFILES,
+    ),
     description: readOptionalString(body.description, "description"),
     includeAudio: readBoolean(body.includeAudio, "includeAudio"),
     width: readInteger(body.width, "width", 1),
     height: readInteger(body.height, "height", 1),
     fps: readInteger(body.fps, "fps", 1),
     bitrateVideoKbps: readInteger(body.bitrateVideoKbps, "bitrateVideoKbps", 1),
-    maxBitrateVideoKbps: readInteger(body.maxBitrateVideoKbps, "maxBitrateVideoKbps", 1),
+    maxBitrateVideoKbps: readInteger(
+      body.maxBitrateVideoKbps,
+      "maxBitrateVideoKbps",
+      1,
+    ),
     bitrateAudioKbps: readInteger(body.bitrateAudioKbps, "bitrateAudioKbps", 1),
     videoCodec: readEnum(body.videoCodec, "videoCodec", VIDEO_CODECS),
-    hardwareAcceleration: readBoolean(body.hardwareAcceleration, "hardwareAcceleration"),
+    hardwareAcceleration: readBoolean(
+      body.hardwareAcceleration,
+      "hardwareAcceleration",
+    ),
     minimizeLatency: readBoolean(body.minimizeLatency, "minimizeLatency"),
   };
 }
@@ -222,7 +259,11 @@ function parseRecurrenceInput(value: unknown): RecurrenceInput | undefined {
   const kind = readEnum(recurrence.kind, "recurrence.kind", RECURRENCE_KINDS);
   return {
     kind,
-    interval: readOptionalInteger(recurrence.interval, "recurrence.interval", 1),
+    interval: readOptionalInteger(
+      recurrence.interval,
+      "recurrence.interval",
+      1,
+    ),
     daysOfWeek: readOptionalWeekdays(recurrence.daysOfWeek),
     until: readOptionalString(recurrence.until, "recurrence.until"),
   };
@@ -338,23 +379,23 @@ export function getStatusCodeForError(error: unknown) {
     return 404;
   }
   if (
-    /already/i.test(message)
-    || /cannot /i.test(message)
-    || /overlap/i.test(message)
-    || /queue is empty/i.test(message)
-    || /queue is not active/i.test(message)
-    || /already streaming/i.test(message)
-    || /before importing/i.test(message)
-    || /only scheduled events/i.test(message)
+    /already/i.test(message) ||
+    /cannot /i.test(message) ||
+    /overlap/i.test(message) ||
+    /queue is empty/i.test(message) ||
+    /queue is not active/i.test(message) ||
+    /already streaming/i.test(message) ||
+    /before importing/i.test(message) ||
+    /only scheduled events/i.test(message)
   ) {
     return 409;
   }
   if (
-    /must be/i.test(message)
-    || /is required/i.test(message)
-    || /invalid/i.test(message)
-    || /activate /i.test(message)
-    || /missing/i.test(message)
+    /must be/i.test(message) ||
+    /is required/i.test(message) ||
+    /invalid/i.test(message) ||
+    /activate /i.test(message) ||
+    /missing/i.test(message)
   ) {
     return 400;
   }

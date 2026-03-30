@@ -33,7 +33,9 @@ function asPositiveInteger(value: number | undefined, fieldName: string) {
 function uniqueSortedDays(input: number[]) {
   const unique = [...new Set(input)].sort((a, b) => a - b);
   if (unique.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) {
-    throw new Error("daysOfWeek must only contain weekday indexes between 0 and 6");
+    throw new Error(
+      "daysOfWeek must only contain weekday indexes between 0 and 6",
+    );
   }
   return unique;
 }
@@ -156,7 +158,8 @@ export function recurrenceSummary(rule: RecurrenceRule) {
   }
 
   if (rule.kind === "daily") {
-    const cadence = rule.interval === 1 ? "taeglich" : `alle ${rule.interval} Tage`;
+    const cadence =
+      rule.interval === 1 ? "taeglich" : `alle ${rule.interval} Tage`;
     return rule.until ? `${cadence} bis ${rule.until}` : cadence;
   }
 
@@ -228,7 +231,9 @@ export function buildOccurrenceWindows(
     while (cursor <= untilDate) {
       const occurrenceStart = applyLocalTime(cursor, startAt);
       const candidateWeek = startOfLocalWeek(occurrenceStart);
-      const weekDiff = Math.floor(calendarDayDiff(anchorWeek, candidateWeek) / 7);
+      const weekDiff = Math.floor(
+        calendarDayDiff(anchorWeek, candidateWeek) / 7,
+      );
 
       if (
         occurrenceStart >= startAt &&

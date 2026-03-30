@@ -24,7 +24,12 @@ type RawSelfbotProfile = {
 
 export type SelfbotProfileConfig = Omit<
   ManagedSelfbotState,
-  "status" | "userTag" | "userId" | "lastError" | "lastPresenceText" | "lastVoiceStatus"
+  | "status"
+  | "userTag"
+  | "userId"
+  | "lastError"
+  | "lastPresenceText"
+  | "lastVoiceStatus"
 > & {
   token: string;
 };
@@ -123,7 +128,7 @@ function createProfileConfig(
         ? input.commandEnabled
         : typeof input.commandEnabled === "string"
           ? parseBooleanEnv(input.commandEnabled, defaults.commandEnabled)
-        : defaults.commandEnabled,
+          : defaults.commandEnabled,
     idlePresenceStatus: parsePresenceStatus(
       input.idlePresenceStatus,
       defaults.idlePresenceStatus,
@@ -143,13 +148,18 @@ function createProfileConfig(
       defaults.streamActivityType,
     ),
     streamActivityText:
-      normalizeOptionalEnv(input.streamActivityText) ?? defaults.streamActivityText,
+      normalizeOptionalEnv(input.streamActivityText) ??
+      defaults.streamActivityText,
     voiceStatusTemplate:
-      normalizeOptionalEnv(input.voiceStatusTemplate) ?? defaults.voiceStatusTemplate,
+      normalizeOptionalEnv(input.voiceStatusTemplate) ??
+      defaults.voiceStatusTemplate,
   };
 }
 
-function loadAdditionalProfiles(configFile: string, primary: SelfbotProfileConfig) {
+function loadAdditionalProfiles(
+  configFile: string,
+  primary: SelfbotProfileConfig,
+) {
   if (!existsSync(configFile)) {
     return [] as SelfbotProfileConfig[];
   }
@@ -248,15 +258,23 @@ export function loadSelfbotProfiles(baseDir: string) {
       name: normalizeOptionalEnv(process.env.PRIMARY_SELFBOT_NAME),
       token: process.env.DISCORD_TOKEN,
       commandEnabled: process.env.DISCORD_COMMANDS_ENABLED !== "0",
-      idlePresenceStatus: normalizeOptionalEnv(process.env.IDLE_PRESENCE_STATUS),
+      idlePresenceStatus: normalizeOptionalEnv(
+        process.env.IDLE_PRESENCE_STATUS,
+      ),
       idleActivityType: normalizeOptionalEnv(process.env.IDLE_ACTIVITY_TYPE),
       idleActivityText: normalizeOptionalEnv(process.env.IDLE_ACTIVITY_TEXT),
       streamPresenceStatus: normalizeOptionalEnv(
         process.env.STREAM_PRESENCE_STATUS,
       ),
-      streamActivityType: normalizeOptionalEnv(process.env.STREAM_ACTIVITY_TYPE),
-      streamActivityText: normalizeOptionalEnv(process.env.STREAM_ACTIVITY_TEXT),
-      voiceStatusTemplate: normalizeOptionalEnv(process.env.VOICE_STATUS_TEMPLATE),
+      streamActivityType: normalizeOptionalEnv(
+        process.env.STREAM_ACTIVITY_TYPE,
+      ),
+      streamActivityText: normalizeOptionalEnv(
+        process.env.STREAM_ACTIVITY_TEXT,
+      ),
+      voiceStatusTemplate: normalizeOptionalEnv(
+        process.env.VOICE_STATUS_TEMPLATE,
+      ),
     },
     DEFAULT_SELFBOT_ID,
     {
@@ -284,10 +302,7 @@ export function loadSelfbotProfiles(baseDir: string) {
     voiceStatusTemplate: "Now streaming: {{title}}",
   };
 
-  const profiles = [
-    primary,
-    ...loadAdditionalProfiles(configFile, primary),
-  ];
+  const profiles = [primary, ...loadAdditionalProfiles(configFile, primary)];
 
   return {
     configFile,
@@ -297,7 +312,9 @@ export function loadSelfbotProfiles(baseDir: string) {
   };
 }
 
-export function buildManagedSelfbotState(profile: SelfbotProfileConfig): ManagedSelfbotState {
+export function buildManagedSelfbotState(
+  profile: SelfbotProfileConfig,
+): ManagedSelfbotState {
   return {
     id: profile.id,
     name: profile.name,

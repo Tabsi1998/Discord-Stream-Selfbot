@@ -1,9 +1,5 @@
 import { EventEmitter } from "node:events";
-import {
-  Client,
-  StageChannel,
-  VoiceChannel,
-} from "discord.js-selfbot-v13";
+import { Client, StageChannel, VoiceChannel } from "discord.js-selfbot-v13";
 import {
   Encoders,
   Streamer,
@@ -35,7 +31,7 @@ import type {
   VideoEncoderMode,
   VoiceChannelOption,
 } from "../domain/types.js";
-import { AppStateStore } from "../state/AppStateStore.js";
+import type { AppStateStore } from "../state/AppStateStore.js";
 import { SourceResolver } from "./SourceResolver.js";
 
 function isSplitMediaInput(
@@ -153,10 +149,14 @@ function renderTemplate(
   const normalized = template?.trim();
   if (!normalized) return undefined;
 
-  return normalized.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
-    const value = context[key as keyof PresenceTemplateContext];
-    return typeof value === "string" ? value : "";
-  }).trim() || undefined;
+  return (
+    normalized
+      .replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+        const value = context[key as keyof PresenceTemplateContext];
+        return typeof value === "string" ? value : "";
+      })
+      .trim() || undefined
+  );
 }
 
 export class StreamRuntime extends EventEmitter {
@@ -228,7 +228,10 @@ export class StreamRuntime extends EventEmitter {
   public getActiveRuns() {
     return [...this.activeSessions.values()]
       .map((session) => session.run)
-      .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+      .sort(
+        (left, right) =>
+          Date.parse(left.startedAt) - Date.parse(right.startedAt),
+      );
   }
 
   public async ensureReady(botId = appConfig.primarySelfbotId) {
@@ -241,22 +244,25 @@ export class StreamRuntime extends EventEmitter {
     }
 
     if (!bot.loginPromise) {
-      bot.loginPromise = bot.client.login(bot.profile.token).then(() => {
-        if (!bot.client.user) {
-          throw new Error("Discord login completed without a ready user");
-        }
-      }).catch((error: unknown) => {
-        bot.loginPromise = undefined;
-        const message =
-          error instanceof Error ? error.message : "Discord login failed";
-        this.setBotError(bot, message);
-        this.store.appendLog("error", "Discord login failed", {
-          botId: bot.profile.id,
-          botName: bot.profile.name,
-          error: message,
+      bot.loginPromise = bot.client
+        .login(bot.profile.token)
+        .then(() => {
+          if (!bot.client.user) {
+            throw new Error("Discord login completed without a ready user");
+          }
+        })
+        .catch((error: unknown) => {
+          bot.loginPromise = undefined;
+          const message =
+            error instanceof Error ? error.message : "Discord login failed";
+          this.setBotError(bot, message);
+          this.store.appendLog("error", "Discord login failed", {
+            botId: bot.profile.id,
+            botName: bot.profile.name,
+            error: message,
+          });
+          throw error;
         });
-        throw error;
-      });
     }
 
     await bot.loginPromise;
@@ -392,7 +398,10 @@ export class StreamRuntime extends EventEmitter {
 
     const channel = await bot.client.channels.fetch(options.channel.channelId);
     if (!channel || !channel.isVoice()) {
-      this.failSession(session, "Configured Discord channel is not a voice channel");
+      this.failSession(
+        session,
+        "Configured Discord channel is not a voice channel",
+      );
       throw new Error("Configured Discord channel is not a voice channel");
     }
 
@@ -429,9 +438,10 @@ export class StreamRuntime extends EventEmitter {
         mode: resolvedSource.resolverKind,
         title: resolvedSource.resolvedTitle ?? "",
         live: resolvedSource.isLive ? "true" : "false",
-        separateAudio: isSplitMediaInput(resolvedSource.input) && resolvedSource.input.audio
-          ? "true"
-          : "false",
+        separateAudio:
+          isSplitMediaInput(resolvedSource.input) && resolvedSource.input.audio
+            ? "true"
+            : "false",
         encoder: resolvedEncoder.mode,
         width: String(guardedPreset.width),
         height: String(guardedPreset.height),
@@ -466,7 +476,8 @@ export class StreamRuntime extends EventEmitter {
       this.store.setRuntime((runtime) => {
         runtime.selectedVideoEncodersByBot ??= {};
         runtime.telemetryByBot ??= {};
-        runtime.selectedVideoEncodersByBot[bot.profile.id] = resolvedEncoder.mode;
+        runtime.selectedVideoEncodersByBot[bot.profile.id] =
+          resolvedEncoder.mode;
         runtime.telemetryByBot[bot.profile.id] = {
           updatedAt: new Date().toISOString(),
         };
@@ -477,9 +488,15 @@ export class StreamRuntime extends EventEmitter {
         resolvedSource.input,
         {
           includeAudio: options.preset.includeAudio,
-          width: resolvedPreset.preserveSource ? undefined : guardedPreset.width,
-          height: resolvedPreset.preserveSource ? undefined : guardedPreset.height,
-          frameRate: resolvedPreset.preserveSource ? undefined : guardedPreset.fps,
+          width: resolvedPreset.preserveSource
+            ? undefined
+            : guardedPreset.width,
+          height: resolvedPreset.preserveSource
+            ? undefined
+            : guardedPreset.height,
+          frameRate: resolvedPreset.preserveSource
+            ? undefined
+            : guardedPreset.fps,
           bitrateVideo: guardedPreset.bitrateVideoKbps,
           bitrateVideoMax: guardedPreset.maxBitrateVideoKbps,
           bitrateAudio: guardedPreset.bitrateAudioKbps,
@@ -568,15 +585,19 @@ export class StreamRuntime extends EventEmitter {
       preset: options.preset.name,
     });
 
-    void this.applyStreamingPresence(bot, presenceContext).catch((error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : "Failed to apply streaming presence";
-      this.store.appendLog("warn", "Streaming presence update failed", {
-        botId: bot.profile.id,
-        botName: bot.profile.name,
-        error: message,
-      });
-    });
+    void this.applyStreamingPresence(bot, presenceContext).catch(
+      (error: unknown) => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to apply streaming presence";
+        this.store.appendLog("warn", "Streaming presence update failed", {
+          botId: bot.profile.id,
+          botName: bot.profile.name,
+          error: message,
+        });
+      },
+    );
 
     return session.run;
   }
@@ -627,17 +648,23 @@ export class StreamRuntime extends EventEmitter {
 
   private pickPreferredRun(activeRuns: ActiveRun[]) {
     if (!activeRuns.length) return undefined;
-    return activeRuns.find((run) => run.botId === appConfig.primarySelfbotId)
-      ?? activeRuns.find((run) => run.status === "running")
-      ?? activeRuns[0];
+    return (
+      activeRuns.find((run) => run.botId === appConfig.primarySelfbotId) ??
+      activeRuns.find((run) => run.status === "running") ??
+      activeRuns[0]
+    );
   }
 
   private pickPreferredSession() {
-    const preferredBotSession = this.activeSessions.get(appConfig.primarySelfbotId);
+    const preferredBotSession = this.activeSessions.get(
+      appConfig.primarySelfbotId,
+    );
     if (preferredBotSession) {
       return preferredBotSession;
     }
-    return this.activeSessions.values().next().value as ActiveSession | undefined;
+    return this.activeSessions.values().next().value as
+      | ActiveSession
+      | undefined;
   }
 
   private syncRuntimeDerivedState(runtime: RuntimeState) {
@@ -679,7 +706,9 @@ export class StreamRuntime extends EventEmitter {
       if (!this.activeSessions.has(bot.profile.id)) {
         void this.applyIdlePresence(bot).catch((error: unknown) => {
           const message =
-            error instanceof Error ? error.message : "Failed to apply idle presence";
+            error instanceof Error
+              ? error.message
+              : "Failed to apply idle presence";
           this.store.appendLog("warn", "Idle presence update failed", {
             botId: bot.profile.id,
             botName: bot.profile.name,
@@ -717,16 +746,15 @@ export class StreamRuntime extends EventEmitter {
 
   private updateBotRuntime(
     botId: string,
-    updater: (
-      entry: ManagedSelfbotState,
-      runtime: RuntimeState,
-    ) => void,
+    updater: (entry: ManagedSelfbotState, runtime: RuntimeState) => void,
   ) {
     this.store.setRuntime((runtime) => {
       runtime.bots ??= appConfig.selfbotProfiles.map(buildManagedSelfbotState);
       let entry = runtime.bots.find((item) => item.id === botId);
       if (!entry) {
-        const profile = appConfig.selfbotProfiles.find((item) => item.id === botId);
+        const profile = appConfig.selfbotProfiles.find(
+          (item) => item.id === botId,
+        );
         if (!profile) return;
         entry = buildManagedSelfbotState(profile);
         runtime.bots.push(entry);
@@ -791,13 +819,15 @@ export class StreamRuntime extends EventEmitter {
     if (!user) return;
 
     const activity = text
-      ? [{
-          name: text,
-          type,
-          ...(type === "STREAMING"
-            ? { url: "https://www.twitch.tv/discord" }
-            : {}),
-        }]
+      ? [
+          {
+            name: text,
+            type,
+            ...(type === "STREAMING"
+              ? { url: "https://www.twitch.tv/discord" }
+              : {}),
+          },
+        ]
       : [];
 
     user.setPresence({
@@ -806,7 +836,10 @@ export class StreamRuntime extends EventEmitter {
     });
   }
 
-  private async setVoiceStatus(bot: ManagedBot, statusText: string | undefined) {
+  private async setVoiceStatus(
+    bot: ManagedBot,
+    statusText: string | undefined,
+  ) {
     const voiceState = bot.client.user?.voice;
     if (!voiceState?.channel) return;
 
@@ -819,7 +852,8 @@ export class StreamRuntime extends EventEmitter {
     }
 
     session.stopTimeout = setTimeout(() => {
-      if (session.closed || this.activeSessions.get(session.botId) !== session) return;
+      if (session.closed || this.activeSessions.get(session.botId) !== session)
+        return;
       this.store.appendLog("warn", "Force-closing stuck stream session", {
         botId: session.botId,
         botName: session.run.botName,
@@ -828,7 +862,11 @@ export class StreamRuntime extends EventEmitter {
         preset: session.preset.name,
         reason: session.stopReason ?? "unknown",
       });
-      this.completeSession(session, "aborted", session.stopReason ?? "forced-stop");
+      this.completeSession(
+        session,
+        "aborted",
+        session.stopReason ?? "forced-stop",
+      );
     }, 10_000);
   }
 
@@ -857,7 +895,9 @@ export class StreamRuntime extends EventEmitter {
           reject(new Error("Stream startup aborted"));
           return;
         }
-        reject(error instanceof Error ? error : new Error("FFmpeg startup failed"));
+        reject(
+          error instanceof Error ? error : new Error("FFmpeg startup failed"),
+        );
       };
 
       const cleanup = () => {
@@ -883,7 +923,9 @@ export class StreamRuntime extends EventEmitter {
     });
   }
 
-  private getInternalProcess(command: ReturnType<typeof prepareStream>["command"]) {
+  private getInternalProcess(
+    command: ReturnType<typeof prepareStream>["command"],
+  ) {
     return (command as unknown as { _proc?: CommandProcessLike })._proc;
   }
 
@@ -1046,7 +1088,8 @@ export class StreamRuntime extends EventEmitter {
     session: ActiveSession,
     telemetry: StreamTelemetry,
   ) {
-    if (this.activeSessions.get(session.botId) !== session || session.closed) return;
+    if (this.activeSessions.get(session.botId) !== session || session.closed)
+      return;
 
     const speed = telemetry.speed;
     const fps = telemetry.fps;
@@ -1110,7 +1153,8 @@ export class StreamRuntime extends EventEmitter {
     const sample: StreamTelemetry = {};
 
     command.on("stderr", (line: string) => {
-      if (this.activeSessions.get(session.botId) !== session || session.closed) return;
+      if (this.activeSessions.get(session.botId) !== session || session.closed)
+        return;
 
       const trimmed = line.trim();
       if (!trimmed || !trimmed.includes("=")) return;

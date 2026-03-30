@@ -20,9 +20,11 @@ service.initializeNotificationSettings({
 });
 
 function isErrorEventLike(value: unknown): value is { type?: unknown } {
-  return !!value
-    && typeof value === "object"
-    && value.constructor?.name === "ErrorEvent";
+  return (
+    !!value &&
+    typeof value === "object" &&
+    value.constructor?.name === "ErrorEvent"
+  );
 }
 
 process.on("unhandledRejection", (reason: unknown) => {

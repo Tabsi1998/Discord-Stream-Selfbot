@@ -43,7 +43,8 @@ const QUALITY_PROFILES = {
   },
   "1440p30": {
     label: "1440p / 30 FPS",
-    description: "Sehr schaerf, aber schon klar schwerer fuer Encoder und Discord.",
+    description:
+      "Sehr schaerf, aber schon klar schwerer fuer Encoder und Discord.",
     width: 2560,
     height: 1440,
     fps: 30,
@@ -109,7 +110,9 @@ const els = {
   notice: document.querySelector("#notice"),
   refreshButton: document.querySelector("#refreshButton"),
   stopButton: document.querySelector("#stopButton"),
-  refreshVoiceChannelsButton: document.querySelector("#refreshVoiceChannelsButton"),
+  refreshVoiceChannelsButton: document.querySelector(
+    "#refreshVoiceChannelsButton",
+  ),
   applyDiscoveredChannelButton: document.querySelector(
     "#applyDiscoveredChannelButton",
   ),
@@ -342,7 +345,13 @@ function getBufferStrategy(profile) {
   return BUFFER_STRATEGIES[profile] || BUFFER_STRATEGIES.auto;
 }
 
-function getRecommendedBitrates(width, height, fps, codec, qualityProfile = "custom") {
+function getRecommendedBitrates(
+  width,
+  height,
+  fps,
+  codec,
+  _qualityProfile = "custom",
+) {
   const pixels = width * height;
   const highFrameRate = fps >= 50;
   let video = 2500;
@@ -380,7 +389,14 @@ function getRecommendedBitrates(width, height, fps, codec, qualityProfile = "cus
   };
 }
 
-function getEffectiveBufferProfile(sourceMode, qualityProfile, width, height, fps, selectedProfile) {
+function getEffectiveBufferProfile(
+  sourceMode,
+  _qualityProfile,
+  width,
+  height,
+  fps,
+  selectedProfile,
+) {
   if (selectedProfile && selectedProfile !== "auto") {
     return selectedProfile;
   }
@@ -397,7 +413,10 @@ function getResolvedPresetFormSettings() {
   const codec = els.presetVideoCodec.value || "H264";
   const quality = getQualityProfileConfig(qualityProfile);
   const manualWidth = parsePositiveNumber(els.presetWidth.value, quality.width);
-  const manualHeight = parsePositiveNumber(els.presetHeight.value, quality.height);
+  const manualHeight = parsePositiveNumber(
+    els.presetHeight.value,
+    quality.height,
+  );
   const manualFps = parsePositiveNumber(els.presetFps.value, quality.fps);
   const width = qualityProfile === "custom" ? manualWidth : quality.width;
   const height = qualityProfile === "custom" ? manualHeight : quality.height;
@@ -411,7 +430,10 @@ function getResolvedPresetFormSettings() {
   );
   const bitrateVideoKbps =
     qualityProfile === "custom"
-      ? parsePositiveNumber(els.presetBitrateVideo.value, bitrateRecommendation.video)
+      ? parsePositiveNumber(
+          els.presetBitrateVideo.value,
+          bitrateRecommendation.video,
+        )
       : bitrateRecommendation.video;
   const maxBitrateVideoKbps =
     qualityProfile === "custom"
@@ -422,7 +444,10 @@ function getResolvedPresetFormSettings() {
       : bitrateRecommendation.videoMax;
   const bitrateAudioKbps =
     qualityProfile === "custom"
-      ? parsePositiveNumber(els.presetBitrateAudio.value, bitrateRecommendation.audio)
+      ? parsePositiveNumber(
+          els.presetBitrateAudio.value,
+          bitrateRecommendation.audio,
+        )
       : bitrateRecommendation.audio;
   const effectiveBufferProfile = getEffectiveBufferProfile(
     sourceMode,
@@ -493,9 +518,9 @@ function syncPresetFieldsFromProfiles() {
 
   const bufferLabel =
     resolved.bufferProfile === "auto"
-      ? `${BUFFER_STRATEGIES.auto.label} -> ${getBufferStrategy(
-          resolved.effectiveBufferProfile,
-        ).label}`
+      ? `${BUFFER_STRATEGIES.auto.label} -> ${
+          getBufferStrategy(resolved.effectiveBufferProfile).label
+        }`
       : getBufferStrategy(resolved.effectiveBufferProfile).label;
   const profileText = resolved.quality.preserveSource
     ? `${resolved.quality.label}: Quelle bestimmt Aufloesung und FPS, Buffering laeuft auf ${bufferLabel}.`
@@ -508,20 +533,31 @@ function syncPresetFieldsFromProfiles() {
 function updatePresetQualityHint() {
   const recommendation = getCurrentPresetRecommendation();
   const currentVideo = parsePositiveNumber(els.presetBitrateVideo.value, 0);
-  const currentVideoMax = parsePositiveNumber(els.presetBitrateVideoMax.value, 0);
+  const currentVideoMax = parsePositiveNumber(
+    els.presetBitrateVideoMax.value,
+    0,
+  );
   const currentAudio = parsePositiveNumber(els.presetBitrateAudio.value, 0);
   const includeAudio = els.presetIncludeAudio.checked;
-  const width = parsePositiveNumber(els.presetWidth.value, recommendation.width);
-  const height = parsePositiveNumber(els.presetHeight.value, recommendation.height);
+  const width = parsePositiveNumber(
+    els.presetWidth.value,
+    recommendation.width,
+  );
+  const height = parsePositiveNumber(
+    els.presetHeight.value,
+    recommendation.height,
+  );
   const fps = parsePositiveNumber(els.presetFps.value, recommendation.fps);
   const softwareHighLoad =
     !els.presetHardwareAcceleration.checked &&
-    (height > 1080 || width > 1920 || ((height >= 1080 || width >= 1920) && fps > 30));
+    (height > 1080 ||
+      width > 1920 ||
+      ((height >= 1080 || width >= 1920) && fps > 30));
 
   const belowRecommendation =
-    currentVideo < recommendation.video
-    || currentVideoMax < recommendation.videoMax
-    || (includeAudio && currentAudio < recommendation.audio);
+    currentVideo < recommendation.video ||
+    currentVideoMax < recommendation.videoMax ||
+    (includeAudio && currentAudio < recommendation.audio);
 
   if (softwareHighLoad) {
     els.presetQualityHint.dataset.tone = "warn";
@@ -554,7 +590,8 @@ function recurrenceSummary(rule) {
   }
 
   if (rule.kind === "daily") {
-    const cadence = rule.interval === 1 ? "taeglich" : `alle ${rule.interval} Tage`;
+    const cadence =
+      rule.interval === 1 ? "taeglich" : `alle ${rule.interval} Tage`;
     return rule.until
       ? `${cadence} bis ${formatDateTime(rule.until)}`
       : cadence;
@@ -625,7 +662,9 @@ function getSelectedWeekdays() {
 function setSelectedWeekdays(days) {
   const selected = new Set(days || []);
   for (const input of els.eventWeekdayInputs) {
-    input.checked = selected.has(Number.parseInt(input.dataset.weekday || "", 10));
+    input.checked = selected.has(
+      Number.parseInt(input.dataset.weekday || "", 10),
+    );
   }
 }
 
@@ -680,10 +719,10 @@ function getPreferredActiveRun() {
   const activeRuns = getActiveRuns();
   if (!activeRuns.length) return null;
   return (
-    activeRuns.find((run) => run.botId === getPrimaryBotId())
-    || activeRuns.find((run) => run.status === "running")
-    || state.app?.runtime?.activeRun
-    || activeRuns[0]
+    activeRuns.find((run) => run.botId === getPrimaryBotId()) ||
+    activeRuns.find((run) => run.status === "running") ||
+    state.app?.runtime?.activeRun ||
+    activeRuns[0]
   );
 }
 
@@ -691,9 +730,9 @@ function getRunTelemetry(run) {
   if (!run) return null;
   const runtime = state.app?.runtime;
   return (
-    runtime?.telemetryByBot?.[run.botId]
-    || (runtime?.activeRun?.botId === run.botId ? runtime.telemetry : null)
-    || null
+    runtime?.telemetryByBot?.[run.botId] ||
+    (runtime?.activeRun?.botId === run.botId ? runtime.telemetry : null) ||
+    null
   );
 }
 
@@ -701,9 +740,11 @@ function getRunEncoder(run) {
   if (!run) return "software";
   const runtime = state.app?.runtime;
   return (
-    runtime?.selectedVideoEncodersByBot?.[run.botId]
-    || (runtime?.activeRun?.botId === run.botId ? runtime.selectedVideoEncoder : null)
-    || "software"
+    runtime?.selectedVideoEncodersByBot?.[run.botId] ||
+    (runtime?.activeRun?.botId === run.botId
+      ? runtime.selectedVideoEncoder
+      : null) ||
+    "software"
   );
 }
 
@@ -739,7 +780,11 @@ function buildTelemetryChips(telemetry) {
       label: "FPS",
       value: formatMetricNumber(telemetry.fps),
       tone:
-        telemetry.fps < 20 ? "danger" : telemetry.fps < 28 ? "warning" : "success",
+        telemetry.fps < 20
+          ? "danger"
+          : telemetry.fps < 28
+            ? "warning"
+            : "success",
     });
   }
   if (typeof telemetry?.speed === "number") {
@@ -789,11 +834,11 @@ function renderTelemetryChipMarkup(telemetry) {
   const telemetryChips = buildTelemetryChips(telemetry);
   return telemetryChips.length
     ? telemetryChips
-      .map(
-        (item) =>
-          `<span class="metric-chip ${item.tone ? `metric-chip-${item.tone}` : ""}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`,
-      )
-      .join("")
+        .map(
+          (item) =>
+            `<span class="metric-chip ${item.tone ? `metric-chip-${item.tone}` : ""}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`,
+        )
+        .join("")
     : '<span class="metric-chip metric-chip-muted">keine Daten</span>';
 }
 
@@ -890,7 +935,9 @@ function renderOverview() {
   const queueBotName = queueConfig.botId
     ? findBot(queueConfig.botId)?.name || queueConfig.botId
     : null;
-  const scheduled = state.app.events.filter((event) => event.status === "scheduled");
+  const scheduled = state.app.events.filter(
+    (event) => event.status === "scheduled",
+  );
   const nextEvent = [...scheduled].sort(
     (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
   )[0];
@@ -931,9 +978,10 @@ function renderOverview() {
     els.streamHealthBar.classList.add("hidden");
     els.activeRunsList.innerHTML = "";
   } else {
-    els.activeRunPrimary.textContent = activeRuns.length === 1
-      ? `${activeRun.channelName} -> ${activeRun.presetName}`
-      : `${activeRuns.length} aktive Streams`;
+    els.activeRunPrimary.textContent =
+      activeRuns.length === 1
+        ? `${activeRun.channelName} -> ${activeRun.presetName}`
+        : `${activeRuns.length} aktive Streams`;
     const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
     els.activeRunSecondary.textContent = [
       `Bot: ${activeRun.botName || activeRun.botId || "unbekannt"}`,
@@ -952,7 +1000,9 @@ function renderOverview() {
 
     els.activeRunsList.innerHTML = activeRuns
       .map((run) => {
-        const uptimeLabel = formatUptime(Date.now() - Date.parse(run.startedAt));
+        const uptimeLabel = formatUptime(
+          Date.now() - Date.parse(run.startedAt),
+        );
         return `
           <article class="item-card">
             <div class="item-topline">
@@ -971,9 +1021,10 @@ function renderOverview() {
       .join("");
   }
 
-  els.stopButton.textContent = activeRuns.length > 1
-    ? "Alle aktiven Streams stoppen"
-    : "Aktiven Stream stoppen";
+  els.stopButton.textContent =
+    activeRuns.length > 1
+      ? "Alle aktiven Streams stoppen"
+      : "Aktiven Stream stoppen";
   els.stopButton.disabled = !activeRuns.length;
 
   els.scheduledSummary.textContent = `${scheduled.length} Events geplant`;
@@ -1010,7 +1061,8 @@ function renderSelfbots() {
   const bots = getBots();
   const activeRuns = getActiveRuns();
   if (!bots.length) {
-    els.selfbotsList.innerHTML = '<p class="muted">Keine Selfbots konfiguriert.</p>';
+    els.selfbotsList.innerHTML =
+      '<p class="muted">Keine Selfbots konfiguriert.</p>';
     return;
   }
 
@@ -1050,15 +1102,15 @@ function badgeClass(status) {
 
 function renderChannels() {
   if (!state.app.channels.length) {
-    els.channelsList.innerHTML = '<p class="muted">Noch keine Kanaele gespeichert.</p>';
+    els.channelsList.innerHTML =
+      '<p class="muted">Noch keine Kanaele gespeichert.</p>';
     return;
   }
 
   els.channelsList.innerHTML = state.app.channels
-    .map(
-      (item) => {
-        const bot = findBot(item.botId);
-        return `
+    .map((item) => {
+      const bot = findBot(item.botId);
+      return `
         <article class="item-card">
           <div class="item-topline">
             <div>
@@ -1073,14 +1125,14 @@ function renderChannels() {
           </div>
         </article>
       `;
-      },
-    )
+    })
     .join("");
 }
 
 function renderPresets() {
   if (!state.app.presets.length) {
-    els.presetsList.innerHTML = '<p class="muted">Noch keine Presets gespeichert.</p>';
+    els.presetsList.innerHTML =
+      '<p class="muted">Noch keine Presets gespeichert.</p>';
     return;
   }
 
@@ -1109,7 +1161,8 @@ function renderPresets() {
 
 function renderEvents() {
   if (!state.app.events.length) {
-    els.eventsList.innerHTML = '<p class="muted">Noch keine Events gespeichert.</p>';
+    els.eventsList.innerHTML =
+      '<p class="muted">Noch keine Events gespeichert.</p>';
     return;
   }
 
@@ -1245,12 +1298,42 @@ function renderSelects() {
   const bots = getBots();
   fillSelect(els.channelBotId, bots, "Selfbot waehlen", botDisplayLabel);
   fillSelect(els.discoveryBotId, bots, "Selfbot waehlen", botDisplayLabel);
-  fillSelect(els.manualChannelId, state.app.channels, "Kanal waehlen", channelLabel);
-  fillSelect(els.eventChannelId, state.app.channels, "Kanal waehlen", channelLabel);
-  fillSelect(els.queueChannelId, state.app.channels, "Queue-Kanal waehlen", channelLabel);
-  fillSelect(els.manualPresetId, state.app.presets, "Preset waehlen", presetLabel);
-  fillSelect(els.eventPresetId, state.app.presets, "Preset waehlen", presetLabel);
-  fillSelect(els.queuePresetId, state.app.presets, "Basis-Preset waehlen", presetLabel);
+  fillSelect(
+    els.manualChannelId,
+    state.app.channels,
+    "Kanal waehlen",
+    channelLabel,
+  );
+  fillSelect(
+    els.eventChannelId,
+    state.app.channels,
+    "Kanal waehlen",
+    channelLabel,
+  );
+  fillSelect(
+    els.queueChannelId,
+    state.app.channels,
+    "Queue-Kanal waehlen",
+    channelLabel,
+  );
+  fillSelect(
+    els.manualPresetId,
+    state.app.presets,
+    "Preset waehlen",
+    presetLabel,
+  );
+  fillSelect(
+    els.eventPresetId,
+    state.app.presets,
+    "Preset waehlen",
+    presetLabel,
+  );
+  fillSelect(
+    els.queuePresetId,
+    state.app.presets,
+    "Basis-Preset waehlen",
+    presetLabel,
+  );
 
   if (!els.channelBotId.value && bots.length) {
     els.channelBotId.value = getPrimaryBotId();
@@ -1680,7 +1763,10 @@ async function updateQueueLoop(enabled) {
     method: "POST",
     body: JSON.stringify({ enabled }),
   });
-  showNotice(enabled ? "Queue-Loop aktiviert." : "Queue-Loop deaktiviert.", "success");
+  showNotice(
+    enabled ? "Queue-Loop aktiviert." : "Queue-Loop deaktiviert.",
+    "success",
+  );
   await refresh();
 }
 
@@ -1929,18 +2015,25 @@ function bindPresetQualityEvents() {
     });
   });
 
-  els.presetRecommendButton.addEventListener("click", applyRecommendedPresetSettings);
+  els.presetRecommendButton.addEventListener(
+    "click",
+    applyRecommendedPresetSettings,
+  );
 
   // Auto-detect yt-dlp URLs and switch source mode
   const YT_DLP_HOSTS = [
-    "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
-    "twitch.tv", "www.twitch.tv",
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "twitch.tv",
+    "www.twitch.tv",
   ];
 
   function needsYtDlp(url) {
     try {
       const host = new URL(url).hostname.toLowerCase();
-      return YT_DLP_HOSTS.some((h) => host === h || host.endsWith("." + h));
+      return YT_DLP_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
     } catch {
       return false;
     }
@@ -1973,20 +2066,26 @@ function bindPresetQualityEvents() {
 
     if (needsYtDlp(url) && els.presetSourceMode.value === "direct") {
       els.presetSourceMode.value = "yt-dlp";
-      els.presetSourceHint.textContent = "YouTube/Twitch erkannt. Quelltyp automatisch auf yt-dlp gesetzt.";
+      els.presetSourceHint.textContent =
+        "YouTube/Twitch erkannt. Quelltyp automatisch auf yt-dlp gesetzt.";
       els.presetSourceHint.dataset.tone = "info";
       els.presetSourceHint.classList.remove("hidden");
     } else if (isTsProxy(url)) {
       els.presetSourceMode.value = "direct";
-      if (els.presetBufferProfile.value === "auto" || els.presetBufferProfile.value === "low-latency") {
+      if (
+        els.presetBufferProfile.value === "auto" ||
+        els.presetBufferProfile.value === "low-latency"
+      ) {
         els.presetBufferProfile.value = "stable";
       }
-      els.presetSourceHint.textContent = "MPEG-TS Proxy erkannt (Dispatcharr/IPTV). Quelltyp auf Direkt, Buffer auf Stabil gesetzt.";
+      els.presetSourceHint.textContent =
+        "MPEG-TS Proxy erkannt (Dispatcharr/IPTV). Quelltyp auf Direkt, Buffer auf Stabil gesetzt.";
       els.presetSourceHint.dataset.tone = "info";
       els.presetSourceHint.classList.remove("hidden");
       syncPresetFieldsFromProfiles();
     } else if (isMpegTsUrl(url)) {
-      els.presetSourceHint.textContent = "MPEG-TS Stream erkannt. Empfehlung: Buffer-Profil auf 'Stabil' setzen.";
+      els.presetSourceHint.textContent =
+        "MPEG-TS Stream erkannt. Empfehlung: Buffer-Profil auf 'Stabil' setzen.";
       els.presetSourceHint.dataset.tone = "info";
       els.presetSourceHint.classList.remove("hidden");
     } else {
@@ -2012,7 +2111,7 @@ function bindPresetQualityEvents() {
         els.presetSourceHint.textContent = `Erreichbar (${result.status}) | Typ: ${result.contentType}`;
         els.presetSourceHint.dataset.tone = "success";
       } else {
-        els.presetSourceHint.textContent = `Nicht erreichbar: ${result.error || "Status " + result.status}`;
+        els.presetSourceHint.textContent = `Nicht erreichbar: ${result.error || `Status ${result.status}`}`;
         els.presetSourceHint.dataset.tone = "danger";
       }
       els.presetSourceHint.classList.remove("hidden");
@@ -2040,7 +2139,10 @@ function bindEvents() {
   els.discoveryBotId.addEventListener("change", () => {
     void refresh(true).catch(handleError);
   });
-  els.applyDiscoveredChannelButton.addEventListener("click", applyDiscoveredChannel);
+  els.applyDiscoveredChannelButton.addEventListener(
+    "click",
+    applyDiscoveredChannel,
+  );
   els.channelForm.addEventListener("submit", (event) => {
     void handleChannelSubmit(event).catch(handleError);
   });
@@ -2103,7 +2205,10 @@ function bindEvents() {
   els.activeRunsList.addEventListener("click", (event) => {
     void handleListAction(event).catch(handleError);
   });
-  els.eventRecurrenceKind.addEventListener("change", updateRecurrenceVisibility);
+  els.eventRecurrenceKind.addEventListener(
+    "change",
+    updateRecurrenceVisibility,
+  );
   els.eventStartAt.addEventListener("change", updateRecurrenceVisibility);
   window.addEventListener("beforeunload", stopLiveUpdates);
 }
@@ -2153,7 +2258,9 @@ function initYouTubeAuth() {
   // Toggle cookie section
   cookieToggle.addEventListener("click", () => {
     cookieArea.classList.toggle("hidden");
-    cookieArrow.innerHTML = cookieArea.classList.contains("hidden") ? "&#9660;" : "&#9650;";
+    cookieArrow.innerHTML = cookieArea.classList.contains("hidden")
+      ? "&#9660;"
+      : "&#9650;";
   });
 
   // File upload handler
@@ -2161,35 +2268,47 @@ function initYouTubeAuth() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => { cookieTextarea.value = ev.target?.result || ""; };
+    reader.onload = (ev) => {
+      cookieTextarea.value = ev.target?.result || "";
+    };
     reader.readAsText(file);
   });
 
   async function loadAuthStatus() {
     let oauth2 = { status: "idle", tokenConfigured: false };
     let cookies = { configured: false, cookieEntries: 0 };
-    try { oauth2 = await api("/api/oauth2/status"); } catch {}
-    try { cookies = await api("/api/cookies/status"); } catch {}
+    try {
+      oauth2 = await api("/api/oauth2/status");
+    } catch {}
+    try {
+      cookies = await api("/api/cookies/status");
+    } catch {}
 
     const isAuth = oauth2.tokenConfigured || cookies.configured;
 
     // Update status banner
-    banner.style.background = isAuth ? "var(--success-soft)" : "var(--warning-soft)";
+    banner.style.background = isAuth
+      ? "var(--success-soft)"
+      : "var(--warning-soft)";
     banner.style.border = `1px solid ${isAuth ? "var(--success)" : "var(--warning)"}33`;
     banner.innerHTML = `
       <p style="color:${isAuth ? "var(--success)" : "var(--warning)"};font-weight:600;margin-bottom:4px">
-        ${oauth2.tokenConfigured
-          ? "OAuth2 aktiv - YouTube laeuft automatisch!"
-          : cookies.configured
-            ? `Cookies aktiv (${cookies.cookieEntries} Eintraege)`
-            : 'Nicht authentifiziert - YouTube kann "not a bot" Fehler zeigen'}
+        ${
+          oauth2.tokenConfigured
+            ? "OAuth2 aktiv - YouTube laeuft automatisch!"
+            : cookies.configured
+              ? `Cookies aktiv (${cookies.cookieEntries} Eintraege)`
+              : 'Nicht authentifiziert - YouTube kann "not a bot" Fehler zeigen'
+        }
       </p>
       <p class="muted" style="font-size:0.85rem">
-        ${oauth2.tokenConfigured
-          ? "Token erneuert sich automatisch. Kein manuelles Eingreifen noetig."
-          : cookies.configured
-            ? "Cookies muessen manuell erneuert werden wenn sie ablaufen."
-            : "Waehle eine der Optionen unten um YouTube zu authentifizieren."}
+        ${
+          oauth2.tokenConfigured
+            ? "Token erneuert sich automatisch. Kein manuelles Eingreifen noetig."
+            : cookies.configured
+              ? "Cookies muessen manuell erneuert werden wenn sie ablaufen."
+              : "Waehle eine der Optionen unten um YouTube zu authentifizieren."
+        }
       </p>`;
 
     // Update OAuth2 actions
@@ -2205,14 +2324,20 @@ function initYouTubeAuth() {
         oauth2Actions.innerHTML = `
           <button class="ghost-button" type="button" id="oauth2RefreshBtn">Token erneuern</button>
           <button class="danger-button" type="button" id="oauth2RevokeBtn">Token loeschen</button>`;
-        document.querySelector("#oauth2RefreshBtn")?.addEventListener("click", startOAuth2);
-        document.querySelector("#oauth2RevokeBtn")?.addEventListener("click", revokeOAuth2);
+        document
+          .querySelector("#oauth2RefreshBtn")
+          ?.addEventListener("click", startOAuth2);
+        document
+          .querySelector("#oauth2RevokeBtn")
+          ?.addEventListener("click", revokeOAuth2);
       } else {
         oauth2Actions.innerHTML = `
           <button class="primary-button" type="button" id="oauth2StartBtn" style="padding:12px 24px;font-size:1rem">
             Jetzt mit Google anmelden
           </button>`;
-        document.querySelector("#oauth2StartBtn")?.addEventListener("click", startOAuth2);
+        document
+          .querySelector("#oauth2StartBtn")
+          ?.addEventListener("click", startOAuth2);
       }
     }
 
@@ -2220,13 +2345,22 @@ function initYouTubeAuth() {
     cookieActions.innerHTML = `
       <button class="primary-button" type="button" id="cookieUploadBtn">Cookies hochladen</button>
       ${cookies.configured ? '<button class="danger-button" type="button" id="cookieDeleteBtn">Cookies loeschen</button>' : ""}`;
-    document.querySelector("#cookieUploadBtn")?.addEventListener("click", uploadCookies);
-    document.querySelector("#cookieDeleteBtn")?.addEventListener("click", deleteCookies);
+    document
+      .querySelector("#cookieUploadBtn")
+      ?.addEventListener("click", uploadCookies);
+    document
+      .querySelector("#cookieDeleteBtn")
+      ?.addEventListener("click", deleteCookies);
   }
 
   async function startOAuth2() {
-    const btn = document.querySelector("#oauth2StartBtn") || document.querySelector("#oauth2RefreshBtn");
-    if (btn) { btn.disabled = true; btn.textContent = "Wird gestartet..."; }
+    const btn =
+      document.querySelector("#oauth2StartBtn") ||
+      document.querySelector("#oauth2RefreshBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Wird gestartet...";
+    }
     try {
       const result = await api("/api/oauth2/start", { method: "POST" });
       showNotice(result.message, "success");
@@ -2240,7 +2374,10 @@ function initYouTubeAuth() {
           if (s.status === "success" || s.tokenConfigured) {
             clearInterval(oauth2Polling);
             oauth2Polling = null;
-            showNotice("OAuth2 erfolgreich! YouTube funktioniert jetzt automatisch.", "success");
+            showNotice(
+              "OAuth2 erfolgreich! YouTube funktioniert jetzt automatisch.",
+              "success",
+            );
             await loadAuthStatus();
           } else if (s.status === "error" || s.status === "idle") {
             clearInterval(oauth2Polling);
@@ -2249,11 +2386,19 @@ function initYouTubeAuth() {
           }
         } catch {}
       }, 3000);
-      setTimeout(() => { if (oauth2Polling) { clearInterval(oauth2Polling); oauth2Polling = null; } }, 300000);
+      setTimeout(() => {
+        if (oauth2Polling) {
+          clearInterval(oauth2Polling);
+          oauth2Polling = null;
+        }
+      }, 300000);
     } catch (err) {
       showNotice(err.message, "danger");
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = "Jetzt mit Google anmelden"; }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Jetzt mit Google anmelden";
+      }
     }
   }
 
@@ -2262,19 +2407,29 @@ function initYouTubeAuth() {
       await api("/api/oauth2/revoke", { method: "POST" });
       showNotice("OAuth2 Token geloescht.", "success");
       await loadAuthStatus();
-    } catch (err) { showNotice(err.message, "danger"); }
+    } catch (err) {
+      showNotice(err.message, "danger");
+    }
   }
 
   async function uploadCookies() {
     const content = cookieTextarea.value.trim();
-    if (!content) { showNotice("Bitte Cookie-Inhalt einfuegen!", "danger"); return; }
+    if (!content) {
+      showNotice("Bitte Cookie-Inhalt einfuegen!", "danger");
+      return;
+    }
     try {
-      const result = await api("/api/cookies/upload", { method: "POST", body: JSON.stringify({ content }) });
+      const result = await api("/api/cookies/upload", {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      });
       showNotice(result.message, "success");
       cookieTextarea.value = "";
       cookieFileInput.value = "";
       await loadAuthStatus();
-    } catch (err) { showNotice(err.message, "danger"); }
+    } catch (err) {
+      showNotice(err.message, "danger");
+    }
   }
 
   async function deleteCookies() {
@@ -2282,7 +2437,9 @@ function initYouTubeAuth() {
       await api("/api/cookies/delete", { method: "POST" });
       showNotice("Cookies geloescht.", "success");
       await loadAuthStatus();
-    } catch (err) { showNotice(err.message, "danger"); }
+    } catch (err) {
+      showNotice(err.message, "danger");
+    }
   }
 
   // Initial load

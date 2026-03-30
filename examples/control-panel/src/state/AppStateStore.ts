@@ -77,9 +77,11 @@ function normalizeState(input: unknown): ControlPanelState {
         }))
       : fallback.channels,
     presets: Array.isArray(state.presets)
-        ? state.presets.map((preset) => {
+      ? state.presets.map((preset) => {
           const sourceMode =
-            typeof preset.sourceMode === "string" ? preset.sourceMode : "direct";
+            typeof preset.sourceMode === "string"
+              ? preset.sourceMode
+              : "direct";
           const qualityProfile = coerceQualityProfile(preset.qualityProfile);
           const bufferProfile = coerceBufferProfile(
             preset.bufferProfile,
@@ -102,7 +104,8 @@ function normalizeState(input: unknown): ControlPanelState {
               : new Date().toISOString(),
           );
           const occurrenceIndex =
-            typeof event.occurrenceIndex === "number" && event.occurrenceIndex > 0
+            typeof event.occurrenceIndex === "number" &&
+            event.occurrenceIndex > 0
               ? event.occurrenceIndex
               : 1;
           return {
@@ -118,7 +121,8 @@ function normalizeState(input: unknown): ControlPanelState {
         ? { ...defaultQueueConfig(), ...state.queueConfig }
         : defaultQueueConfig(),
     notificationSettings:
-      state.notificationSettings && typeof state.notificationSettings === "object"
+      state.notificationSettings &&
+      typeof state.notificationSettings === "object"
         ? {
             ...defaultNotificationSettings(),
             webhookUrl:
@@ -144,12 +148,12 @@ function normalizeState(input: unknown): ControlPanelState {
                 : fallback.runtime.activeRuns,
             telemetryByBot:
               state.runtime.telemetryByBot &&
-                typeof state.runtime.telemetryByBot === "object"
+              typeof state.runtime.telemetryByBot === "object"
                 ? state.runtime.telemetryByBot
                 : fallback.runtime.telemetryByBot,
             selectedVideoEncodersByBot:
               state.runtime.selectedVideoEncodersByBot &&
-                typeof state.runtime.selectedVideoEncodersByBot === "object"
+              typeof state.runtime.selectedVideoEncodersByBot === "object"
                 ? state.runtime.selectedVideoEncodersByBot
                 : fallback.runtime.selectedVideoEncodersByBot,
           }
@@ -186,10 +190,14 @@ export class AppStateStore {
   }
 
   private save() {
-    const statePayload = JSON.stringify({
-      ...this.state,
-      logs: [],
-    }, null, 2);
+    const statePayload = JSON.stringify(
+      {
+        ...this.state,
+        logs: [],
+      },
+      null,
+      2,
+    );
     const logsPayload = JSON.stringify(this.state.logs, null, 2);
 
     this.writeJsonFile(this.filePath, statePayload);
@@ -268,7 +276,9 @@ export class AppStateStore {
     return this.snapshot();
   }
 
-  public setRuntime(updater: (runtime: RuntimeState) => void): ControlPanelState {
+  public setRuntime(
+    updater: (runtime: RuntimeState) => void,
+  ): ControlPanelState {
     return this.update((draft) => {
       updater(draft.runtime);
     });

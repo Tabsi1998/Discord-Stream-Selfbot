@@ -87,7 +87,8 @@ const QUALITY_PROFILES: Record<QualityProfile, QualityProfileConfig> = {
   "1440p30": {
     id: "1440p30",
     label: "1440p / 30 FPS",
-    description: "Sehr schaerf, aber deutlich schwerer fuer Encoder und Discord",
+    description:
+      "Sehr schaerf, aber deutlich schwerer fuer Encoder und Discord",
     width: 2560,
     height: 1440,
     fps: 30,
@@ -135,7 +136,8 @@ const BUFFER_STRATEGIES: Record<BufferStrategyId, BufferStrategy> = {
   stable: {
     id: "stable",
     label: "Maximale Stabilitaet",
-    description: "Mehr Burst und groessere Queues fuer saubere, ruhige Wiedergabe",
+    description:
+      "Mehr Burst und groessere Queues fuer saubere, ruhige Wiedergabe",
     minimizeLatency: false,
     readrateInitialBurst: 8,
     inputQueueSize: 4096,
@@ -177,7 +179,10 @@ export function coerceBufferProfile(
   value: unknown,
   legacyMinimizeLatency = false,
 ): BufferProfile {
-  if (typeof value === "string" && (value === "auto" || value in BUFFER_STRATEGIES)) {
+  if (
+    typeof value === "string" &&
+    (value === "auto" || value in BUFFER_STRATEGIES)
+  ) {
     return value as BufferProfile;
   }
   return legacyMinimizeLatency ? "low-latency" : "auto";
@@ -192,7 +197,7 @@ export function getBufferStrategy(profile: BufferStrategyId) {
 }
 
 export function getRecommendedBitrates(
-  qualityProfile: QualityProfile,
+  _qualityProfile: QualityProfile,
   width: number,
   height: number,
   fps: number,
@@ -230,14 +235,17 @@ export function getRecommendedBitrates(
 
   return {
     bitrateVideoKbps: Math.max(500, Math.round(bitrateVideoKbps / 50) * 50),
-    maxBitrateVideoKbps: Math.max(1000, Math.round(maxBitrateVideoKbps / 50) * 50),
+    maxBitrateVideoKbps: Math.max(
+      1000,
+      Math.round(maxBitrateVideoKbps / 50) * 50,
+    ),
     bitrateAudioKbps: 160,
   };
 }
 
 function pickAutoBufferProfile(
   sourceMode: SourceMode,
-  qualityProfile: QualityProfile,
+  _qualityProfile: QualityProfile,
   width: number,
   height: number,
   fps: number,
@@ -281,7 +289,13 @@ export function normalizePresetInput(input: PresetInput) {
 
   const effectiveBufferProfile =
     bufferProfile === "auto"
-      ? pickAutoBufferProfile(input.sourceMode, qualityProfile, width, height, fps)
+      ? pickAutoBufferProfile(
+          input.sourceMode,
+          qualityProfile,
+          width,
+          height,
+          fps,
+        )
       : bufferProfile;
   const bufferStrategy = getBufferStrategy(effectiveBufferProfile);
 
@@ -406,17 +420,23 @@ export function applyRuntimePerformanceGuardrails(
       );
       maxBitrateVideoKbps = Math.min(
         Math.max(maxBitrateVideoKbps, bitrateVideoKbps),
-        Math.max(
-          recommended.maxBitrateVideoKbps,
-          recommended.bitrateVideoKbps,
-        ),
+        Math.max(recommended.maxBitrateVideoKbps, recommended.bitrateVideoKbps),
       );
-      bitrateAudioKbps = Math.min(bitrateAudioKbps, recommended.bitrateAudioKbps);
+      bitrateAudioKbps = Math.min(
+        bitrateAudioKbps,
+        recommended.bitrateAudioKbps,
+      );
     }
   }
 
-  if (preset.sourceMode === "yt-dlp" && fps >= 60 && selectedEncoderMode === "software") {
-    warnings.push("yt-dlp live sources at 60 FPS can require a hardware encoder");
+  if (
+    preset.sourceMode === "yt-dlp" &&
+    fps >= 60 &&
+    selectedEncoderMode === "software"
+  ) {
+    warnings.push(
+      "yt-dlp live sources at 60 FPS can require a hardware encoder",
+    );
   }
 
   return {

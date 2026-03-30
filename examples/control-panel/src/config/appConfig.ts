@@ -125,9 +125,7 @@ function parsePreferredHardwareEncoder(
   return "auto";
 }
 
-function parseFfmpegLogLevel(
-  value: string | undefined,
-): FfmpegLogLevel {
+function parseFfmpegLogLevel(value: string | undefined): FfmpegLogLevel {
   const normalized = value?.trim().toLowerCase();
   switch (normalized) {
     case "quiet":
@@ -247,8 +245,8 @@ export const appConfig = {
   ytDlpCookiesFile,
   ytDlpCookiesFromBrowser,
   ytDlpYouTubeExtractorArgs:
-    process.env.YT_DLP_YOUTUBE_EXTRACTOR_ARGS?.trim()
-    || "youtube:player_client=android",
+    process.env.YT_DLP_YOUTUBE_EXTRACTOR_ARGS?.trim() ||
+    "youtube:player_client=android",
   ytDlpFormat:
     process.env.YT_DLP_FORMAT ??
     "bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",
@@ -256,7 +254,10 @@ export const appConfig = {
   commandPrefix: process.env.COMMAND_PREFIX?.trim() || "$panel",
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),
   schedulerPollMs: parsePositiveIntegerEnv(process.env.SCHEDULER_POLL_MS, 1000),
-  startupTimeoutMs: parsePositiveIntegerEnv(process.env.STARTUP_TIMEOUT_MS, 15000),
+  startupTimeoutMs: parsePositiveIntegerEnv(
+    process.env.STARTUP_TIMEOUT_MS,
+    15000,
+  ),
   notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL?.trim() ?? "",
   notificationDmEnabled: process.env.NOTIFICATION_DM_ENABLED === "1",
   panelAuthEnabled,

@@ -72,7 +72,9 @@ test("Scheduler stops each expired active run independently per bot", async () =
       return true;
     },
     async startScheduledEvent() {
-      throw new Error("startScheduledEvent should not be called when a stop is due");
+      throw new Error(
+        "startScheduledEvent should not be called when a stop is due",
+      );
     },
   } as unknown as ControlPanelService;
 
@@ -87,9 +89,7 @@ test("Scheduler stops each expired active run independently per bot", async () =
   }
 
   assert.equal(markMissedCalls, 1);
-  assert.deepEqual(stopCalls, [
-    { reason: "scheduled-end", botId: "bot-1" },
-  ]);
+  assert.deepEqual(stopCalls, [{ reason: "scheduled-end", botId: "bot-1" }]);
 });
 
 test("Scheduler starts due events for free bots while skipping queue and already-busy bots", async () => {

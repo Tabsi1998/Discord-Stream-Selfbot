@@ -1,4 +1,4 @@
-import { ControlPanelService } from "../services/ControlPanelService.js";
+import type { ControlPanelService } from "../services/ControlPanelService.js";
 
 export class Scheduler {
   private interval?: NodeJS.Timeout;
@@ -51,9 +51,7 @@ export class Scheduler {
 
       if (stoppedAny) return;
 
-      const busyBotIds = new Set(
-        activeRuns.map((run) => run.botId),
-      );
+      const busyBotIds = new Set(activeRuns.map((run) => run.botId));
       if (state.queueConfig.active && state.queueConfig.botId) {
         busyBotIds.add(state.queueConfig.botId);
       }
@@ -68,7 +66,9 @@ export class Scheduler {
         .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
 
       for (const dueEvent of dueEvents) {
-        const channel = state.channels.find((entry) => entry.id === dueEvent.channelId);
+        const channel = state.channels.find(
+          (entry) => entry.id === dueEvent.channelId,
+        );
         const botId = channel?.botId ?? state.runtime.primaryBotId;
         if (!botId || busyBotIds.has(botId)) continue;
         await this.service.startScheduledEvent(dueEvent.id);

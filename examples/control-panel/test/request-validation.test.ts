@@ -49,9 +49,9 @@ test("parsePresetInput rejects malformed numeric fields", () => {
         minimizeLatency: false,
       }),
     (error: unknown) =>
-      error instanceof HttpError
-      && error.status === 400
-      && /height must be an integer/i.test(error.message),
+      error instanceof HttpError &&
+      error.status === 400 &&
+      /height must be an integer/i.test(error.message),
   );
 });
 
@@ -82,7 +82,9 @@ test("getStatusCodeForError maps validation and conflict style errors", () => {
   assert.equal(getStatusCodeForError(new HttpError(400, "bad payload")), 400);
   assert.equal(getStatusCodeForError(new Error("Channel not found")), 404);
   assert.equal(
-    getStatusCodeForError(new Error("Cannot delete a channel while it is active")),
+    getStatusCodeForError(
+      new Error("Cannot delete a channel while it is active"),
+    ),
     409,
   );
   assert.equal(getStatusCodeForError(new Error("Unhandled boom")), 500);

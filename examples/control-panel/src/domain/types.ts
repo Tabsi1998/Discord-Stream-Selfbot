@@ -21,11 +21,7 @@ export type QualityProfile =
   | "2160p30"
   | "2160p60"
   | "custom";
-export type BufferProfile =
-  | "auto"
-  | "stable"
-  | "balanced"
-  | "low-latency";
+export type BufferProfile = "auto" | "stable" | "balanced" | "low-latency";
 export type RecurrenceKind = "once" | "daily" | "weekly";
 export type EventStatus =
   | "scheduled"

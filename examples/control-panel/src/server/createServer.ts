@@ -4,10 +4,17 @@ import express, {
   type Response,
 } from "express";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  unlinkSync,
+  statSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { appConfig } from "../config/appConfig.js";
-import { ControlPanelService } from "../services/ControlPanelService.js";
+import type { ControlPanelService } from "../services/ControlPanelService.js";
 import {
   getRouteParam,
   getStatusCodeForError,
@@ -58,8 +65,10 @@ function decodeBasicAuthHeader(value: string | undefined) {
   }
 
   try {
-    const decoded = Buffer.from(value.slice("Basic ".length), "base64")
-      .toString("utf-8");
+    const decoded = Buffer.from(
+      value.slice("Basic ".length),
+      "base64",
+    ).toString("utf-8");
     const separatorIndex = decoded.indexOf(":");
     if (separatorIndex < 0) {
       return undefined;
@@ -220,10 +229,12 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/channels/:id", (req, res) => {
-    res.json(service.updateChannel(
-      getRouteParam(req.params.id, "id"),
-      parseChannelInput(req.body),
-    ));
+    res.json(
+      service.updateChannel(
+        getRouteParam(req.params.id, "id"),
+        parseChannelInput(req.body),
+      ),
+    );
   });
 
   app.delete("/api/channels/:id", (req, res) => {
@@ -240,10 +251,12 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/presets/:id", (req, res) => {
-    res.json(service.updatePreset(
-      getRouteParam(req.params.id, "id"),
-      parsePresetInput(req.body),
-    ));
+    res.json(
+      service.updatePreset(
+        getRouteParam(req.params.id, "id"),
+        parsePresetInput(req.body),
+      ),
+    );
   });
 
   app.delete("/api/presets/:id", (req, res) => {
@@ -260,10 +273,12 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/events/:id", (req, res) => {
-    res.json(service.updateEvent(
-      getRouteParam(req.params.id, "id"),
-      parseEventInput(req.body),
-    ));
+    res.json(
+      service.updateEvent(
+        getRouteParam(req.params.id, "id"),
+        parseEventInput(req.body),
+      ),
+    );
   });
 
   app.delete("/api/events/:id", (req, res) => {
@@ -290,9 +305,9 @@ export function createServer(service: ControlPanelService) {
   app.post(
     "/api/manual/start",
     asyncRoute(async (req, res) => {
-      res.status(202).json(await service.startManualRun(
-        parseManualRunInput(req.body),
-      ));
+      res
+        .status(202)
+        .json(await service.startManualRun(parseManualRunInput(req.body)));
     }),
   );
 
@@ -315,7 +330,7 @@ export function createServer(service: ControlPanelService) {
     const activeRuns = state.runtime.activeRuns ?? [];
     const activeRun = botId
       ? activeRuns.find((run) => run.botId === botId)
-      : state.runtime.activeRun ?? activeRuns[0];
+      : (state.runtime.activeRun ?? activeRuns[0]);
     if (!activeRun) {
       res.json({ active: false, activeCount: activeRuns.length, activeRuns });
       return;
@@ -426,9 +441,11 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/settings/notifications", (req, res) => {
-    res.json(service.updateNotificationSettings(
-      parseNotificationSettingsInput(req.body),
-    ));
+    res.json(
+      service.updateNotificationSettings(
+        parseNotificationSettingsInput(req.body),
+      ),
+    );
   });
 
   app.post(
@@ -472,7 +489,9 @@ export function createServer(service: ControlPanelService) {
     if (exists) {
       try {
         const content = readFileSync(cookieFile, "utf-8");
-        lines = content.split("\n").filter((l) => l.trim() && !l.startsWith("#")).length;
+        lines = content
+          .split("\n")
+          .filter((l) => l.trim() && !l.startsWith("#")).length;
         const stat = statSync(cookieFile);
         lastModified = stat.mtime.toISOString();
       } catch {}
@@ -554,7 +573,9 @@ export function createServer(service: ControlPanelService) {
   // ── OAuth2 YouTube Authentication ──────────────────────────────
   // One-time setup: user visits google.com/device, enters code, done forever.
   // yt-dlp auto-refreshes the token (~6 months valid if active).
-  let oauth2Process: ReturnType<typeof import("node:child_process").spawn> | null = null;
+  let oauth2Process: ReturnType<
+    typeof import("node:child_process").spawn
+  > | null = null;
   let oauth2DeviceCode: string | null = null;
   let oauth2VerifyUrl: string | null = null;
   let oauth2Status: "idle" | "waiting" | "success" | "error" = "idle";
@@ -589,7 +610,9 @@ export function createServer(service: ControlPanelService) {
     asyncRoute(async (_req, res) => {
       // Kill any existing process
       if (oauth2Process) {
-        try { oauth2Process.kill(); } catch {}
+        try {
+          oauth2Process.kill();
+        } catch {}
         oauth2Process = null;
       }
 
@@ -609,16 +632,22 @@ export function createServer(service: ControlPanelService) {
       const { spawn: spawnProcess } = await import("node:child_process");
 
       // Start yt-dlp OAuth2 flow - it will prompt for device code
-      const child = spawnProcess(ytDlpPath, [
-        "--username", "oauth2",
-        "--password", "",
-        "-v",
-        "--dump-json",
-        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      ], {
-        stdio: "pipe",
-        env: { ...process.env, HOME: process.env.HOME || "/root" },
-      });
+      const child = spawnProcess(
+        ytDlpPath,
+        [
+          "--username",
+          "oauth2",
+          "--password",
+          "",
+          "-v",
+          "--dump-json",
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        ],
+        {
+          stdio: "pipe",
+          env: { ...process.env, HOME: process.env.HOME || "/root" },
+        },
+      );
 
       oauth2Process = child;
 
@@ -656,13 +685,17 @@ export function createServer(service: ControlPanelService) {
             const tokenFile = resolve(OAUTH2_TOKEN_DIR, "token_data.json");
             if (existsSync(tokenFile)) {
               oauth2Status = "success";
-              service.appendLog("info", "YouTube OAuth2 token saved successfully");
+              service.appendLog(
+                "info",
+                "YouTube OAuth2 token saved successfully",
+              );
             } else {
               oauth2Status = "error";
-              const errorLines = outputBuffer.split("\n").filter(
-                (l) => l.includes("ERROR") || l.includes("error"),
-              );
-              oauth2Error = errorLines.pop() || `Process exited with code ${code}`;
+              const errorLines = outputBuffer
+                .split("\n")
+                .filter((l) => l.includes("ERROR") || l.includes("error"));
+              oauth2Error =
+                errorLines.pop() || `Process exited with code ${code}`;
             }
           } catch {
             oauth2Status = "error";
@@ -716,16 +749,13 @@ export function createServer(service: ControlPanelService) {
     res.sendFile(resolve(appConfig.publicDir, "index.html"));
   });
 
-  app.use((
-    error: unknown,
-    _req: Request,
-    res: Response,
-    _next: NextFunction,
-  ) => {
-    const message =
-      error instanceof Error ? error.message : "Unexpected server error";
-    res.status(getStatusCodeForError(error)).json({ error: message });
-  });
+  app.use(
+    (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+      const message =
+        error instanceof Error ? error.message : "Unexpected server error";
+      res.status(getStatusCodeForError(error)).json({ error: message });
+    },
+  );
 
   return app;
 }

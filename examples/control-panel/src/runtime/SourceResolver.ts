@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { appConfig } from "../config/appConfig.js";
 import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
 import type { SourceMode, StreamPreset } from "../domain/types.js";
-import { AppStateStore } from "../state/AppStateStore.js";
+import type { AppStateStore } from "../state/AppStateStore.js";
 
 // Auto-discover cookie file in the cookies directory
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -108,7 +108,11 @@ function enhanceYtDlpError(message: string) {
   }
 
   // Detect geo-restriction errors
-  if (/geo.?restrict|not available in your country|blocked.*country/i.test(message)) {
+  if (
+    /geo.?restrict|not available in your country|blocked.*country/i.test(
+      message,
+    )
+  ) {
     return `${message}\nThis content appears to be geo-restricted. A VPN or proxy may be needed.`;
   }
 
@@ -136,7 +140,9 @@ export class SourceResolver {
     const ytDlpPath = appConfig.ytDlpPath;
 
     if (!ytDlpPath) {
-      throw new Error("yt-dlp is required for this preset but was not detected");
+      throw new Error(
+        "yt-dlp is required for this preset but was not detected",
+      );
     }
 
     // Smart auth strategy:
@@ -144,7 +150,7 @@ export class SourceResolver {
     // 2. If bot-check → retry with OAuth2 (if available)
     // 3. If still failing → retry with alternate YouTube clients
     const hasOAuth2 = existsSync(OAUTH2_TOKEN_PATH);
-    const hasCookies = buildCookieArgs().length > 0;
+    const _hasCookies = buildCookieArgs().length > 0;
 
     const errors: string[] = [];
     let lastBotCheck = false;
@@ -171,13 +177,23 @@ export class SourceResolver {
       });
       try {
         cancelSignal?.throwIfAborted();
-        return await this.resolveViaYtDlp(preset, cancelSignal, undefined, true);
+        return await this.resolveViaYtDlp(
+          preset,
+          cancelSignal,
+          undefined,
+          true,
+        );
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "OAuth2 attempt failed";
+        const message =
+          error instanceof Error ? error.message : "OAuth2 attempt failed";
         errors.push(message);
-        this.store.appendLog("warn", "OAuth2 attempt failed, trying client fallbacks", {
-          error: message.slice(0, 150),
-        });
+        this.store.appendLog(
+          "warn",
+          "OAuth2 attempt failed, trying client fallbacks",
+          {
+            error: message.slice(0, 150),
+          },
+        );
       }
     }
 
@@ -194,9 +210,15 @@ export class SourceResolver {
       for (const client of clients) {
         try {
           cancelSignal?.throwIfAborted();
-          return await this.resolveViaYtDlp(preset, cancelSignal, client, false);
+          return await this.resolveViaYtDlp(
+            preset,
+            cancelSignal,
+            client,
+            false,
+          );
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : "client retry failed";
+          const message =
+            error instanceof Error ? error.message : "client retry failed";
           errors.push(message);
           this.store.appendLog("warn", "yt-dlp retry failed", {
             preset: preset.name,
@@ -225,13 +247,16 @@ export class SourceResolver {
   ): Promise<ResolvedSource> {
     const ytDlpPath = appConfig.ytDlpPath;
     if (!ytDlpPath) {
-      throw new Error("yt-dlp is required for this preset but was not detected");
+      throw new Error(
+        "yt-dlp is required for this preset but was not detected",
+      );
     }
 
     const cookieArgs = forceOAuth2 ? [] : buildCookieArgs();
-    const oauth2Args = forceOAuth2 && existsSync(OAUTH2_TOKEN_PATH)
-      ? ["--username", "oauth2", "--password", ""]
-      : [];
+    const oauth2Args =
+      forceOAuth2 && existsSync(OAUTH2_TOKEN_PATH)
+        ? ["--username", "oauth2", "--password", ""]
+        : [];
     const args = [
       "--no-warnings",
       "--no-playlist",
@@ -248,9 +273,7 @@ export class SourceResolver {
       preset.sourceUrl,
     ];
 
-    const authSource = oauth2Args.length
-      ? "oauth2"
-      : getCookieSourceLabel();
+    const authSource = oauth2Args.length ? "oauth2" : getCookieSourceLabel();
 
     this.store.appendLog("info", "Resolving source via yt-dlp", {
       preset: preset.name,
@@ -314,9 +337,7 @@ export class SourceResolver {
 
       const [resolvedTitle, isLiveFlag, ...urls] = lines;
       if (urls.length > 2) {
-        throw new Error(
-          "yt-dlp returned more media streams than expected",
-        );
+        throw new Error("yt-dlp returned more media streams than expected");
       }
 
       if (urls.length === 0) {

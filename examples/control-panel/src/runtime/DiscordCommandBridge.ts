@@ -1,13 +1,9 @@
 import type { Message } from "discord.js-selfbot-v13";
 import { appConfig } from "../config/appConfig.js";
-import type {
-  ChannelDefinition,
-  ScheduledEvent,
-  StreamPreset,
-} from "../domain/types.js";
-import { ControlPanelService } from "../services/ControlPanelService.js";
-import { AppStateStore } from "../state/AppStateStore.js";
-import { StreamRuntime } from "./StreamRuntime.js";
+import type { ScheduledEvent } from "../domain/types.js";
+import type { ControlPanelService } from "../services/ControlPanelService.js";
+import type { AppStateStore } from "../state/AppStateStore.js";
+import type { StreamRuntime } from "./StreamRuntime.js";
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat("de-AT", {
@@ -30,7 +26,10 @@ function normalizeValue(value: string) {
 function matchesQuery(value: string, query: string) {
   const normalizedValue = normalizeValue(value);
   const normalizedQuery = normalizeValue(query);
-  return normalizedValue === normalizedQuery || normalizedValue.includes(normalizedQuery);
+  return (
+    normalizedValue === normalizedQuery ||
+    normalizedValue.includes(normalizedQuery)
+  );
 }
 
 export class DiscordCommandBridge {
@@ -80,7 +79,10 @@ export class DiscordCommandBridge {
         }
 
         if (activeRuns.length === 1) {
-          const stopped = this.service.stopActiveForBot("manual-stop", activeRuns[0].botId);
+          const stopped = this.service.stopActiveForBot(
+            "manual-stop",
+            activeRuns[0].botId,
+          );
           await message.channel.send(
             stopped
               ? `Stream wird gestoppt: ${activeRuns[0].channelName}`
@@ -144,7 +146,9 @@ export class DiscordCommandBridge {
         const url = segments[0];
         const name = segments[1];
         if (!url) {
-          await message.channel.send("Bitte URL angeben: queue add <url> | [name]");
+          await message.channel.send(
+            "Bitte URL angeben: queue add <url> | [name]",
+          );
           return;
         }
         const item = this.service.addToQueue(url, name);
@@ -243,22 +247,12 @@ export class DiscordCommandBridge {
 
   private resolveChannel(query: string) {
     const channels = this.service.snapshot().channels;
-    return this.resolveByQuery(
-      channels,
-      query,
-      (item) => item.name,
-      "channel",
-    );
+    return this.resolveByQuery(channels, query, (item) => item.name, "channel");
   }
 
   private resolvePreset(query: string) {
     const presets = this.service.snapshot().presets;
-    return this.resolveByQuery(
-      presets,
-      query,
-      (item) => item.name,
-      "preset",
-    );
+    return this.resolveByQuery(presets, query, (item) => item.name, "preset");
   }
 
   private resolveByQuery<T extends { id: string }>(
@@ -325,19 +319,24 @@ export class DiscordCommandBridge {
     await message.channel.send(
       [
         `Aktive Streams: ${activeRuns.length}`,
-        ...activeRuns.slice(0, 8).map(
-          (run, index) =>
-            `${index + 1}. ${run.botName} | ${run.channelName} -> ${run.presetName} | ${run.status} | ${formatDate(run.startedAt)}${
-              run.plannedStopAt ? ` | Stop ${formatDate(run.plannedStopAt)}` : ""
-            }`,
-        ),
+        ...activeRuns
+          .slice(0, 8)
+          .map(
+            (run, index) =>
+              `${index + 1}. ${run.botName} | ${run.channelName} -> ${run.presetName} | ${run.status} | ${formatDate(run.startedAt)}${
+                run.plannedStopAt
+                  ? ` | Stop ${formatDate(run.plannedStopAt)}`
+                  : ""
+              }`,
+          ),
       ].join("\n"),
     );
   }
 
   private async sendChannelList(message: Message) {
-    const lines = this.service.snapshot().channels
-      .slice(0, 12)
+    const lines = this.service
+      .snapshot()
+      .channels.slice(0, 12)
       .map((channel) => `${channel.name} | ${channel.id} | ${channel.botId}`);
     await message.channel.send(
       lines.length ? lines.join("\n") : "Keine Kanaele konfiguriert.",
@@ -345,8 +344,9 @@ export class DiscordCommandBridge {
   }
 
   private async sendPresetList(message: Message) {
-    const lines = this.service.snapshot().presets
-      .slice(0, 12)
+    const lines = this.service
+      .snapshot()
+      .presets.slice(0, 12)
       .map((preset) => `${preset.name} | ${preset.id} | ${preset.sourceMode}`);
     await message.channel.send(
       lines.length ? lines.join("\n") : "Keine Presets konfiguriert.",
@@ -355,8 +355,11 @@ export class DiscordCommandBridge {
 
   private async sendEventList(message: Message) {
     const now = Date.now();
-    const events = this.service.snapshot().events
-      .filter((event) => event.status === "running" || Date.parse(event.endAt) > now)
+    const events = this.service
+      .snapshot()
+      .events.filter(
+        (event) => event.status === "running" || Date.parse(event.endAt) > now,
+      )
       .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))
       .slice(0, 12);
 
@@ -394,7 +397,9 @@ export class DiscordCommandBridge {
         `Stream startet: ${channel.name}`,
         `Bot: ${channel.botId}`,
         `Preset: ${preset.name}`,
-        stopAt ? `Stop um: ${formatDate(stopAt.toISOString())}` : "Stop: manuell",
+        stopAt
+          ? `Stop um: ${formatDate(stopAt.toISOString())}`
+          : "Stop: manuell",
       ].join("\n"),
     );
   }
@@ -439,11 +444,12 @@ export class DiscordCommandBridge {
     const activeRuns = state.runtime.activeRuns ?? [];
     const encoderSummary = activeRuns.length
       ? activeRuns
-        .map((run) =>
-          `${run.botName}:${state.runtime.selectedVideoEncodersByBot?.[run.botId] ?? "idle"}`,
-        )
-        .join(", ")
-      : state.runtime.selectedVideoEncoder ?? "idle";
+          .map(
+            (run) =>
+              `${run.botName}:${state.runtime.selectedVideoEncodersByBot?.[run.botId] ?? "idle"}`,
+          )
+          .join(", ")
+      : (state.runtime.selectedVideoEncoder ?? "idle");
 
     await message.channel.send(
       [
@@ -470,11 +476,12 @@ export class DiscordCommandBridge {
       return;
     }
     const lines = logs.map(
-      (log) => `[${log.level.toUpperCase()}] ${formatDate(log.createdAt)} ${log.message}`,
+      (log) =>
+        `[${log.level.toUpperCase()}] ${formatDate(log.createdAt)} ${log.message}`,
     );
     const text = lines.join("\n");
     await message.channel.send(
-      text.length > 1900 ? text.slice(0, 1900) + "..." : text,
+      text.length > 1900 ? `${text.slice(0, 1900)}...` : text,
     );
   }
 
@@ -494,20 +501,20 @@ export class DiscordCommandBridge {
 
     const exact = activeRuns.find(
       (run) =>
-        run.botId === trimmed
-        || run.channelId === trimmed
-        || run.presetId === trimmed,
+        run.botId === trimmed ||
+        run.channelId === trimmed ||
+        run.presetId === trimmed,
     );
     if (exact) return exact;
 
     const matches = activeRuns.filter(
       (run) =>
-        matchesQuery(run.botName, trimmed)
-        || matchesQuery(run.channelName, trimmed)
-        || matchesQuery(run.presetName, trimmed)
-        || matchesQuery(run.botId, trimmed)
-        || matchesQuery(run.channelId, trimmed)
-        || matchesQuery(run.presetId, trimmed),
+        matchesQuery(run.botName, trimmed) ||
+        matchesQuery(run.channelName, trimmed) ||
+        matchesQuery(run.presetName, trimmed) ||
+        matchesQuery(run.botId, trimmed) ||
+        matchesQuery(run.channelId, trimmed) ||
+        matchesQuery(run.presetId, trimmed),
     );
     if (matches.length === 1) {
       return matches[0];

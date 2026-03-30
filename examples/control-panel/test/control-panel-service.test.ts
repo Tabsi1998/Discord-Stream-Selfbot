@@ -118,7 +118,11 @@ function createPresetInput(name: string, sourceUrl: string): PresetInput {
   };
 }
 
-function createChannelInput(botId: string, name: string, suffix: string): ChannelInput {
+function createChannelInput(
+  botId: string,
+  name: string,
+  suffix: string,
+): ChannelInput {
   return {
     botId,
     name,
@@ -139,13 +143,19 @@ function createServiceContext() {
     runtime as unknown as StreamRuntime,
   );
 
-  (service as unknown as {
-    sendNotification: (...args: unknown[]) => Promise<void>;
-  })
-    .sendNotification = async () => {};
-  (service as unknown as {
-    syncEventsToDiscord: (events: unknown[], channelId: string) => Promise<void>;
-  }).syncEventsToDiscord = async () => {};
+  (
+    service as unknown as {
+      sendNotification: (...args: unknown[]) => Promise<void>;
+    }
+  ).sendNotification = async () => {};
+  (
+    service as unknown as {
+      syncEventsToDiscord: (
+        events: unknown[],
+        channelId: string,
+      ) => Promise<void>;
+    }
+  ).syncEventsToDiscord = async () => {};
 
   return {
     runtime,
@@ -216,7 +226,10 @@ test("ControlPanelService binds the queue to the configured bot and skips only t
       createPresetInput("Queue Preset", "https://example.com/base.m3u8"),
     );
 
-    context.service.addToQueue("https://example.com/queue-one.m3u8", "Queue One");
+    context.service.addToQueue(
+      "https://example.com/queue-one.m3u8",
+      "Queue One",
+    );
     await context.service.startQueue(queueChannel.id, preset.id);
 
     let snapshot = context.service.snapshot();
@@ -246,7 +259,10 @@ test("ControlPanelService persists notification settings and includes them in ex
       dmEnabled: true,
     });
 
-    assert.equal(settings.webhookUrl, "https://discord.com/api/webhooks/123/example");
+    assert.equal(
+      settings.webhookUrl,
+      "https://discord.com/api/webhooks/123/example",
+    );
     assert.equal(settings.dmEnabled, true);
 
     const exported = context.service.exportConfiguration();
@@ -355,7 +371,10 @@ test("ControlPanelService import normalizes stale running state and replaces per
     assert.equal(imported.counts.queue, 1);
 
     const snapshot = context.service.snapshot();
-    assert.equal(snapshot.notificationSettings.webhookUrl, "https://discord.com/api/webhooks/999/imported");
+    assert.equal(
+      snapshot.notificationSettings.webhookUrl,
+      "https://discord.com/api/webhooks/999/imported",
+    );
     assert.equal(snapshot.queueConfig.active, false);
     assert.equal(snapshot.queue[0]?.status, "pending");
     assert.equal(snapshot.events[0]?.status, "scheduled");
