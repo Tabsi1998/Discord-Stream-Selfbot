@@ -155,6 +155,18 @@ function parseFfmpegLogLevel(value: string | undefined): FfmpegLogLevel {
   }
 }
 
+function hasLinuxNvencRuntimeSupport() {
+  if (process.platform !== "linux") {
+    return true;
+  }
+
+  return (
+    existsSync("/dev/nvidiactl") ||
+    existsSync("/dev/nvidia0") ||
+    existsSync("/dev/nvidia-modeset")
+  );
+}
+
 function detectHardwareEncoders(
   commandPath: string | undefined,
   vaapiDevice: string,
@@ -172,11 +184,13 @@ function detectHardwareEncoders(
 
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const detected: HardwareEncoder[] = [];
+  const hasNvencRuntime = hasLinuxNvencRuntimeSupport();
 
   if (
-    /\bh264_nvenc\b/i.test(output) ||
-    /\bhevc_nvenc\b/i.test(output) ||
-    /\bav1_nvenc\b/i.test(output)
+    hasNvencRuntime &&
+    (/\bh264_nvenc\b/i.test(output) ||
+      /\bhevc_nvenc\b/i.test(output) ||
+      /\bav1_nvenc\b/i.test(output))
   ) {
     detected.push("nvenc");
   }

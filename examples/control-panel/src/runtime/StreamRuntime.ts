@@ -564,7 +564,9 @@ export class StreamRuntime extends EventEmitter {
           bitrateVideoMax: guardedPreset.maxBitrateVideoKbps,
           bitrateAudio: guardedPreset.bitrateAudioKbps,
           encoder: resolvedEncoder.encoder,
-          hardwareAcceleratedDecoding: options.preset.hardwareAcceleration,
+          hardwareAcceleratedDecoding:
+            options.preset.hardwareAcceleration &&
+            resolvedEncoder.mode !== "software",
           minimizeLatency: resolvedPreset.minimizeLatency,
           customInputOptions: [
             "-progress",

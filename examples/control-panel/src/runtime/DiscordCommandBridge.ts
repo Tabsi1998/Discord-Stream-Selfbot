@@ -56,7 +56,10 @@ const CONTROL_BOT_SLASH_COMMANDS = [
     .setDescription("Startet eine URL im aktuellen Voice-Channel")
     .setDMPermission(false)
     .addStringOption((option) =>
-      option.setName("url").setDescription("Direkte URL oder YouTube-Link").setRequired(true),
+      option
+        .setName("url")
+        .setDescription("Direkte URL oder YouTube-Link")
+        .setRequired(true),
     )
     .addStringOption((option) =>
       option
@@ -68,10 +71,16 @@ const CONTROL_BOT_SLASH_COMMANDS = [
     .setDescription("Startet einen gespeicherten Kanal mit einem Preset")
     .setDMPermission(false)
     .addStringOption((option) =>
-      option.setName("channel").setDescription("Kanalname oder interne ID").setRequired(true),
+      option
+        .setName("channel")
+        .setDescription("Kanalname oder interne ID")
+        .setRequired(true),
     )
     .addStringOption((option) =>
-      option.setName("preset").setDescription("Preset-Name oder interne ID").setRequired(true),
+      option
+        .setName("preset")
+        .setDescription("Preset-Name oder interne ID")
+        .setRequired(true),
     )
     .addStringOption((option) =>
       option
@@ -89,7 +98,9 @@ const CONTROL_BOT_SLASH_COMMANDS = [
     .addStringOption((option) =>
       option
         .setName("target")
-        .setDescription("Optional: Bot, Kanal oder Preset eines aktiven Streams"),
+        .setDescription(
+          "Optional: Bot, Kanal oder Preset eines aktiven Streams",
+        ),
     ),
   new SlashCommandBuilder()
     .setName("channels")
@@ -146,17 +157,25 @@ const CONTROL_BOT_SLASH_COMMANDS = [
         .setName("start")
         .setDescription("Startet die Queue")
         .addStringOption((option) =>
-          option.setName("channel").setDescription("Kanalname oder interne ID").setRequired(true),
+          option
+            .setName("channel")
+            .setDescription("Kanalname oder interne ID")
+            .setRequired(true),
         )
         .addStringOption((option) =>
-          option.setName("preset").setDescription("Preset-Name oder interne ID").setRequired(true),
+          option
+            .setName("preset")
+            .setDescription("Preset-Name oder interne ID")
+            .setRequired(true),
         ),
     )
     .addSubcommand((subcommand) =>
       subcommand.setName("stop").setDescription("Stoppt die Queue"),
     )
     .addSubcommand((subcommand) =>
-      subcommand.setName("skip").setDescription("Springt zum naechsten Queue-Item"),
+      subcommand
+        .setName("skip")
+        .setDescription("Springt zum naechsten Queue-Item"),
     )
     .addSubcommand((subcommand) =>
       subcommand.setName("clear").setDescription("Leert die Queue"),
@@ -166,7 +185,10 @@ const CONTROL_BOT_SLASH_COMMANDS = [
         .setName("loop")
         .setDescription("Schaltet den Queue-Loop um")
         .addBooleanOption((option) =>
-          option.setName("enabled").setDescription("Loop aktivieren").setRequired(true),
+          option
+            .setName("enabled")
+            .setDescription("Loop aktivieren")
+            .setRequired(true),
         ),
     ),
   new SlashCommandBuilder()
@@ -185,6 +207,55 @@ const CONTROL_BOT_SLASH_COMMANDS = [
         .setMaxValue(20),
     ),
 ].map((command) => command.toJSON());
+
+const DISCORD_MESSAGE_LIMIT = 1900;
+
+function splitDiscordMessage(content: string, limit = DISCORD_MESSAGE_LIMIT) {
+  const normalized = content.replaceAll("\r\n", "\n").trim();
+  if (!normalized) {
+    return ["(leer)"];
+  }
+
+  const lines = normalized.split("\n");
+  const chunks: string[] = [];
+  let current = "";
+
+  const flush = () => {
+    if (current) {
+      chunks.push(current);
+      current = "";
+    }
+  };
+
+  for (const line of lines) {
+    if (line.length > limit) {
+      flush();
+      for (let index = 0; index < line.length; index += limit) {
+        chunks.push(line.slice(index, index + limit));
+      }
+      continue;
+    }
+
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length > limit) {
+      flush();
+      current = line;
+    } else {
+      current = candidate;
+    }
+  }
+
+  flush();
+  return chunks.length ? chunks : ["(leer)"];
+}
+
+function truncateCommandError(message: string, limit = 900) {
+  const normalized = message.replaceAll(/\s+/g, " ").trim();
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit)}... Siehe Logs im Panel fuer Details.`;
+}
 
 function toCommandMessage(
   message: SelfbotMessage | ControlBotMessage,
@@ -238,7 +309,13 @@ function toCommandMessage(
         ? message.member.voice.channel.name
         : undefined,
     channel: {
-      send: (content: string) => channel.send(content),
+      send: async (content: string) => {
+        let result: unknown;
+        for (const chunk of splitDiscordMessage(content)) {
+          result = await channel.send(chunk);
+        }
+        return result;
+      },
     },
   };
 }
@@ -665,7 +742,9 @@ export class DiscordCommandBridge {
         command,
         error: messageText,
       });
-      await message.channel.send(`Fehler: ${messageText}`);
+      await message.channel.send(
+        `Fehler: ${truncateCommandError(messageText)}`,
+      );
     }
   }
 
@@ -715,16 +794,25 @@ export class DiscordCommandBridge {
     interaction: ChatInputCommandInteraction,
     content: string,
   ) {
-    if (interaction.replied || interaction.deferred) {
-      return interaction.followUp({
-        content,
+    const chunks = splitDiscordMessage(content);
+    let result: unknown;
+
+    for (const [index, chunk] of chunks.entries()) {
+      if (index === 0 && !interaction.replied && !interaction.deferred) {
+        result = await interaction.reply({
+          content: chunk,
+          ephemeral: true,
+        });
+        continue;
+      }
+
+      result = await interaction.followUp({
+        content: chunk,
         ephemeral: true,
       });
     }
-    return interaction.reply({
-      content,
-      ephemeral: true,
-    });
+
+    return result;
   }
 
   private buildSlashCommandBody(interaction: ChatInputCommandInteraction) {

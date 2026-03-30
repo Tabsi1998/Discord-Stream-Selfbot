@@ -434,9 +434,7 @@ export function buildYtDlpFormatForPreset(
   ].join("/");
 }
 
-export function buildYtDlpMuxedFormatForPreset(
-  qualityProfile: QualityProfile,
-) {
+export function buildYtDlpMuxedFormatForPreset(qualityProfile: QualityProfile) {
   if (qualityProfile === "custom") {
     return "best[vcodec!=none][acodec!=none]/best";
   }

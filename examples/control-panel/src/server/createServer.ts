@@ -163,7 +163,17 @@ export function createServer(service: ControlPanelService) {
 
   app.use(express.json({ limit: "1mb" }));
   app.use(panelAuthMiddleware);
-  app.use(express.static(appConfig.publicDir));
+  app.use(
+    express.static(appConfig.publicDir, {
+      etag: false,
+      lastModified: false,
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      },
+    }),
+  );
 
   app.get(
     "/api/bootstrap",
