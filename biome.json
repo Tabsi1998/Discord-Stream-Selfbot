@@ -7,7 +7,12 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["./src/**/*", "./examples/control-panel/src/**/*"]
+    "includes": [
+      "./src/**/*",
+      "./examples/control-panel/src/**/*",
+      "./examples/control-panel/public/js/**/*",
+      "./examples/control-panel/test/**/*"
+    ]
   },
   "formatter": {
     "enabled": true,

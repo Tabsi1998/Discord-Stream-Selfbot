@@ -38,6 +38,7 @@
     },
     "scripts": {
         "build": "tsc",
+        "test:control-panel": "npm --prefix examples/control-panel run test",
         "lint": "biome lint --error-on-warnings .",
         "lint:fix": "biome lint --write .",
         "check": "biome check .",

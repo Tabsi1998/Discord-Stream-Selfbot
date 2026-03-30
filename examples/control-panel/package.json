@@ -9,6 +9,8 @@
   "scripts": {
     "prebuild": "npm --prefix ../.. run build",
     "build": "tsc",
+    "build:test": "npm --prefix ../.. run build && tsc -p tsconfig.test.json",
+    "test": "npm run build:test && node --test ./dist-test/test",
     "start": "node --env-file-if-exists=.env ./dist/index.js"
   },
   "dependencies": {
