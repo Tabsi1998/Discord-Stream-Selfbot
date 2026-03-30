@@ -108,12 +108,14 @@ const els = {
   applyDiscoveredChannelButton: document.querySelector(
     "#applyDiscoveredChannelButton",
   ),
+  discoveryBotId: document.querySelector("#discoveryBotId"),
   discoveredChannelSelect: document.querySelector("#discoveredChannelSelect"),
   voiceChannelDiscoveryInfo: document.querySelector(
     "#voiceChannelDiscoveryInfo",
   ),
   discordStatusBadge: document.querySelector("#discordStatusBadge"),
   discordUser: document.querySelector("#discordUser"),
+  botSummary: document.querySelector("#botSummary"),
   ffmpegInfo: document.querySelector("#ffmpegInfo"),
   commandInfo: document.querySelector("#commandInfo"),
   activeRunPrimary: document.querySelector("#activeRunPrimary"),
@@ -127,6 +129,7 @@ const els = {
   queueSecondary: document.querySelector("#queueSecondary"),
   channelForm: document.querySelector("#channelForm"),
   channelIdField: document.querySelector("#channelIdField"),
+  channelBotId: document.querySelector("#channelBotId"),
   channelName: document.querySelector("#channelName"),
   channelGuildId: document.querySelector("#channelGuildId"),
   channelDiscordId: document.querySelector("#channelDiscordId"),
@@ -134,6 +137,7 @@ const els = {
   channelDescription: document.querySelector("#channelDescription"),
   channelResetButton: document.querySelector("#channelResetButton"),
   channelsList: document.querySelector("#channelsList"),
+  selfbotsList: document.querySelector("#selfbotsList"),
   presetForm: document.querySelector("#presetForm"),
   presetIdField: document.querySelector("#presetIdField"),
   presetName: document.querySelector("#presetName"),
@@ -598,8 +602,26 @@ function updateRecurrenceVisibility() {
   }
 }
 
+function getBots() {
+  return state.app?.runtime?.bots || [];
+}
+
+function getPrimaryBotId() {
+  return state.app?.runtime?.primaryBotId || "primary";
+}
+
+function findBot(botId) {
+  return getBots().find((bot) => bot.id === botId);
+}
+
+function botDisplayLabel(bot) {
+  const identity = bot.userTag ? ` | ${bot.userTag}` : "";
+  return `${bot.name}${identity}`;
+}
+
 function channelLabel(item) {
-  return `${item.name} (${item.streamMode})`;
+  const bot = findBot(item.botId);
+  return `${item.name} (${item.streamMode}${bot ? ` | ${bot.name}` : ""})`;
 }
 
 function presetLabel(item) {
@@ -646,18 +668,20 @@ function fillDiscoveredChannelSelect() {
     `<option value="">Discord-Voice-Channel wählen</option>`,
     ...state.voiceChannels.map((item, index) => {
       const value = String(index);
-      const label = `${item.guildName} / ${item.channelName}`;
+      const label = `${item.botName} | ${item.guildName} / ${item.channelName}`;
       return `<option value="${value}">${escapeHtml(label)}</option>`;
     }),
   ];
   els.discoveredChannelSelect.innerHTML = options.join("");
+  const discoveryBot = findBot(els.discoveryBotId.value);
   els.voiceChannelDiscoveryInfo.textContent = state.voiceChannels.length
-    ? `${state.voiceChannels.length} Voice-Channels geladen`
+    ? `${state.voiceChannels.length} Voice-Channels fuer ${discoveryBot?.name || "den Selfbot"} geladen`
     : "Noch keine Voice-Channels geladen";
 }
 
 function renderOverview() {
   const runtime = state.app.runtime;
+  const bots = getBots();
   const activeRun = runtime.activeRun;
   const telemetry = runtime.telemetry;
   const queue = state.app.queue;
@@ -673,6 +697,10 @@ function renderOverview() {
   els.discordUser.textContent = runtime.discordUserTag
     ? `${runtime.discordUserTag} (${runtime.discordUserId || "?"})`
     : runtime.lastError || "nicht verbunden";
+  const readyBots = bots.filter((bot) => bot.status === "ready");
+  els.botSummary.textContent = bots.length
+    ? `${readyBots.length}/${bots.length} Selfbots bereit`
+    : "keine Selfbots konfiguriert";
 
   const ffmpegParts = [];
   ffmpegParts.push(runtime.ffmpegPath ? "ffmpeg erkannt" : "ffmpeg fehlt");
@@ -701,6 +729,7 @@ function renderOverview() {
     els.activeRunPrimary.textContent = `${activeRun.channelName} -> ${activeRun.presetName}`;
     const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
     els.activeRunSecondary.textContent = [
+      `Bot: ${activeRun.botName || activeRun.botId || "unbekannt"}`,
       `Status: ${activeRun.status}`,
       `Seit: ${formatDateTime(activeRun.startedAt)}`,
       activeRun.plannedStopAt
@@ -802,6 +831,39 @@ function renderOverview() {
   }
 }
 
+function renderSelfbots() {
+  const bots = getBots();
+  if (!bots.length) {
+    els.selfbotsList.innerHTML = '<p class="muted">Keine Selfbots konfiguriert.</p>';
+    return;
+  }
+
+  els.selfbotsList.innerHTML = bots
+    .map((bot) => {
+      const isStreaming = state.app.runtime.activeRun?.botId === bot.id;
+      const presence = bot.lastPresenceText
+        ? `Presence: ${bot.lastPresenceText}`
+        : "Presence: keine";
+      const voiceStatus = bot.lastVoiceStatus
+        ? `Voice-Status: ${bot.lastVoiceStatus}`
+        : "Voice-Status: leer";
+      return `
+        <article class="item-card">
+          <div class="item-topline">
+            <div>
+              <h3 class="item-title">${escapeHtml(bot.name)}</h3>
+              <p class="item-meta"><span class="badge ${badgeClass(bot.status)}">${escapeHtml(bot.status)}</span>${bot.userTag ? ` | ${escapeHtml(bot.userTag)}` : ""}${bot.commandEnabled ? " | Commands" : ""}${isStreaming ? " | streamt gerade" : ""}</p>
+              <p class="item-meta">${escapeHtml(presence)}</p>
+              <p class="item-meta">${escapeHtml(voiceStatus)}</p>
+              ${bot.lastError ? `<p class="item-meta">Fehler: ${escapeHtml(bot.lastError)}</p>` : ""}
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function badgeClass(status) {
   if (status === "ready") return "badge-ready";
   if (status === "error") return "badge-error";
@@ -816,13 +878,15 @@ function renderChannels() {
 
   els.channelsList.innerHTML = state.app.channels
     .map(
-      (item) => `
+      (item) => {
+        const bot = findBot(item.botId);
+        return `
         <article class="item-card">
           <div class="item-topline">
             <div>
               <h3 class="item-title">${escapeHtml(item.name)}</h3>
               <p class="item-meta">${escapeHtml(item.guildId)} / ${escapeHtml(item.channelId)}</p>
-              <p class="item-meta">${escapeHtml(item.streamMode)}${item.description ? ` | ${escapeHtml(item.description)}` : ""}</p>
+              <p class="item-meta">${escapeHtml(item.streamMode)}${bot ? ` | ${escapeHtml(bot.name)}` : ""}${item.description ? ` | ${escapeHtml(item.description)}` : ""}</p>
             </div>
           </div>
           <div class="item-actions">
@@ -830,7 +894,8 @@ function renderChannels() {
             <button type="button" data-action="delete-channel" data-id="${escapeHtml(item.id)}">Loeschen</button>
           </div>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -970,12 +1035,22 @@ function renderLogs() {
 }
 
 function renderSelects() {
+  const bots = getBots();
+  fillSelect(els.channelBotId, bots, "Selfbot waehlen", botDisplayLabel);
+  fillSelect(els.discoveryBotId, bots, "Selfbot waehlen", botDisplayLabel);
   fillSelect(els.manualChannelId, state.app.channels, "Kanal waehlen", channelLabel);
   fillSelect(els.eventChannelId, state.app.channels, "Kanal waehlen", channelLabel);
   fillSelect(els.queueChannelId, state.app.channels, "Queue-Kanal waehlen", channelLabel);
   fillSelect(els.manualPresetId, state.app.presets, "Preset waehlen", presetLabel);
   fillSelect(els.eventPresetId, state.app.presets, "Preset waehlen", presetLabel);
   fillSelect(els.queuePresetId, state.app.presets, "Basis-Preset waehlen", presetLabel);
+
+  if (!els.channelBotId.value && bots.length) {
+    els.channelBotId.value = getPrimaryBotId();
+  }
+  if (!els.discoveryBotId.value && bots.length) {
+    els.discoveryBotId.value = getPrimaryBotId();
+  }
 
   if (state.app.queueConfig.channelId) {
     els.queueChannelId.value = state.app.queueConfig.channelId;
@@ -988,6 +1063,7 @@ function renderSelects() {
 
 function renderAll() {
   renderOverview();
+  renderSelfbots();
   renderSelects();
   fillDiscoveredChannelSelect();
   renderChannels();
@@ -1000,6 +1076,7 @@ function renderAll() {
 function resetChannelForm() {
   els.channelForm.reset();
   els.channelIdField.value = "";
+  els.channelBotId.value = getPrimaryBotId();
   els.channelStreamMode.value = "go-live";
 }
 
@@ -1039,7 +1116,15 @@ function resetQueueForm() {
 
 async function refresh(forceChannels = false) {
   clearNotice();
-  const query = forceChannels ? "?refresh=1" : "";
+  const params = new URLSearchParams();
+  if (forceChannels) {
+    params.set("refresh", "1");
+  }
+  const discoveryBotId = els.discoveryBotId?.value || getPrimaryBotId();
+  if (discoveryBotId) {
+    params.set("botId", discoveryBotId);
+  }
+  const query = params.toString() ? `?${params.toString()}` : "";
   const data = await api(`/api/bootstrap${query}`);
   state.app = data.state;
   state.voiceChannels = data.voiceChannels;
@@ -1048,6 +1133,7 @@ async function refresh(forceChannels = false) {
 
 function buildChannelPayload() {
   return {
+    botId: els.channelBotId.value || getPrimaryBotId(),
     name: els.channelName.value.trim(),
     guildId: els.channelGuildId.value.trim(),
     channelId: els.channelDiscordId.value.trim(),
@@ -1114,6 +1200,7 @@ function editChannel(id) {
   const item = state.app.channels.find((entry) => entry.id === id);
   if (!item) return;
   els.channelIdField.value = item.id;
+  els.channelBotId.value = item.botId || getPrimaryBotId();
   els.channelName.value = item.name;
   els.channelGuildId.value = item.guildId;
   els.channelDiscordId.value = item.channelId;
@@ -1387,7 +1474,11 @@ async function handleListAction(event) {
 }
 
 async function refreshVoiceChannels() {
-  const items = await api("/api/voice-channels?refresh=1");
+  const params = new URLSearchParams({
+    refresh: "1",
+    botId: els.discoveryBotId.value || getPrimaryBotId(),
+  });
+  const items = await api(`/api/voice-channels?${params.toString()}`);
   state.voiceChannels = items;
   fillDiscoveredChannelSelect();
   showNotice("Voice-Channels aktualisiert.", "success");
@@ -1401,6 +1492,7 @@ function applyDiscoveredChannel() {
   }
 
   const channel = state.voiceChannels[index];
+  els.channelBotId.value = channel.botId;
   els.channelName.value = `${channel.guildName} / ${channel.channelName}`;
   els.channelGuildId.value = channel.guildId;
   els.channelDiscordId.value = channel.channelId;
@@ -1548,6 +1640,9 @@ function bindEvents() {
   });
   els.refreshVoiceChannelsButton.addEventListener("click", () => {
     void refreshVoiceChannels().catch(handleError);
+  });
+  els.discoveryBotId.addEventListener("change", () => {
+    void refresh(true).catch(handleError);
   });
   els.applyDiscoveredChannelButton.addEventListener("click", applyDiscoveredChannel);
   els.channelForm.addEventListener("submit", (event) => {

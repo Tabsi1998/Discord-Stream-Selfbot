@@ -20,10 +20,13 @@ import type {
   QueueConfig,
   RuntimeState,
 } from "../domain/types.js";
+import { DEFAULT_SELFBOT_ID } from "../domain/types.js";
 
 function defaultRuntime(): RuntimeState {
   return {
     discordStatus: "starting",
+    primaryBotId: DEFAULT_SELFBOT_ID,
+    bots: [],
     ytDlpAvailable: false,
     commandAuthorIds: [],
   };
@@ -51,7 +54,15 @@ function normalizeState(input: unknown): ControlPanelState {
 
   const state = input as Partial<ControlPanelState>;
   return {
-    channels: Array.isArray(state.channels) ? state.channels : fallback.channels,
+    channels: Array.isArray(state.channels)
+      ? state.channels.map((channel) => ({
+          ...channel,
+          botId:
+            typeof channel.botId === "string" && channel.botId.trim()
+              ? channel.botId
+              : DEFAULT_SELFBOT_ID,
+        }))
+      : fallback.channels,
     presets: Array.isArray(state.presets)
         ? state.presets.map((preset) => {
           const sourceMode =

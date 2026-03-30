@@ -4,6 +4,13 @@ export type SourceMode = "direct" | "yt-dlp";
 export type HardwareEncoder = "nvenc" | "vaapi";
 export type VideoEncoderMode = "software" | HardwareEncoder;
 export type PreferredHardwareEncoder = "auto" | HardwareEncoder;
+export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";
+export type PresenceActivityType =
+  | "PLAYING"
+  | "STREAMING"
+  | "LISTENING"
+  | "WATCHING"
+  | "COMPETING";
 export type QualityProfile =
   | "720p30"
   | "720p60"
@@ -29,9 +36,30 @@ export type EventStatus =
 export type RunKind = "manual" | "event";
 export type DiscordStatus = "starting" | "ready" | "error";
 export type LogLevel = "info" | "warn" | "error";
+export const DEFAULT_SELFBOT_ID = "primary";
+
+export type ManagedSelfbotState = {
+  id: string;
+  name: string;
+  status: DiscordStatus;
+  commandEnabled: boolean;
+  userTag?: string;
+  userId?: string;
+  lastError?: string;
+  idlePresenceStatus: PresenceStatus;
+  idleActivityType: PresenceActivityType;
+  idleActivityText?: string;
+  streamPresenceStatus: PresenceStatus;
+  streamActivityType: PresenceActivityType;
+  streamActivityText?: string;
+  voiceStatusTemplate?: string;
+  lastPresenceText?: string;
+  lastVoiceStatus?: string;
+};
 
 export type ChannelDefinition = {
   id: string;
+  botId: string;
   name: string;
   guildId: string;
   channelId: string;
@@ -93,6 +121,8 @@ export type ScheduledEvent = {
 export type ActiveRun = {
   kind: RunKind;
   eventId?: string;
+  botId: string;
+  botName: string;
   channelId: string;
   presetId: string;
   channelName: string;
@@ -115,6 +145,8 @@ export type StreamTelemetry = {
 
 export type RuntimeState = {
   discordStatus: DiscordStatus;
+  primaryBotId?: string;
+  bots?: ManagedSelfbotState[];
   discordUserTag?: string;
   discordUserId?: string;
   ffmpegPath?: string;
@@ -155,6 +187,8 @@ export type ControlPanelState = {
 };
 
 export type VoiceChannelOption = {
+  botId: string;
+  botName: string;
   guildId: string;
   guildName: string;
   channelId: string;
@@ -163,6 +197,7 @@ export type VoiceChannelOption = {
 };
 
 export type ChannelInput = {
+  botId?: string;
   name: string;
   guildId: string;
   channelId: string;

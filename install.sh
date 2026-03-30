@@ -25,6 +25,7 @@ ENV_BACKUP="$DEPLOY_DIR/.env.backup"
 DATA_DIR="$DEPLOY_DIR/data"
 COOKIES_DIR="$DEPLOY_DIR/cookies"
 COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
+SELFBOT_PROFILES_FILE="$DATA_DIR/selfbot-profiles.tsv"
 
 # ── Feste Werte (nicht abgefragt) ──────────────────────────────
 FIXED_HOST_PORT=3099
@@ -41,6 +42,15 @@ DEFAULT_PANEL_AUTH_USERNAME='admin'
 DEFAULT_PANEL_AUTH_REALM='Stream Bot'
 DEFAULT_PREFERRED_HW_ENCODER='auto'
 DEFAULT_FFMPEG_LOG_LEVEL='warning'
+DEFAULT_PRIMARY_SELFBOT_NAME='Primary Selfbot'
+DEFAULT_SELFBOT_CONFIG_FILE='/app/examples/control-panel/data/selfbot-profiles.tsv'
+DEFAULT_IDLE_PRESENCE_STATUS='online'
+DEFAULT_IDLE_ACTIVITY_TYPE='WATCHING'
+DEFAULT_IDLE_ACTIVITY_TEXT='THE LION SQUAD - eSPORTS'
+DEFAULT_STREAM_PRESENCE_STATUS='online'
+DEFAULT_STREAM_ACTIVITY_TYPE='PLAYING'
+DEFAULT_STREAM_ACTIVITY_TEXT='{{title}}'
+DEFAULT_VOICE_STATUS_TEMPLATE='Now streaming: {{title}}'
 
 # ── Helper ──────────────────────────────────────────────────────
 print_step() {
@@ -291,6 +301,13 @@ print_info "  Docker Cookie-Datei: z.B. /app/examples/control-panel/cookies/yt-d
 echo "" >&2
 CONF_YT_DLP_COOKIES_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$(get_or_default YT_DLP_COOKIES_FROM_BROWSER "")")
 CONF_YT_DLP_COOKIES_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$(get_or_default YT_DLP_COOKIES_FILE "")")
+echo "" >&2
+print_info "Idle-/Streaming-Status fuer den primaeren Selfbot"
+print_info "  Platzhalter: {{title}}, {{presetName}}, {{channelName}}, {{botName}}"
+CONF_PRIMARY_SELFBOT_NAME=$(ask "Primaerer Selfbot Name" "$(get_or_default PRIMARY_SELFBOT_NAME "$DEFAULT_PRIMARY_SELFBOT_NAME")")
+CONF_IDLE_ACTIVITY_TEXT=$(ask "Idle-Status Text" "$(get_or_default IDLE_ACTIVITY_TEXT "$DEFAULT_IDLE_ACTIVITY_TEXT")")
+CONF_STREAM_ACTIVITY_TEXT=$(ask "Streaming-Status Text" "$(get_or_default STREAM_ACTIVITY_TEXT "$DEFAULT_STREAM_ACTIVITY_TEXT")")
+CONF_VOICE_STATUS_TEMPLATE=$(ask "Voice-Status Text" "$(get_or_default VOICE_STATUS_TEMPLATE "$DEFAULT_VOICE_STATUS_TEMPLATE")")
 
 # ── [4/4] Zusammenfassung ─────────────────────────────────────
 print_step 4 4 "Zusammenfassung"
@@ -304,6 +321,9 @@ echo -e "  ${DIM}Zeitzone:${NC}          $CONF_TZ" >&2
 echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$CONF_COMMANDS_ENABLED" = "1" ] && echo "Aktiv ($CONF_PREFIX)" || echo "Aus")" >&2
 echo -e "  ${DIM}Panel Login:${NC}       $([ "$CONF_PANEL_AUTH_ENABLED" = "1" ] && echo "Aktiv (${CONF_PANEL_AUTH_USERNAME})" || echo "Aus")" >&2
 echo -e "  ${DIM}yt-dlp Cookies:${NC}    ${CONF_YT_DLP_COOKIES_BROWSER:-${CONF_YT_DLP_COOKIES_FILE:-keine}}" >&2
+echo -e "  ${DIM}Selfbot Name:${NC}      $CONF_PRIMARY_SELFBOT_NAME" >&2
+echo -e "  ${DIM}Idle Status:${NC}       $CONF_IDLE_ACTIVITY_TEXT" >&2
+echo -e "  ${DIM}Stream Status:${NC}     $CONF_STREAM_ACTIVITY_TEXT" >&2
 echo "" >&2
 
 CONFIRM=$(ask_yn "Konfiguration speichern und Installation starten?" "y")
@@ -332,6 +352,11 @@ CONF_STARTUP_TIMEOUT=$(get_or_default STARTUP_TIMEOUT_MS "$DEFAULT_STARTUP_TIMEO
 CONF_PANEL_AUTH_REALM=$(get_or_default PANEL_AUTH_REALM "$DEFAULT_PANEL_AUTH_REALM")
 CONF_PREFERRED_HW_ENCODER=$(get_or_default PREFERRED_HW_ENCODER "$DEFAULT_PREFERRED_HW_ENCODER")
 CONF_FFMPEG_LOG_LEVEL=$(get_or_default FFMPEG_LOG_LEVEL "$DEFAULT_FFMPEG_LOG_LEVEL")
+CONF_SELFBOT_CONFIG_FILE=$(get_or_default SELFBOT_CONFIG_FILE "$DEFAULT_SELFBOT_CONFIG_FILE")
+CONF_IDLE_PRESENCE_STATUS=$(get_or_default IDLE_PRESENCE_STATUS "$DEFAULT_IDLE_PRESENCE_STATUS")
+CONF_IDLE_ACTIVITY_TYPE=$(get_or_default IDLE_ACTIVITY_TYPE "$DEFAULT_IDLE_ACTIVITY_TYPE")
+CONF_STREAM_PRESENCE_STATUS=$(get_or_default STREAM_PRESENCE_STATUS "$DEFAULT_STREAM_PRESENCE_STATUS")
+CONF_STREAM_ACTIVITY_TYPE=$(get_or_default STREAM_ACTIVITY_TYPE "$DEFAULT_STREAM_ACTIVITY_TYPE")
 
 umask 077
 cat > "$ENV_FILE" << ENVEOF
@@ -342,9 +367,18 @@ HOST_PORT=$FIXED_HOST_PORT
 PORT=$FIXED_PORT
 TZ=$CONF_TZ
 DATA_FILE=/app/examples/control-panel/data/control-panel-state.json
+SELFBOT_CONFIG_FILE=$CONF_SELFBOT_CONFIG_FILE
+PRIMARY_SELFBOT_NAME=$CONF_PRIMARY_SELFBOT_NAME
 DISCORD_COMMANDS_ENABLED=$CONF_COMMANDS_ENABLED
 COMMAND_PREFIX=$CONF_PREFIX
 COMMAND_ALLOWED_AUTHOR_IDS=$CONF_ALLOWED_IDS
+IDLE_PRESENCE_STATUS=$CONF_IDLE_PRESENCE_STATUS
+IDLE_ACTIVITY_TYPE=$CONF_IDLE_ACTIVITY_TYPE
+IDLE_ACTIVITY_TEXT=$CONF_IDLE_ACTIVITY_TEXT
+STREAM_PRESENCE_STATUS=$CONF_STREAM_PRESENCE_STATUS
+STREAM_ACTIVITY_TYPE=$CONF_STREAM_ACTIVITY_TYPE
+STREAM_ACTIVITY_TEXT=$CONF_STREAM_ACTIVITY_TEXT
+VOICE_STATUS_TEMPLATE=$CONF_VOICE_STATUS_TEMPLATE
 PANEL_AUTH_ENABLED=$CONF_PANEL_AUTH_ENABLED
 PANEL_AUTH_USERNAME=$CONF_PANEL_AUTH_USERNAME
 PANEL_AUTH_PASSWORD=$CONF_PANEL_AUTH_PASSWORD
@@ -360,6 +394,14 @@ STARTUP_TIMEOUT_MS=$CONF_STARTUP_TIMEOUT
 ENVEOF
 
 print_success "Konfiguration gespeichert: $ENV_FILE"
+
+if [ ! -f "$SELFBOT_PROFILES_FILE" ]; then
+  cat > "$SELFBOT_PROFILES_FILE" << 'PROFILESEOF'
+# Zusatz-Selfbots (tab-getrennt)
+# id	name	token	idle_status_text	stream_status_text	voice_status_text	enabled	command_enabled
+PROFILESEOF
+  print_success "Zusatz-Selfbot Datei angelegt: $SELFBOT_PROFILES_FILE"
+fi
 
 echo "" >&2
 echo -e "  ${BOLD}Baue Docker Image frisch...${NC}" >&2

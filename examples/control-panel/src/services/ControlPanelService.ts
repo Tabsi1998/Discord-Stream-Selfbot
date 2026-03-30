@@ -102,8 +102,8 @@ export class ControlPanelService {
     this.store.appendLog(level, message, context);
   }
 
-  public async listVoiceChannels(forceRefresh = false) {
-    return this.runtime.listVoiceChannels(forceRefresh);
+  public async listVoiceChannels(forceRefresh = false, botId?: string) {
+    return this.runtime.listVoiceChannels(forceRefresh, botId);
   }
 
   public reconcileStateOnStartup() {
@@ -155,13 +155,18 @@ export class ControlPanelService {
   }
 
   public createChannel(input: ChannelInput) {
+    const botId = input.botId?.trim() || this.runtime.getPrimaryBotId();
     assertNonEmpty(input.name, "name");
     assertNonEmpty(input.guildId, "guildId");
     assertNonEmpty(input.channelId, "channelId");
+    if (!this.runtime.hasBot(botId)) {
+      throw new Error("Configured selfbot was not found");
+    }
 
     const timestamp = nowIso();
     const channel: ChannelDefinition = {
       id: randomUUID(),
+      botId,
       name: input.name.trim(),
       guildId: input.guildId.trim(),
       channelId: input.channelId.trim(),
@@ -174,7 +179,9 @@ export class ControlPanelService {
     this.store.update((draft) => {
       const duplicate = draft.channels.find(
         (entry) =>
-          entry.guildId === channel.guildId && entry.channelId === channel.channelId,
+          entry.botId === channel.botId &&
+          entry.guildId === channel.guildId &&
+          entry.channelId === channel.channelId,
       );
       if (duplicate) {
         throw new Error("This Discord voice channel is already configured");
@@ -187,9 +194,13 @@ export class ControlPanelService {
   }
 
   public updateChannel(id: string, input: ChannelInput) {
+    const botId = input.botId?.trim() || this.runtime.getPrimaryBotId();
     assertNonEmpty(input.name, "name");
     assertNonEmpty(input.guildId, "guildId");
     assertNonEmpty(input.channelId, "channelId");
+    if (!this.runtime.hasBot(botId)) {
+      throw new Error("Configured selfbot was not found");
+    }
 
     const updatedAt = nowIso();
     let updated: ChannelDefinition | undefined;
@@ -199,6 +210,7 @@ export class ControlPanelService {
       const duplicate = draft.channels.find(
         (entry) =>
           entry.id !== id &&
+          entry.botId === botId &&
           entry.guildId === input.guildId.trim() &&
           entry.channelId === input.channelId.trim(),
       );
@@ -207,6 +219,7 @@ export class ControlPanelService {
       }
 
       channel.name = input.name.trim();
+      channel.botId = botId;
       channel.guildId = input.guildId.trim();
       channel.channelId = input.channelId.trim();
       channel.streamMode = input.streamMode;
@@ -350,6 +363,7 @@ export class ControlPanelService {
     let updated: EventMutationResult | undefined;
     let oldDiscordEventIds: string[] = [];
     let guildId: string | undefined;
+    let botId = this.runtime.getPrimaryBotId();
 
     this.store.update((draft) => {
       const target = this.requireEventFromDraft(draft, id);
@@ -362,6 +376,7 @@ export class ControlPanelService {
 
       const channel = draft.channels.find((c) => c.id === input.channelId);
       guildId = channel?.guildId;
+      botId = channel?.botId ?? botId;
 
       const replacement = this.planEvents(
         input,
@@ -391,7 +406,7 @@ export class ControlPanelService {
 
     // Sync to Discord: delete old events and create new ones
     if (guildId && oldDiscordEventIds.length > 0) {
-      this.deleteDiscordEvents(guildId, oldDiscordEventIds).catch(() => {});
+      this.deleteDiscordEvents(botId, guildId, oldDiscordEventIds).catch(() => {});
     }
     if (updated) {
       this.syncEventsToDiscord(updated.events, input.channelId).catch(() => {});
@@ -402,6 +417,8 @@ export class ControlPanelService {
 
   public deleteEvent(id: string) {
     let discordEventIds: string[] = [];
+    let guildId: string | undefined;
+    let botId = this.runtime.getPrimaryBotId();
     this.store.update((draft) => {
       const event = this.requireEventFromDraft(draft, id);
       if (event.status === "running") {
@@ -412,9 +429,9 @@ export class ControlPanelService {
       discordEventIds = draft.events
         .filter((e) => replaceIds.has(e.id) && e.discordEventId)
         .map((e) => e.discordEventId!);
-      const guildId = draft.channels.find(
-        (c) => c.id === event.channelId,
-      )?.guildId;
+      const channel = draft.channels.find((c) => c.id === event.channelId);
+      guildId = channel?.guildId;
+      botId = channel?.botId ?? botId;
 
       const before = draft.events.length;
       draft.events = draft.events.filter((entry) => !replaceIds.has(entry.id));
@@ -423,10 +440,10 @@ export class ControlPanelService {
       }
 
       // Delete Discord events in background
-      if (guildId && discordEventIds.length > 0) {
-        this.deleteDiscordEvents(guildId, discordEventIds).catch(() => {});
-      }
     });
+    if (guildId && discordEventIds.length > 0) {
+      this.deleteDiscordEvents(botId, guildId, discordEventIds).catch(() => {});
+    }
   }
 
   public async cancelEvent(id: string) {
@@ -445,7 +462,7 @@ export class ControlPanelService {
     if (event.discordEventId) {
       const channel = state.channels.find((c) => c.id === event.channelId);
       if (channel) {
-        this.deleteDiscordEvents(channel.guildId, [event.discordEventId]).catch(
+        this.deleteDiscordEvents(channel.botId, channel.guildId, [event.discordEventId]).catch(
           () => {},
         );
       }
@@ -485,7 +502,7 @@ export class ControlPanelService {
 
     // Set Discord event to Active
     if (event.discordEventId) {
-      this.setDiscordEventActive(channel.guildId, event.discordEventId).catch(
+      this.setDiscordEventActive(channel.botId, channel.guildId, event.discordEventId).catch(
         () => {},
       );
     }
@@ -582,7 +599,7 @@ export class ControlPanelService {
       const state = this.store.snapshot();
       const channel = state.channels.find((c) => c.id === channelId);
       if (channel) {
-        this.setDiscordEventCompleted(channel.guildId, discordEventId).catch(
+        this.setDiscordEventCompleted(channel.botId, channel.guildId, discordEventId).catch(
           () => {},
         );
       }
@@ -763,12 +780,12 @@ export class ControlPanelService {
     channelId: string,
   ) {
     try {
-      const client = this.runtime.getClient();
-      if (!client.user) return;
-
       const state = this.store.snapshot();
       const channel = state.channels.find((c) => c.id === channelId);
       if (!channel) return;
+      await this.runtime.ensureReady(channel.botId);
+      const client = this.runtime.getClient(channel.botId);
+      if (!client.user) return;
 
       const preset = events[0]
         ? state.presets.find((p) => p.id === events[0].presetId)
@@ -843,11 +860,13 @@ export class ControlPanelService {
   }
 
   private async deleteDiscordEvents(
+    botId: string,
     guildId: string,
     discordEventIds: string[],
   ) {
     try {
-      const client = this.runtime.getClient();
+      await this.runtime.ensureReady(botId);
+      const client = this.runtime.getClient(botId);
       if (!client.user) return;
 
       const guild = client.guilds.cache.get(guildId);
@@ -872,11 +891,13 @@ export class ControlPanelService {
   }
 
   private async setDiscordEventActive(
+    botId: string,
     guildId: string,
     discordEventId: string,
   ) {
     try {
-      const client = this.runtime.getClient();
+      await this.runtime.ensureReady(botId);
+      const client = this.runtime.getClient(botId);
       if (!client.user) return;
 
       const guild = client.guilds.cache.get(guildId);
@@ -898,11 +919,13 @@ export class ControlPanelService {
   }
 
   private async setDiscordEventCompleted(
+    botId: string,
     guildId: string,
     discordEventId: string,
   ) {
     try {
-      const client = this.runtime.getClient();
+      await this.runtime.ensureReady(botId);
+      const client = this.runtime.getClient(botId);
       if (!client.user) return;
 
       const guild = client.guilds.cache.get(guildId);
@@ -1204,7 +1227,9 @@ export class ControlPanelService {
 
   private async sendDmNotification(message: string) {
     try {
-      const client = this.runtime.getClient();
+      const activeBotId = this.runtime.getActiveRun()?.botId;
+      await this.runtime.ensureReady(activeBotId);
+      const client = this.runtime.getClient(activeBotId);
       if (!client.user) return;
       const dmChannel = await client.user.createDM();
       await dmChannel.send(message);

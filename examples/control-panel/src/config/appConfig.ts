@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { loadSelfbotProfiles } from "./selfbotConfig.js";
 
 function hasWorkingBinary(command: string): boolean {
   const flag = command === "yt-dlp" ? "--version" : "-version";
@@ -187,6 +188,7 @@ const dataFileEnv = process.env.DATA_FILE ?? "./data/control-panel-state.json";
 const dataFile = isAbsolute(dataFileEnv)
   ? dataFileEnv
   : resolve(appDir, dataFileEnv);
+const selfbotConfig = loadSelfbotProfiles(appDir);
 
 const ffmpegPath = resolveBinaryPath("FFMPEG_PATH", "ffmpeg", /ffmpeg/i);
 const ffprobePath = resolveBinaryPath("FFPROBE_PATH", "ffprobe", /ffmpeg/i);
@@ -234,6 +236,10 @@ export const appConfig = {
   dataFile,
   port: Number.parseInt(process.env.PORT ?? "3099", 10) || 3099,
   discordToken: process.env.DISCORD_TOKEN ?? "",
+  primarySelfbotId: selfbotConfig.primaryBotId,
+  selfbotConfigFile: selfbotConfig.configFile,
+  selfbotProfiles: selfbotConfig.profiles,
+  hasMultipleBots: selfbotConfig.hasMultipleBots,
   ffmpegPath,
   ffprobePath,
   ytDlpPath,

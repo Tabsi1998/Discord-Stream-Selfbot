@@ -335,6 +335,7 @@ export class DiscordCommandBridge {
     await message.channel.send(
       [
         `Aktiv: ${activeRun.channelName} -> ${activeRun.presetName}`,
+        `Bot: ${activeRun.botName} (${activeRun.botId})`,
         `Status: ${activeRun.status}`,
         `Seit: ${formatDate(activeRun.startedAt)}`,
         activeRun.plannedStopAt
@@ -347,7 +348,7 @@ export class DiscordCommandBridge {
   private async sendChannelList(message: Message) {
     const lines = this.service.snapshot().channels
       .slice(0, 12)
-      .map((channel) => `${channel.name} | ${channel.id}`);
+      .map((channel) => `${channel.name} | ${channel.id} | ${channel.botId}`);
     await message.channel.send(
       lines.length ? lines.join("\n") : "Keine Kanaele konfiguriert.",
     );
@@ -401,6 +402,7 @@ export class DiscordCommandBridge {
     await message.channel.send(
       [
         `Stream startet: ${channel.name}`,
+        `Bot: ${channel.botId}`,
         `Preset: ${preset.name}`,
         stopAt ? `Stop um: ${formatDate(stopAt.toISOString())}` : "Stop: manuell",
       ].join("\n"),

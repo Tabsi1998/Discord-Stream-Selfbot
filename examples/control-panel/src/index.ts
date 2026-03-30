@@ -97,13 +97,22 @@ if (!appConfig.discordToken) {
   store.appendLog("warn", "DISCORD_TOKEN is missing");
 }
 
-void runtime.ensureReady().catch((error: unknown) => {
-  const message =
-    error instanceof Error ? error.message : "Discord startup failed";
-  store.appendLog("error", "Discord runtime failed to start", {
-    error: message,
-  });
+store.appendLog("info", "Configured selfbots loaded", {
+  count: String(appConfig.selfbotProfiles.length),
+  configFile: appConfig.selfbotConfigFile,
 });
+
+for (const selfbot of appConfig.selfbotProfiles) {
+  void runtime.ensureReady(selfbot.id).catch((error: unknown) => {
+    const message =
+      error instanceof Error ? error.message : "Discord startup failed";
+    store.appendLog("error", "Discord runtime failed to start", {
+      botId: selfbot.id,
+      botName: selfbot.name,
+      error: message,
+    });
+  });
+}
 
 commandBridge.start();
 scheduler.start();

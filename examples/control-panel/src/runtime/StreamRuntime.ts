@@ -14,12 +14,18 @@ import {
 } from "@dank074/discord-video-stream";
 import { setFFmpegPath, setFFprobePath } from "fluent-ffmpeg-simplified";
 import { appConfig } from "../config/appConfig.js";
+import {
+  buildManagedSelfbotState,
+  type SelfbotProfileConfig,
+} from "../config/selfbotConfig.js";
 import { resolveRuntimePresetConfig } from "../domain/presetProfiles.js";
 import type {
   ActiveRun,
   ChannelDefinition,
   HardwareEncoder,
+  ManagedSelfbotState,
   PreferredHardwareEncoder,
+  RuntimeState,
   RunKind,
   StreamTelemetry,
   StreamPreset,
@@ -54,7 +60,19 @@ export type RunFailedInfo = {
   error: string;
 };
 
+type ManagedBot = {
+  profile: SelfbotProfileConfig;
+  client: Client;
+  streamer: Streamer;
+  loginPromise?: Promise<void>;
+  voiceChannelsCache?: {
+    expiresAt: number;
+    value: VoiceChannelOption[];
+  };
+};
+
 type ActiveSession = {
+  botId: string;
   run: ActiveRun;
   channel: ChannelDefinition;
   preset: StreamPreset;
@@ -73,6 +91,17 @@ type ResolvedVideoEncoder = {
   mode: VideoEncoderMode;
   encoder: EncoderSettingsGetter;
   fallbackReason?: string;
+};
+
+type PresenceTemplateContext = {
+  botId: string;
+  botName: string;
+  channelId?: string;
+  channelName?: string;
+  presetId?: string;
+  presetName?: string;
+  title?: string;
+  sourceUrl?: string;
 };
 
 function parseIntegerTelemetryValue(value: string) {
@@ -106,17 +135,24 @@ function parseOutTimeSecondsFromClock(value: string) {
   return Math.max(0, Math.round(hours * 3600 + minutes * 60 + seconds));
 }
 
+function renderTemplate(
+  template: string | undefined,
+  context: PresenceTemplateContext,
+) {
+  const normalized = template?.trim();
+  if (!normalized) return undefined;
+
+  return normalized.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const value = context[key as keyof PresenceTemplateContext];
+    return typeof value === "string" ? value : "";
+  }).trim() || undefined;
+}
+
 export class StreamRuntime extends EventEmitter {
-  private readonly client = new Client();
-  private readonly streamer = new Streamer(this.client);
   private readonly store: AppStateStore;
   private readonly sourceResolver: SourceResolver;
-  private loginPromise?: Promise<void>;
+  private readonly bots = new Map<string, ManagedBot>();
   private activeSession?: ActiveSession;
-  private voiceChannelsCache?: {
-    expiresAt: number;
-    value: VoiceChannelOption[];
-  };
 
   constructor(store: AppStateStore) {
     super();
@@ -130,8 +166,21 @@ export class StreamRuntime extends EventEmitter {
       setFFprobePath(appConfig.ffprobePath);
     }
 
+    for (const profile of appConfig.selfbotProfiles) {
+      const client = new Client();
+      const bot: ManagedBot = {
+        profile,
+        client,
+        streamer: new Streamer(client),
+      };
+      this.bots.set(profile.id, bot);
+      this.registerBotEvents(bot);
+    }
+
     this.store.setRuntime((runtime) => {
       runtime.discordStatus = "starting";
+      runtime.primaryBotId = appConfig.primarySelfbotId;
+      runtime.bots = appConfig.selfbotProfiles.map(buildManagedSelfbotState);
       runtime.ffmpegPath = appConfig.ffmpegPath;
       runtime.ffprobePath = appConfig.ffprobePath;
       runtime.ytDlpPath = appConfig.ytDlpPath;
@@ -149,85 +198,72 @@ export class StreamRuntime extends EventEmitter {
       runtime.preferredHardwareEncoder = appConfig.preferredHardwareEncoder;
       runtime.ffmpegLogLevel = appConfig.ffmpegLogLevel;
     });
-
-    this.client.on("ready", () => {
-      this.store.setRuntime((runtime) => {
-        runtime.discordStatus = "ready";
-        runtime.discordUserTag = this.client.user?.tag;
-        runtime.discordUserId = this.client.user?.id;
-        runtime.lastError = undefined;
-      });
-      this.store.appendLog("info", "Discord client is ready", {
-        userTag: this.client.user?.tag ?? "unknown",
-      });
-      this.emit("discordReady");
-    });
-
-    this.client.on("error", (error) => {
-      this.store.setRuntime((runtime) => {
-        runtime.discordStatus = "error";
-        runtime.lastError = error.message;
-      });
-      this.store.appendLog("error", "Discord client error", {
-        error: error.message,
-      });
-    });
   }
 
-  public async ensureReady() {
-    if (this.client.user) return;
-    if (!appConfig.discordToken) {
-      const message = "DISCORD_TOKEN is missing";
-      this.store.setRuntime((runtime) => {
-        runtime.discordStatus = "error";
-        runtime.lastError = message;
-      });
+  public getPrimaryBotId() {
+    return appConfig.primarySelfbotId;
+  }
+
+  public hasBot(botId: string) {
+    return this.bots.has(botId);
+  }
+
+  public async ensureReady(botId = appConfig.primarySelfbotId) {
+    const bot = this.requireBot(botId);
+    if (bot.client.user) return;
+    if (!bot.profile.token) {
+      const message = `Discord token is missing for bot "${bot.profile.name}"`;
+      this.setBotError(bot, message);
       throw new Error(message);
     }
 
-    if (!this.loginPromise) {
-      this.loginPromise = this.client.login(appConfig.discordToken).then(() => {
-        if (!this.client.user) {
+    if (!bot.loginPromise) {
+      bot.loginPromise = bot.client.login(bot.profile.token).then(() => {
+        if (!bot.client.user) {
           throw new Error("Discord login completed without a ready user");
         }
       }).catch((error: unknown) => {
+        bot.loginPromise = undefined;
         const message =
           error instanceof Error ? error.message : "Discord login failed";
-        this.store.setRuntime((runtime) => {
-          runtime.discordStatus = "error";
-          runtime.lastError = message;
-        });
+        this.setBotError(bot, message);
         this.store.appendLog("error", "Discord login failed", {
+          botId: bot.profile.id,
+          botName: bot.profile.name,
           error: message,
         });
         throw error;
       });
     }
 
-    await this.loginPromise;
+    await bot.loginPromise;
   }
 
   public getActiveRun() {
     return this.activeSession?.run;
   }
 
-  public getClient() {
-    return this.client;
+  public getClient(botId = appConfig.primarySelfbotId) {
+    return this.requireBot(botId).client;
   }
 
-  public async listVoiceChannels(forceRefresh = false): Promise<VoiceChannelOption[]> {
-    await this.ensureReady();
+  public async listVoiceChannels(
+    forceRefresh = false,
+    botId = appConfig.primarySelfbotId,
+  ): Promise<VoiceChannelOption[]> {
+    const bot = this.requireBot(botId);
+    await this.ensureReady(botId);
 
     if (
       !forceRefresh &&
-      this.voiceChannelsCache &&
-      this.voiceChannelsCache.expiresAt > Date.now()
+      bot.voiceChannelsCache &&
+      bot.voiceChannelsCache.expiresAt > Date.now()
     ) {
-      return this.voiceChannelsCache.value;
+      return bot.voiceChannelsCache.value;
     }
 
     const result: VoiceChannelOption[] = [];
-    const guilds = [...this.client.guilds.cache.values()].sort((a, b) =>
+    const guilds = [...bot.client.guilds.cache.values()].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
 
@@ -242,6 +278,8 @@ export class StreamRuntime extends EventEmitter {
 
       for (const channel of voiceChannels) {
         result.push({
+          botId: bot.profile.id,
+          botName: bot.profile.name,
           guildId: guild.id,
           guildName: guild.name,
           channelId: channel.id,
@@ -251,7 +289,7 @@ export class StreamRuntime extends EventEmitter {
       }
     }
 
-    this.voiceChannelsCache = {
+    bot.voiceChannelsCache = {
       expiresAt: Date.now() + 30_000,
       value: result,
     };
@@ -264,11 +302,15 @@ export class StreamRuntime extends EventEmitter {
       throw new Error("A stream is already active");
     }
 
-    await this.ensureReady();
+    const botId = options.channel.botId || appConfig.primarySelfbotId;
+    const bot = this.requireBot(botId);
+    await this.ensureReady(botId);
 
     const run: ActiveRun = {
       kind: options.kind,
       eventId: options.eventId,
+      botId: bot.profile.id,
+      botName: bot.profile.name,
       channelId: options.channel.id,
       presetId: options.preset.id,
       channelName: options.channel.name,
@@ -284,6 +326,8 @@ export class StreamRuntime extends EventEmitter {
       runtime.lastError = undefined;
     });
     this.store.appendLog("info", "Starting stream", {
+      botId: bot.profile.id,
+      botName: bot.profile.name,
       kind: run.kind,
       channel: options.channel.name,
       preset: options.preset.name,
@@ -291,6 +335,7 @@ export class StreamRuntime extends EventEmitter {
 
     const controller = new AbortController();
     const session: ActiveSession = {
+      botId: bot.profile.id,
       run,
       channel: options.channel,
       preset: options.preset,
@@ -299,7 +344,7 @@ export class StreamRuntime extends EventEmitter {
     };
     this.activeSession = session;
 
-    const channel = await this.client.channels.fetch(options.channel.channelId);
+    const channel = await bot.client.channels.fetch(options.channel.channelId);
     if (!channel || !channel.isVoice()) {
       this.failSession(session, "Configured Discord channel is not a voice channel");
       throw new Error("Configured Discord channel is not a voice channel");
@@ -310,6 +355,16 @@ export class StreamRuntime extends EventEmitter {
     let waitForStartup: Promise<void> | undefined;
     const resolvedPreset = resolveRuntimePresetConfig(options.preset);
     const resolvedEncoder = this.resolveVideoEncoder(options.preset);
+    let presenceContext: PresenceTemplateContext = {
+      botId: bot.profile.id,
+      botName: bot.profile.name,
+      channelId: options.channel.id,
+      channelName: options.channel.name,
+      presetId: options.preset.id,
+      presetName: options.preset.name,
+      sourceUrl: options.preset.sourceUrl,
+      title: options.preset.name,
+    };
 
     try {
       const resolvedSource = await this.sourceResolver.resolve(
@@ -317,7 +372,15 @@ export class StreamRuntime extends EventEmitter {
         controller.signal,
       );
 
+      presenceContext = {
+        ...presenceContext,
+        title: resolvedSource.resolvedTitle ?? options.preset.name,
+        sourceUrl: resolvedSource.inputUrl,
+      };
+
       this.store.appendLog("info", "Source resolved", {
+        botId: bot.profile.id,
+        botName: bot.profile.name,
         preset: options.preset.name,
         mode: resolvedSource.resolverKind,
         title: resolvedSource.resolvedTitle ?? "",
@@ -332,6 +395,8 @@ export class StreamRuntime extends EventEmitter {
 
       if (resolvedEncoder.fallbackReason) {
         this.store.appendLog("warn", "Hardware acceleration fallback", {
+          botId: bot.profile.id,
+          botName: bot.profile.name,
           preset: options.preset.name,
           fallback: resolvedEncoder.fallbackReason,
           selectedEncoder: resolvedEncoder.mode,
@@ -380,15 +445,18 @@ export class StreamRuntime extends EventEmitter {
       throw error instanceof Error ? error : new Error(message);
     }
 
-    await this.streamer.joinVoice(options.channel.guildId, options.channel.channelId);
+    await bot.streamer.joinVoice(
+      options.channel.guildId,
+      options.channel.channelId,
+    );
 
     if (channel instanceof StageChannel) {
-      await this.streamer.client.user?.voice?.setSuppressed(false);
+      await bot.streamer.client.user?.voice?.setSuppressed(false);
     }
 
     void playStream(
       output,
-      this.streamer,
+      bot.streamer,
       {
         type: options.channel.streamMode,
         readrateInitialBurst: resolvedPreset.readrateInitialBurst,
@@ -431,9 +499,21 @@ export class StreamRuntime extends EventEmitter {
     });
     this.emit("runStarted", this.activeSession.run);
     this.store.appendLog("info", "Stream is running", {
+      botId: bot.profile.id,
+      botName: bot.profile.name,
       kind: run.kind,
       channel: options.channel.name,
       preset: options.preset.name,
+    });
+
+    void this.applyStreamingPresence(bot, presenceContext).catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : "Failed to apply streaming presence";
+      this.store.appendLog("warn", "Streaming presence update failed", {
+        botId: bot.profile.id,
+        botName: bot.profile.name,
+        error: message,
+      });
     });
 
     return this.activeSession.run;
@@ -463,6 +543,173 @@ export class StreamRuntime extends EventEmitter {
     return true;
   }
 
+  private requireBot(botId: string) {
+    const bot = this.bots.get(botId);
+    if (!bot) {
+      throw new Error(`Configured selfbot "${botId}" was not found`);
+    }
+    return bot;
+  }
+
+  private registerBotEvents(bot: ManagedBot) {
+    bot.client.on("ready", () => {
+      this.updateBotRuntime(bot.profile.id, (entry, runtime) => {
+        entry.status = "ready";
+        entry.userTag = bot.client.user?.tag;
+        entry.userId = bot.client.user?.id;
+        entry.lastError = undefined;
+
+        if (bot.profile.id === appConfig.primarySelfbotId) {
+          runtime.discordStatus = "ready";
+          runtime.discordUserTag = bot.client.user?.tag;
+          runtime.discordUserId = bot.client.user?.id;
+          runtime.lastError = undefined;
+        }
+      });
+
+      this.store.appendLog("info", "Discord client is ready", {
+        botId: bot.profile.id,
+        botName: bot.profile.name,
+        userTag: bot.client.user?.tag ?? "unknown",
+      });
+
+      if (!this.activeSession || this.activeSession.botId !== bot.profile.id) {
+        void this.applyIdlePresence(bot).catch((error: unknown) => {
+          const message =
+            error instanceof Error ? error.message : "Failed to apply idle presence";
+          this.store.appendLog("warn", "Idle presence update failed", {
+            botId: bot.profile.id,
+            botName: bot.profile.name,
+            error: message,
+          });
+        });
+      }
+
+      if (bot.profile.id === appConfig.primarySelfbotId) {
+        this.emit("discordReady");
+      }
+    });
+
+    bot.client.on("error", (error) => {
+      this.setBotError(bot, error.message);
+      this.store.appendLog("error", "Discord client error", {
+        botId: bot.profile.id,
+        botName: bot.profile.name,
+        error: error.message,
+      });
+    });
+  }
+
+  private setBotError(bot: ManagedBot, message: string) {
+    this.updateBotRuntime(bot.profile.id, (entry, runtime) => {
+      entry.status = "error";
+      entry.lastError = message;
+
+      if (bot.profile.id === appConfig.primarySelfbotId) {
+        runtime.discordStatus = "error";
+        runtime.lastError = message;
+      }
+    });
+  }
+
+  private updateBotRuntime(
+    botId: string,
+    updater: (
+      entry: ManagedSelfbotState,
+      runtime: RuntimeState,
+    ) => void,
+  ) {
+    this.store.setRuntime((runtime) => {
+      runtime.bots ??= appConfig.selfbotProfiles.map(buildManagedSelfbotState);
+      let entry = runtime.bots.find((item) => item.id === botId);
+      if (!entry) {
+        const profile = appConfig.selfbotProfiles.find((item) => item.id === botId);
+        if (!profile) return;
+        entry = buildManagedSelfbotState(profile);
+        runtime.bots.push(entry);
+      }
+      updater(entry, runtime);
+    });
+  }
+
+  private async applyIdlePresence(bot: ManagedBot) {
+    const activityText = renderTemplate(bot.profile.idleActivityText, {
+      botId: bot.profile.id,
+      botName: bot.profile.name,
+    });
+
+    this.applyPresence(
+      bot,
+      bot.profile.idlePresenceStatus,
+      bot.profile.idleActivityType,
+      activityText,
+    );
+
+    this.updateBotRuntime(bot.profile.id, (entry) => {
+      entry.lastPresenceText = activityText;
+      entry.lastVoiceStatus = undefined;
+    });
+  }
+
+  private async applyStreamingPresence(
+    bot: ManagedBot,
+    context: PresenceTemplateContext,
+  ) {
+    const activityText = renderTemplate(
+      bot.profile.streamActivityText,
+      context,
+    );
+    const voiceStatus = renderTemplate(
+      bot.profile.voiceStatusTemplate,
+      context,
+    );
+
+    this.applyPresence(
+      bot,
+      bot.profile.streamPresenceStatus,
+      bot.profile.streamActivityType,
+      activityText,
+    );
+    await this.setVoiceStatus(bot, voiceStatus);
+
+    this.updateBotRuntime(bot.profile.id, (entry) => {
+      entry.lastPresenceText = activityText;
+      entry.lastVoiceStatus = voiceStatus;
+    });
+  }
+
+  private applyPresence(
+    bot: ManagedBot,
+    status: SelfbotProfileConfig["idlePresenceStatus"],
+    type: SelfbotProfileConfig["idleActivityType"],
+    text: string | undefined,
+  ) {
+    const user = bot.client.user;
+    if (!user) return;
+
+    const activity = text
+      ? [{
+          name: text,
+          type,
+          ...(type === "STREAMING"
+            ? { url: "https://www.twitch.tv/discord" }
+            : {}),
+        }]
+      : [];
+
+    user.setPresence({
+      status,
+      activities: activity,
+    });
+  }
+
+  private async setVoiceStatus(bot: ManagedBot, statusText: string | undefined) {
+    const voiceState = bot.client.user?.voice;
+    if (!voiceState?.channel) return;
+
+    await voiceState.setStatus(statusText ?? "");
+  }
+
   private armStopFallback(session: ActiveSession) {
     if (session.stopTimeout) {
       clearTimeout(session.stopTimeout);
@@ -471,6 +718,8 @@ export class StreamRuntime extends EventEmitter {
     session.stopTimeout = setTimeout(() => {
       if (session.closed || this.activeSession !== session) return;
       this.store.appendLog("warn", "Force-closing stuck stream session", {
+        botId: session.botId,
+        botName: session.run.botName,
         kind: session.run.kind,
         channel: session.channel.name,
         preset: session.preset.name,
@@ -535,12 +784,15 @@ export class StreamRuntime extends EventEmitter {
     return (command as unknown as { _proc?: CommandProcessLike })._proc;
   }
 
-  private async cleanupVoiceState() {
+  private async cleanupVoiceState(bot: ManagedBot) {
     try {
-      this.streamer.stopStream();
+      await this.setVoiceStatus(bot, "");
     } catch {}
     try {
-      this.streamer.leaveVoice();
+      bot.streamer.stopStream();
+    } catch {}
+    try {
+      bot.streamer.leaveVoice();
     } catch {}
   }
 
@@ -560,7 +812,9 @@ export class StreamRuntime extends EventEmitter {
       this.activeSession = undefined;
     }
 
-    void this.cleanupVoiceState();
+    const bot = this.requireBot(session.botId);
+    void this.cleanupVoiceState(bot);
+    void this.applyIdlePresence(bot).catch(() => {});
 
     this.store.setRuntime((runtime) => {
       runtime.activeRun = undefined;
@@ -573,6 +827,8 @@ export class StreamRuntime extends EventEmitter {
     });
 
     this.store.appendLog("info", "Stream ended", {
+      botId: session.botId,
+      botName: session.run.botName,
       kind: session.run.kind,
       channel: session.channel.name,
       preset: session.preset.name,
@@ -599,7 +855,9 @@ export class StreamRuntime extends EventEmitter {
       this.activeSession = undefined;
     }
 
-    void this.cleanupVoiceState();
+    const bot = this.requireBot(session.botId);
+    void this.cleanupVoiceState(bot);
+    void this.applyIdlePresence(bot).catch(() => {});
 
     this.store.setRuntime((runtime) => {
       runtime.activeRun = undefined;
@@ -609,6 +867,8 @@ export class StreamRuntime extends EventEmitter {
       runtime.lastError = error;
     });
     this.store.appendLog("error", "Stream failed", {
+      botId: session.botId,
+      botName: session.run.botName,
       kind: session.run.kind,
       channel: session.channel.name,
       preset: session.preset.name,

@@ -33,6 +33,7 @@
         <article class="overview-card">
           <h2>Discord</h2>
           <p id="discordUser">nicht verbunden</p>
+          <p id="botSummary" class="muted"></p>
           <p id="ffmpegInfo" class="muted"></p>
           <p id="commandInfo" class="muted"></p>
         </article>
@@ -165,6 +166,10 @@
           </div>
           <div class="form-grid compact-grid">
             <label>
+              Selfbot
+              <select id="discoveryBotId"></select>
+            </label>
+            <label>
               Discord Voice Channel
               <select id="discoveredChannelSelect"></select>
             </label>
@@ -230,12 +235,26 @@
         <section class="panel">
           <div class="panel-header">
             <div>
+              <p class="eyebrow">Accounts</p>
+              <h2>Selfbots</h2>
+            </div>
+          </div>
+          <div id="selfbotsList" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
               <p class="eyebrow">Konfiguration</p>
               <h2>Kanäle</h2>
             </div>
           </div>
           <form id="channelForm" class="form-grid">
             <input id="channelIdField" name="id" type="hidden" />
+            <label>
+              Selfbot
+              <select id="channelBotId" name="botId" required></select>
+            </label>
             <label>
               Name
               <input id="channelName" name="name" required />

@@ -106,10 +106,13 @@ export function createServer(service: ControlPanelService) {
 
   app.get(
     "/api/bootstrap",
-    asyncRoute(async (_req, res) => {
+    asyncRoute(async (req, res) => {
+      const botId =
+        typeof req.query.botId === "string" ? req.query.botId : undefined;
+      const forceRefresh = req.query.refresh === "1";
       res.json({
         state: service.snapshot(),
-        voiceChannels: await service.listVoiceChannels(),
+        voiceChannels: await service.listVoiceChannels(forceRefresh, botId),
       });
     }),
   );
@@ -137,7 +140,9 @@ export function createServer(service: ControlPanelService) {
     "/api/voice-channels",
     asyncRoute(async (req, res) => {
       const forceRefresh = req.query.refresh === "1";
-      res.json(await service.listVoiceChannels(forceRefresh));
+      const botId =
+        typeof req.query.botId === "string" ? req.query.botId : undefined;
+      res.json(await service.listVoiceChannels(forceRefresh, botId));
     }),
   );
 

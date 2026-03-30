@@ -177,6 +177,7 @@ echo -e "  ${DIM}Token:${NC}      ${TOKEN:0:8}...${TOKEN: -4}" >&2
 echo -e "  ${DIM}Port:${NC}       $(read_env HOST_PORT)" >&2
 echo -e "  ${DIM}Zeitzone:${NC}   $(read_env TZ)" >&2
 echo -e "  ${DIM}User-IDs:${NC}   $(read_env COMMAND_ALLOWED_AUTHOR_IDS)" >&2
+echo -e "  ${DIM}Selfbot Name:${NC} $(read_env PRIMARY_SELFBOT_NAME)" >&2
 echo "" >&2
 
 cp "$ENV_FILE" "$ENV_BACKUP"
@@ -185,6 +186,14 @@ print_success ".env gesichert: $ENV_BACKUP"
 if [ -f "$STATE_FILE" ]; then
   cp "$STATE_FILE" "$STATE_BACKUP"
   print_success "Stream-Daten gesichert: $STATE_BACKUP"
+fi
+
+SELFBOT_CONFIG_PATH=$(read_env "SELFBOT_CONFIG_FILE")
+SELFBOT_PROFILES_FILE="$DATA_DIR/$(basename "${SELFBOT_CONFIG_PATH:-selfbot-profiles.tsv}")"
+SELFBOT_BACKUP="$DATA_DIR/$(basename "${SELFBOT_CONFIG_PATH:-selfbot-profiles.tsv}").pre-update"
+if [ -f "$SELFBOT_PROFILES_FILE" ]; then
+  cp "$SELFBOT_PROFILES_FILE" "$SELFBOT_BACKUP"
+  print_success "Selfbot-Profile gesichert: $SELFBOT_BACKUP"
 fi
 
 # ── [4/5] Update ─────────────────────────────────────────────
