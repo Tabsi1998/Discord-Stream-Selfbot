@@ -70,6 +70,10 @@ test("AppStateStore migrates legacy activeRun state to activeRuns and default bo
     assert.deepEqual(snapshot.runtime.selectedVideoEncodersByBot, {});
     assert.equal(snapshot.queueConfig.botId, "bot-2");
     assert.equal(snapshot.queueConfig.loop, true);
+    assert.deepEqual(snapshot.notificationSettings, {
+      webhookUrl: "",
+      dmEnabled: false,
+    });
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

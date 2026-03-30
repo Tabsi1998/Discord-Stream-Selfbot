@@ -179,14 +179,41 @@ export type LogEntry = {
   context?: Record<string, string>;
 };
 
+export type NotificationSettings = {
+  webhookUrl: string;
+  dmEnabled: boolean;
+  updatedAt?: string;
+};
+
+export type NotificationSettingsInput = {
+  webhookUrl?: string;
+  dmEnabled?: boolean;
+};
+
 export type ControlPanelState = {
   channels: ChannelDefinition[];
   presets: StreamPreset[];
   events: ScheduledEvent[];
   queue: QueueItem[];
   queueConfig: QueueConfig;
+  notificationSettings: NotificationSettings;
   runtime: RuntimeState;
   logs: LogEntry[];
+};
+
+export type ControlPanelExportData = {
+  channels: ChannelDefinition[];
+  presets: StreamPreset[];
+  events: ScheduledEvent[];
+  queue: QueueItem[];
+  queueConfig: QueueConfig;
+  notificationSettings: NotificationSettings;
+};
+
+export type ControlPanelExportPayload = {
+  version: 1;
+  exportedAt: string;
+  data: ControlPanelExportData;
 };
 
 export type VoiceChannelOption = {

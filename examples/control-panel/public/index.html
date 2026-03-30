@@ -480,6 +480,68 @@
         <section class="panel panel-wide">
           <div class="panel-header">
             <div>
+              <p class="eyebrow">Backup & Alerts</p>
+              <h2>Benachrichtigungen und Import / Export</h2>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <form id="notificationForm" class="form-grid settings-card">
+              <div class="full-width">
+                <h3 class="settings-title">Benachrichtigungen</h3>
+                <p id="notificationSummary" class="muted">
+                  Keine Benachrichtigungen konfiguriert.
+                </p>
+              </div>
+              <label class="full-width">
+                Webhook URL
+                <input
+                  id="notificationWebhookUrl"
+                  name="webhookUrl"
+                  placeholder="https://discord.com/api/webhooks/..."
+                />
+              </label>
+              <label class="checkbox-field">
+                <input id="notificationDmEnabled" name="dmEnabled" type="checkbox" />
+                DM an den aktiven Selfbot senden
+              </label>
+              <div class="form-actions full-width">
+                <button class="primary-button" type="submit">Speichern</button>
+                <button id="notificationTestButton" class="ghost-button" type="button">
+                  Test senden
+                </button>
+                <button id="notificationResetButton" class="ghost-button" type="button">
+                  Formular zuruecksetzen
+                </button>
+              </div>
+            </form>
+
+            <section class="settings-card">
+              <h3 class="settings-title">Konfigurationsbackup</h3>
+              <p id="configSummary" class="muted">
+                Exportiert Kanaele, Presets, Events, Queue und Benachrichtigungen.
+              </p>
+              <div class="settings-stack">
+                <button id="configExportButton" class="primary-button" type="button">
+                  Export herunterladen
+                </button>
+                <label class="full-width">
+                  Import-Datei
+                  <input id="configImportFile" type="file" accept=".json,application/json" />
+                </label>
+                <button id="configImportButton" class="danger-button" type="button">
+                  Import anwenden
+                </button>
+                <p class="muted">
+                  Der Import ersetzt die aktuelle Konfiguration. Aktive Streams und laufende Queue muessen vorher gestoppt sein.
+                </p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
               <p class="eyebrow">Verlauf</p>
               <h2>Letzte Logs</h2>
             </div>

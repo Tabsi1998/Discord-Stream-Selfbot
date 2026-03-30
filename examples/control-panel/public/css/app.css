@@ -377,6 +377,32 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   flex-wrap: wrap;
 }
 
+.settings-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-small);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--bright);
+}
+
+.settings-stack {
+  display: grid;
+  gap: 12px;
+}
+
 /* ── Quality Helper ──────────────────────── */
 .quality-helper {
   display: grid;
@@ -595,6 +621,10 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   }
 
   .compact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 

@@ -128,6 +128,16 @@ const els = {
   nextEventSummary: document.querySelector("#nextEventSummary"),
   queuePrimary: document.querySelector("#queuePrimary"),
   queueSecondary: document.querySelector("#queueSecondary"),
+  notificationForm: document.querySelector("#notificationForm"),
+  notificationWebhookUrl: document.querySelector("#notificationWebhookUrl"),
+  notificationDmEnabled: document.querySelector("#notificationDmEnabled"),
+  notificationSummary: document.querySelector("#notificationSummary"),
+  notificationTestButton: document.querySelector("#notificationTestButton"),
+  notificationResetButton: document.querySelector("#notificationResetButton"),
+  configSummary: document.querySelector("#configSummary"),
+  configExportButton: document.querySelector("#configExportButton"),
+  configImportFile: document.querySelector("#configImportFile"),
+  configImportButton: document.querySelector("#configImportButton"),
   channelForm: document.querySelector("#channelForm"),
   channelIdField: document.querySelector("#channelIdField"),
   channelBotId: document.querySelector("#channelBotId"),
@@ -265,6 +275,25 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function fileTimestamp(iso) {
+  if (!iso) {
+    return new Date().toISOString().replaceAll(":", "-");
+  }
+  return iso.replaceAll(":", "-");
+}
+
+function triggerDownload(fileName, content) {
+  const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatUptime(ms) {
@@ -1151,6 +1180,35 @@ function renderLogs() {
     .join("");
 }
 
+function renderNotifications() {
+  const settings = state.app.notificationSettings || {
+    webhookUrl: "",
+    dmEnabled: false,
+  };
+  els.notificationWebhookUrl.value = settings.webhookUrl || "";
+  els.notificationDmEnabled.checked = !!settings.dmEnabled;
+
+  const parts = [];
+  if (settings.webhookUrl) {
+    parts.push("Webhook aktiv");
+  } else {
+    parts.push("Webhook aus");
+  }
+  parts.push(settings.dmEnabled ? "DM aktiv" : "DM aus");
+  if (settings.updatedAt) {
+    parts.push(`Zuletzt gespeichert: ${formatDateTime(settings.updatedAt)}`);
+  }
+  els.notificationSummary.textContent = parts.join(" | ");
+
+  const configCount = [
+    `${state.app.channels.length} Kanaele`,
+    `${state.app.presets.length} Presets`,
+    `${state.app.events.length} Events`,
+    `${state.app.queue.length} Queue-Items`,
+  ];
+  els.configSummary.textContent = configCount.join(" | ");
+}
+
 function renderSelects() {
   const bots = getBots();
   fillSelect(els.channelBotId, bots, "Selfbot waehlen", botDisplayLabel);
@@ -1187,6 +1245,7 @@ function renderAll() {
   renderPresets();
   renderEvents();
   renderQueue();
+  renderNotifications();
   renderLogs();
 }
 
@@ -1229,6 +1288,15 @@ function resetEventForm() {
 function resetQueueForm() {
   els.queueAddForm.reset();
   els.queueSourceMode.value = "";
+}
+
+function resetNotificationForm() {
+  const settings = state.app?.notificationSettings || {
+    webhookUrl: "",
+    dmEnabled: false,
+  };
+  els.notificationWebhookUrl.value = settings.webhookUrl || "";
+  els.notificationDmEnabled.checked = !!settings.dmEnabled;
 }
 
 async function refresh(forceChannels = false) {
@@ -1310,6 +1378,13 @@ function buildQueuePayload() {
     url: els.queueUrl.value.trim(),
     name: els.queueName.value.trim(),
     sourceMode: els.queueSourceMode.value || undefined,
+  };
+}
+
+function buildNotificationPayload() {
+  return {
+    webhookUrl: els.notificationWebhookUrl.value.trim(),
+    dmEnabled: els.notificationDmEnabled.checked,
   };
 }
 
@@ -1453,6 +1528,71 @@ async function handleManualStart(event) {
   });
   showNotice("Manueller Stream wird gestartet.", "success");
   els.manualStopAt.value = "";
+  await refresh();
+}
+
+async function handleNotificationSubmit(event) {
+  event.preventDefault();
+  const settings = await api("/api/settings/notifications", {
+    method: "PUT",
+    body: JSON.stringify(buildNotificationPayload()),
+  });
+  if (state.app) {
+    state.app.notificationSettings = settings;
+    renderNotifications();
+  }
+  showNotice("Benachrichtigungen gespeichert.", "success");
+}
+
+async function testNotificationSettingsFromPanel() {
+  await api("/api/settings/notifications/test", {
+    method: "POST",
+    body: JSON.stringify(buildNotificationPayload()),
+  });
+  showNotice("Test-Benachrichtigung gesendet.", "success");
+}
+
+async function exportConfiguration() {
+  const payload = await api("/api/config/export");
+  const timestamp = fileTimestamp(payload?.exportedAt);
+  triggerDownload(
+    `stream-control-panel-export-${timestamp}.json`,
+    `${JSON.stringify(payload, null, 2)}\n`,
+  );
+  showNotice("Export heruntergeladen.", "success");
+}
+
+async function importConfigurationFromFile() {
+  const file = els.configImportFile.files?.[0];
+  if (!file) {
+    showNotice("Bitte zuerst eine Export-Datei auswaehlen.", "warn");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Der Import ersetzt Kanaele, Presets, Events, Queue und Benachrichtigungen. Fortfahren?",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const rawText = await file.text();
+  let payload;
+  try {
+    payload = JSON.parse(rawText);
+  } catch {
+    throw new Error("Die Import-Datei ist kein gueltiges JSON");
+  }
+
+  const result = await api("/api/config/import", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  els.configImportFile.value = "";
+  showNotice(
+    `Import abgeschlossen: ${result?.counts?.channels ?? 0} Kanaele, ${result?.counts?.presets ?? 0} Presets, ${result?.counts?.events ?? 0} Events.`,
+    "success",
+  );
   await refresh();
 }
 
@@ -1792,6 +1932,19 @@ function bindEvents() {
   els.manualStartForm.addEventListener("submit", (event) => {
     void handleManualStart(event).catch(handleError);
   });
+  els.notificationForm.addEventListener("submit", (event) => {
+    void handleNotificationSubmit(event).catch(handleError);
+  });
+  els.notificationTestButton.addEventListener("click", () => {
+    void testNotificationSettingsFromPanel().catch(handleError);
+  });
+  els.notificationResetButton.addEventListener("click", resetNotificationForm);
+  els.configExportButton.addEventListener("click", () => {
+    void exportConfiguration().catch(handleError);
+  });
+  els.configImportButton.addEventListener("click", () => {
+    void importConfigurationFromFile().catch(handleError);
+  });
   els.queueAddForm.addEventListener("submit", (event) => {
     void handleQueueAdd(event).catch(handleError);
   });
@@ -1843,6 +1996,7 @@ async function init() {
   resetPresetForm();
   resetEventForm();
   resetQueueForm();
+  resetNotificationForm();
   initYouTubeAuth();
   await refresh();
 

@@ -8,10 +8,13 @@ import {
 import type {
   ChannelDefinition,
   ChannelInput,
+  ControlPanelExportPayload,
   ControlPanelState,
   EventInput,
   EventStatus,
   ManualRunInput,
+  NotificationSettings,
+  NotificationSettingsInput,
   QueueItem,
   RecurrenceRule,
   PresetInput,
@@ -48,6 +51,26 @@ function assertPositiveInteger(value: number, fieldName: string) {
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`${fieldName} must be a positive integer`);
   }
+}
+
+function normalizeWebhookUrl(value: string | undefined) {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) {
+    return "";
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error("webhookUrl must be a valid URL");
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("webhookUrl must use http or https");
+  }
+
+  return parsed.toString();
 }
 
 function blocksScheduling(status: EventStatus) {
@@ -104,6 +127,111 @@ export class ControlPanelService {
 
   public async listVoiceChannels(forceRefresh = false, botId?: string) {
     return this.runtime.listVoiceChannels(forceRefresh, botId);
+  }
+
+  public initializeNotificationSettings(defaults: NotificationSettingsInput) {
+    const state = this.store.snapshot();
+    if (state.notificationSettings.updatedAt) {
+      return state.notificationSettings;
+    }
+
+    const settings = this.resolveNotificationSettings(defaults);
+    this.store.update((draft) => {
+      draft.notificationSettings = settings;
+    });
+    return settings;
+  }
+
+  public getNotificationSettings() {
+    return this.resolveNotificationSettings(undefined, undefined, false);
+  }
+
+  public updateNotificationSettings(input: NotificationSettingsInput) {
+    const current = this.resolveNotificationSettings();
+    const settings = this.resolveNotificationSettings(input, current);
+    this.store.update((draft) => {
+      draft.notificationSettings = settings;
+    });
+    this.store.appendLog("info", "Benachrichtigungseinstellungen aktualisiert", {
+      webhook: settings.webhookUrl ? "configured" : "disabled",
+      dmEnabled: settings.dmEnabled ? "1" : "0",
+    });
+    return settings;
+  }
+
+  public async testNotificationSettings(
+    input?: NotificationSettingsInput,
+    botId?: string,
+  ) {
+    const settings = input
+      ? this.resolveNotificationSettings(input, this.resolveNotificationSettings())
+      : this.resolveNotificationSettings();
+    if (!settings.webhookUrl && !settings.dmEnabled) {
+      throw new Error("Activate webhook or DM notifications before sending a test");
+    }
+    await this.sendNotification(
+      "Test-Benachrichtigung vom Stream Bot",
+      botId,
+      settings,
+    );
+    return settings;
+  }
+
+  public exportConfiguration(): ControlPanelExportPayload {
+    const snapshot = this.store.snapshot();
+    return {
+      version: 1,
+      exportedAt: nowIso(),
+      data: {
+        channels: structuredClone(snapshot.channels),
+        presets: structuredClone(snapshot.presets),
+        events: structuredClone(snapshot.events),
+        queue: structuredClone(snapshot.queue),
+        queueConfig: {
+          ...snapshot.queueConfig,
+          active: false,
+        },
+        notificationSettings: this.getNotificationSettings(),
+      },
+    };
+  }
+
+  public importConfiguration(input: unknown) {
+    if (this.runtime.getActiveRuns().length > 0) {
+      throw new Error("Stop all active streams before importing a configuration");
+    }
+    if (this.store.snapshot().queueConfig.active) {
+      throw new Error("Stop the queue before importing a configuration");
+    }
+
+    const payload = this.parseImportPayload(input);
+    const imported = this.normalizeImportedConfiguration(payload.data);
+
+    this.store.update((draft) => {
+      draft.channels = imported.channels;
+      draft.presets = imported.presets;
+      draft.events = imported.events;
+      draft.queue = imported.queue;
+      draft.queueConfig = imported.queueConfig;
+      draft.notificationSettings = imported.notificationSettings;
+    });
+
+    this.store.appendLog("info", "Konfiguration importiert", {
+      channels: String(imported.channels.length),
+      presets: String(imported.presets.length),
+      events: String(imported.events.length),
+      queue: String(imported.queue.length),
+    });
+
+    return {
+      importedAt: nowIso(),
+      counts: {
+        channels: imported.channels.length,
+        presets: imported.presets.length,
+        events: imported.events.length,
+        queue: imported.queue.length,
+      },
+    };
   }
 
   public reconcileStateOnStartup() {
@@ -1280,22 +1408,27 @@ export class ControlPanelService {
 
   // ── Notifications ─────────────────────────────────────────────
 
-  public async sendNotification(message: string, botId?: string) {
+  public async sendNotification(
+    message: string,
+    botId?: string,
+    settingsOverride?: NotificationSettings,
+  ) {
+    const settings = settingsOverride ?? this.resolveNotificationSettings();
     const tasks: Promise<void>[] = [];
 
-    if (appConfig.notificationWebhookUrl) {
-      tasks.push(this.sendWebhookNotification(message));
+    if (settings.webhookUrl) {
+      tasks.push(this.sendWebhookNotification(message, settings.webhookUrl));
     }
-    if (appConfig.notificationDmEnabled) {
+    if (settings.dmEnabled) {
       tasks.push(this.sendDmNotification(message, botId));
     }
 
     await Promise.allSettled(tasks);
   }
 
-  private async sendWebhookNotification(message: string) {
+  private async sendWebhookNotification(message: string, webhookUrl: string) {
     try {
-      await fetch(appConfig.notificationWebhookUrl, {
+      await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1328,5 +1461,217 @@ export class ControlPanelService {
         error: msg,
       });
     }
+  }
+
+  private resolveNotificationSettings(
+    input?: NotificationSettingsInput,
+    fallback?: NotificationSettings,
+    stampUpdate = true,
+  ): NotificationSettings {
+    const stored = this.store.snapshot().notificationSettings;
+    const base = fallback
+      ?? (stored.updatedAt
+        ? stored
+        : {
+            webhookUrl: appConfig.notificationWebhookUrl,
+            dmEnabled: appConfig.notificationDmEnabled,
+          });
+
+    return {
+      webhookUrl: normalizeWebhookUrl(input?.webhookUrl ?? base.webhookUrl),
+      dmEnabled:
+        typeof input?.dmEnabled === "boolean"
+          ? input.dmEnabled
+          : !!base.dmEnabled,
+      updatedAt: stampUpdate ? nowIso() : base.updatedAt,
+    };
+  }
+
+  private parseImportPayload(input: unknown): ControlPanelExportPayload {
+    if (!input || typeof input !== "object") {
+      throw new Error("Import payload must be a JSON object");
+    }
+
+    const raw = input as Partial<ControlPanelExportPayload> & {
+      data?: unknown;
+      channels?: unknown;
+      presets?: unknown;
+      events?: unknown;
+      queue?: unknown;
+      queueConfig?: unknown;
+      notificationSettings?: unknown;
+    };
+
+    if (
+      raw.data
+      && typeof raw.data === "object"
+      && !Array.isArray(raw.data)
+    ) {
+      return {
+        version: raw.version === 1 ? 1 : 1,
+        exportedAt:
+          typeof raw.exportedAt === "string" ? raw.exportedAt : nowIso(),
+        data: raw.data as ControlPanelExportPayload["data"],
+      };
+    }
+
+    return {
+      version: 1,
+      exportedAt: nowIso(),
+      data: {
+        channels: Array.isArray(raw.channels) ? raw.channels : [],
+        presets: Array.isArray(raw.presets) ? raw.presets : [],
+        events: Array.isArray(raw.events) ? raw.events : [],
+        queue: Array.isArray(raw.queue) ? raw.queue : [],
+        queueConfig:
+          raw.queueConfig && typeof raw.queueConfig === "object"
+            ? raw.queueConfig as ControlPanelExportPayload["data"]["queueConfig"]
+            : { active: false, loop: false, currentIndex: 0 },
+        notificationSettings:
+          raw.notificationSettings && typeof raw.notificationSettings === "object"
+            ? raw.notificationSettings as NotificationSettings
+            : this.getNotificationSettings(),
+      },
+    };
+  }
+
+  private normalizeImportedConfiguration(
+    input: ControlPanelExportPayload["data"],
+  ): ControlPanelExportPayload["data"] {
+    const working = {
+      channels: Array.isArray(input.channels) ? structuredClone(input.channels) : [],
+      presets: Array.isArray(input.presets) ? structuredClone(input.presets) : [],
+      events: Array.isArray(input.events) ? structuredClone(input.events) : [],
+      queue: Array.isArray(input.queue) ? structuredClone(input.queue) : [],
+      queueConfig:
+        input.queueConfig && typeof input.queueConfig === "object"
+          ? structuredClone(input.queueConfig)
+          : { active: false, loop: false, currentIndex: 0 },
+      notificationSettings: this.resolveNotificationSettings(
+        input.notificationSettings,
+        this.resolveNotificationSettings(),
+      ),
+    };
+
+    const botIds = new Set<string>();
+    for (const channel of working.channels) {
+      if (!channel || typeof channel !== "object") {
+        throw new Error("Import contains an invalid channel entry");
+      }
+      if (typeof channel.id !== "string" || !channel.id.trim()) {
+        throw new Error("Imported channels require a valid id");
+      }
+      if (typeof channel.botId !== "string" || !channel.botId.trim()) {
+        channel.botId = this.runtime.getPrimaryBotId();
+      }
+      if (!this.runtime.hasBot(channel.botId)) {
+        botIds.add(channel.botId);
+      }
+    }
+
+    if (botIds.size > 0) {
+      throw new Error(
+        `Import references unknown selfbots: ${[...botIds].join(", ")}`,
+      );
+    }
+
+    const channelIds = new Set(working.channels.map((channel) => channel.id));
+    const presetIds = new Set(working.presets.map((preset) => preset.id));
+    const timestamp = nowIso();
+    const now = Date.now();
+
+    for (const preset of working.presets) {
+      if (!preset || typeof preset !== "object") {
+        throw new Error("Import contains an invalid preset entry");
+      }
+      if (typeof preset.id !== "string" || !preset.id.trim()) {
+        throw new Error("Imported presets require a valid id");
+      }
+    }
+
+    working.events = working.events.map((event) => {
+      if (!event || typeof event !== "object") {
+        throw new Error("Import contains an invalid event entry");
+      }
+      if (!channelIds.has(event.channelId)) {
+        throw new Error(`Imported event references missing channel: ${event.channelId}`);
+      }
+      if (!presetIds.has(event.presetId)) {
+        throw new Error(`Imported event references missing preset: ${event.presetId}`);
+      }
+
+      if (event.status === "running") {
+        if (Date.parse(event.endAt) <= now) {
+          return {
+            ...event,
+            status: "completed" as const,
+            actualEndedAt: event.actualEndedAt ?? timestamp,
+            updatedAt: timestamp,
+          };
+        }
+        return {
+          ...event,
+          status: "scheduled" as const,
+          lastError: "Imported without active runtime session",
+          actualStartedAt: undefined,
+          updatedAt: timestamp,
+        };
+      }
+
+      return event;
+    });
+
+    this.assertNoOverlap(
+      { channels: working.channels },
+      [],
+      working.events.filter((event) => blocksScheduling(event.status)),
+    );
+    sortChannels(working.channels);
+    sortPresets(working.presets);
+    sortEvents(working.events);
+
+    working.queue = working.queue.map((item) => {
+      if (!item || typeof item !== "object") {
+        throw new Error("Import contains an invalid queue entry");
+      }
+      return {
+        ...item,
+        status: item.status === "playing" ? "pending" : item.status,
+      };
+    });
+
+    if (
+      working.queueConfig.channelId
+      && !channelIds.has(working.queueConfig.channelId)
+    ) {
+      working.queueConfig.channelId = undefined;
+      working.queueConfig.botId = undefined;
+    }
+
+    if (working.queueConfig.channelId) {
+      working.queueConfig.botId = working.channels.find(
+        (channel) => channel.id === working.queueConfig.channelId,
+      )?.botId;
+    }
+
+    if (
+      working.queueConfig.presetId
+      && !presetIds.has(working.queueConfig.presetId)
+    ) {
+      working.queueConfig.presetId = undefined;
+    }
+
+    working.queueConfig.active = false;
+    working.queueConfig.currentIndex = Math.max(
+      0,
+      Math.min(
+        Number.isInteger(working.queueConfig.currentIndex)
+          ? working.queueConfig.currentIndex
+          : 0,
+        Math.max(0, working.queue.length - 1),
+      ),
+    );
+
+    return working;
   }
 }

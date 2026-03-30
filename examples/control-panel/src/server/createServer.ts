@@ -348,13 +348,46 @@ export function createServer(service: ControlPanelService) {
   );
 
   // ── Notification Settings ───────────────────────────────────
+  app.get("/api/settings/notifications", (_req, res) => {
+    res.json(service.getNotificationSettings());
+  });
+
+  app.put("/api/settings/notifications", (req, res) => {
+    res.json(service.updateNotificationSettings(req.body ?? {}));
+  });
+
   app.post(
-    "/api/notifications/test",
-    asyncRoute(async (_req, res) => {
-      await service.sendNotification("Test-Benachrichtigung vom Stream Bot");
+    "/api/settings/notifications/test",
+    asyncRoute(async (req, res) => {
+      const body =
+        req.body && typeof req.body === "object"
+          ? req.body as { webhookUrl?: string; dmEnabled?: boolean; botId?: string }
+          : {};
+      await service.testNotificationSettings(body, body.botId);
       res.json({ ok: true });
     }),
   );
+
+  app.post(
+    "/api/notifications/test",
+    asyncRoute(async (_req, res) => {
+      await service.testNotificationSettings();
+      res.json({ ok: true });
+    }),
+  );
+
+  // ── Import / Export ─────────────────────────────────────────
+  app.get("/api/config/export", (_req, res) => {
+    const payload = service.exportConfiguration();
+    const fileName = `stream-control-panel-export-${payload.exportedAt.replaceAll(":", "-")}.json`;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.json(payload);
+  });
+
+  app.post("/api/config/import", (req, res) => {
+    res.json(service.importConfiguration(req.body));
+  });
 
   // ── Cookie Management ─────────────────────────────────────────
   const cookiesDir = resolve(appConfig.appDir, "cookies");

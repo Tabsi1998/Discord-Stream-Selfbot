@@ -14,6 +14,11 @@ const scheduler = new Scheduler(service, appConfig.schedulerPollMs);
 const app = createServer(service);
 let suppressedErrorEventLogged = false;
 
+service.initializeNotificationSettings({
+  webhookUrl: appConfig.notificationWebhookUrl,
+  dmEnabled: appConfig.notificationDmEnabled,
+});
+
 function isErrorEventLike(value: unknown): value is { type?: unknown } {
   return !!value
     && typeof value === "object"

@@ -17,6 +17,7 @@ import type {
   ControlPanelState,
   LogEntry,
   LogLevel,
+  NotificationSettings,
   QueueConfig,
   RuntimeState,
 } from "../domain/types.js";
@@ -39,6 +40,13 @@ function defaultQueueConfig(): QueueConfig {
   return { active: false, loop: false, currentIndex: 0 };
 }
 
+function defaultNotificationSettings(): NotificationSettings {
+  return {
+    webhookUrl: "",
+    dmEnabled: false,
+  };
+}
+
 function createDefaultState(): ControlPanelState {
   return {
     channels: [],
@@ -46,6 +54,7 @@ function createDefaultState(): ControlPanelState {
     events: [],
     queue: [],
     queueConfig: defaultQueueConfig(),
+    notificationSettings: defaultNotificationSettings(),
     runtime: defaultRuntime(),
     logs: [],
   };
@@ -107,6 +116,21 @@ function normalizeState(input: unknown): ControlPanelState {
       state.queueConfig && typeof state.queueConfig === "object"
         ? { ...defaultQueueConfig(), ...state.queueConfig }
         : defaultQueueConfig(),
+    notificationSettings:
+      state.notificationSettings && typeof state.notificationSettings === "object"
+        ? {
+            ...defaultNotificationSettings(),
+            webhookUrl:
+              typeof state.notificationSettings.webhookUrl === "string"
+                ? state.notificationSettings.webhookUrl.trim()
+                : "",
+            dmEnabled: !!state.notificationSettings.dmEnabled,
+            updatedAt:
+              typeof state.notificationSettings.updatedAt === "string"
+                ? state.notificationSettings.updatedAt
+                : undefined,
+          }
+        : defaultNotificationSettings(),
     runtime:
       state.runtime && typeof state.runtime === "object"
         ? {

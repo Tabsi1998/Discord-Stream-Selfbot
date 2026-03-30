@@ -236,3 +236,134 @@ test("ControlPanelService binds the queue to the configured bot and skips only t
     context.dispose();
   }
 });
+
+test("ControlPanelService persists notification settings and includes them in exports", () => {
+  const context = createServiceContext();
+
+  try {
+    const settings = context.service.updateNotificationSettings({
+      webhookUrl: "https://discord.com/api/webhooks/123/example",
+      dmEnabled: true,
+    });
+
+    assert.equal(settings.webhookUrl, "https://discord.com/api/webhooks/123/example");
+    assert.equal(settings.dmEnabled, true);
+
+    const exported = context.service.exportConfiguration();
+    assert.equal(
+      exported.data.notificationSettings.webhookUrl,
+      "https://discord.com/api/webhooks/123/example",
+    );
+    assert.equal(exported.data.notificationSettings.dmEnabled, true);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService import normalizes stale running state and replaces persisted data", () => {
+  const context = createServiceContext();
+
+  try {
+    const imported = context.service.importConfiguration({
+      version: 1,
+      exportedAt: "2026-03-30T10:00:00.000Z",
+      data: {
+        notificationSettings: {
+          webhookUrl: "https://discord.com/api/webhooks/999/imported",
+          dmEnabled: false,
+        },
+        channels: [
+          {
+            id: "channel-imported",
+            botId: "primary",
+            name: "Imported Stage",
+            guildId: "guild-imported",
+            channelId: "voice-imported",
+            streamMode: "go-live",
+            description: "",
+            createdAt: "2026-03-30T10:00:00.000Z",
+            updatedAt: "2026-03-30T10:00:00.000Z",
+          },
+        ],
+        presets: [
+          {
+            id: "preset-imported",
+            name: "Imported Preset",
+            sourceUrl: "https://example.com/imported.m3u8",
+            sourceMode: "direct",
+            qualityProfile: "720p30",
+            bufferProfile: "balanced",
+            description: "",
+            includeAudio: true,
+            width: 1280,
+            height: 720,
+            fps: 30,
+            bitrateVideoKbps: 3500,
+            maxBitrateVideoKbps: 4500,
+            bitrateAudioKbps: 160,
+            videoCodec: "H264",
+            hardwareAcceleration: false,
+            minimizeLatency: false,
+            createdAt: "2026-03-30T10:00:00.000Z",
+            updatedAt: "2026-03-30T10:00:00.000Z",
+          },
+        ],
+        events: [
+          {
+            id: "event-imported",
+            name: "Imported Event",
+            channelId: "channel-imported",
+            presetId: "preset-imported",
+            startAt: "2026-04-10T18:00:00.000Z",
+            endAt: "2026-04-10T20:00:00.000Z",
+            status: "running",
+            description: "",
+            recurrence: {
+              kind: "once",
+              interval: 1,
+              daysOfWeek: [],
+            },
+            occurrenceIndex: 1,
+            createdAt: "2026-03-30T10:00:00.000Z",
+            updatedAt: "2026-03-30T10:00:00.000Z",
+          },
+        ],
+        queue: [
+          {
+            id: "queue-imported",
+            url: "https://example.com/queue-imported.m3u8",
+            name: "Imported Queue",
+            sourceMode: "direct",
+            addedAt: "2026-03-30T10:00:00.000Z",
+            status: "playing",
+          },
+        ],
+        queueConfig: {
+          active: true,
+          loop: true,
+          botId: "primary",
+          channelId: "channel-imported",
+          presetId: "preset-imported",
+          currentIndex: 0,
+        },
+      },
+    });
+
+    assert.equal(imported.counts.channels, 1);
+    assert.equal(imported.counts.presets, 1);
+    assert.equal(imported.counts.events, 1);
+    assert.equal(imported.counts.queue, 1);
+
+    const snapshot = context.service.snapshot();
+    assert.equal(snapshot.notificationSettings.webhookUrl, "https://discord.com/api/webhooks/999/imported");
+    assert.equal(snapshot.queueConfig.active, false);
+    assert.equal(snapshot.queue[0]?.status, "pending");
+    assert.equal(snapshot.events[0]?.status, "scheduled");
+    assert.match(
+      snapshot.events[0]?.lastError ?? "",
+      /Imported without active runtime session/,
+    );
+  } finally {
+    context.dispose();
+  }
+});

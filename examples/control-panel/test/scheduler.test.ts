@@ -15,6 +15,10 @@ function createBaseState(): ControlPanelState {
       loop: false,
       currentIndex: 0,
     },
+    notificationSettings: {
+      webhookUrl: "",
+      dmEnabled: false,
+    },
     runtime: {
       discordStatus: "ready",
       activeRuns: [],
