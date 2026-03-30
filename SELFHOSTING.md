@@ -184,6 +184,7 @@ Text-Befehle laufen standardmaessig ueber den primaeren Selfbot und ueber Zusatz
 COMMAND_PREFIX=$panel
 COMMAND_PREFIX_ALIASES=?,!panel
 CONTROL_BOT_TOKEN=
+CONTROL_BOT_COMMAND_GUILD_IDS=
 COMMAND_ALLOWED_AUTHOR_IDS=
 ```
 
@@ -192,6 +193,8 @@ Wichtig fuer den normalen Bot:
 - fuer `play <url>` automatisch den aktuellen Voice-Channel erkennen zu koennen, braucht der Bot `Guild Voice States` als Gateway-Intent im Client
 - denselben Bot auf deinen Server einladen
 - sobald `CONTROL_BOT_TOKEN` gesetzt ist, antworten die Selfbots nicht mehr auf Chat-Commands; nur der normale Bot schreibt zurueck
+- Slash-Commands werden nur guild-spezifisch registriert, nie global
+- `CONTROL_BOT_COMMAND_GUILD_IDS` kann die Ziel-Server fest vorgeben; wenn leer, nutzt der Bot zuerst die im Panel konfigurierten Guilds und faellt erst bei genau einem Server auf diesen zurueck
 - wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer bleibt, duerfen nur Selfbot-Accounts Commands ausfuehren
 - fuer einen normalen User-Account deshalb die eigene Discord-ID per `whoami` ermitteln und in `COMMAND_ALLOWED_AUTHOR_IDS` eintragen
 

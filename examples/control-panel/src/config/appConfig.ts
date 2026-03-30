@@ -271,6 +271,9 @@ export const appConfig = {
   commandPrefixes,
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),
   controlBotToken: normalizeOptionalEnv(process.env.CONTROL_BOT_TOKEN),
+  controlBotCommandGuildIds: parseCsvList(
+    process.env.CONTROL_BOT_COMMAND_GUILD_IDS,
+  ),
   schedulerPollMs: parsePositiveIntegerEnv(process.env.SCHEDULER_POLL_MS, 1000),
   startupTimeoutMs: parsePositiveIntegerEnv(
     process.env.STARTUP_TIMEOUT_MS,

@@ -39,6 +39,9 @@ function defaultRuntime(): RuntimeState {
     commandAuthorIds: [],
     commandListenerBotIds: [],
     commandAuthMode: "selfbots-only",
+    controlBotSlashEnabled: false,
+    controlBotSlashStatus: "disabled",
+    controlBotSlashGuildIds: [],
   };
 }
 

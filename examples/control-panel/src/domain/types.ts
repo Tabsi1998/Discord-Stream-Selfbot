@@ -37,6 +37,12 @@ export type EventStatus =
 export type RunKind = "manual" | "event";
 export type DiscordStatus = "starting" | "ready" | "error";
 export type ControlBotStatus = "disabled" | "connecting" | "ready" | "error";
+export type ControlBotSlashStatus =
+  | "disabled"
+  | "pending"
+  | "ready"
+  | "error"
+  | "skipped";
 export type LogLevel = "info" | "warn" | "error";
 export type QueueConflictPolicy = "queue-first" | "event-first";
 export const DEFAULT_SELFBOT_ID = "primary";
@@ -172,6 +178,9 @@ export type RuntimeState = {
   controlBotUserTag?: string;
   controlBotUserId?: string;
   controlBotEnabled?: boolean;
+  controlBotSlashEnabled?: boolean;
+  controlBotSlashStatus?: ControlBotSlashStatus;
+  controlBotSlashGuildIds?: string[];
   panelAuthEnabled?: boolean;
   availableVideoEncoders?: VideoEncoderMode[];
   preferredHardwareEncoder?: PreferredHardwareEncoder;

@@ -2,6 +2,8 @@ import {
   Client as ControlBotClient,
   GatewayIntentBits,
   Partials,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
   type Message as ControlBotMessage,
 } from "discord.js";
 import type { Message as SelfbotMessage } from "discord.js-selfbot-v13";
@@ -33,6 +35,159 @@ type CommandPrefixMatch = {
   matchedPrefix: string;
   body: string;
 };
+
+type SlashGuildSelection = {
+  guildIds: string[];
+  source: "explicit" | "configured-channels" | "single-guild" | "none";
+};
+
+const CONTROL_BOT_SLASH_COMMANDS = [
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Zeigt die verfuegbaren Stream-Befehle an")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("whoami")
+    .setDescription("Zeigt deine Discord-ID und Freigabe an")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("status")
+    .setDescription("Zeigt den aktuellen Stream-Status")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("play")
+    .setDescription("Startet eine URL im aktuellen Voice-Channel")
+    .setDMPermission(false)
+    .addStringOption((option) =>
+      option.setName("url").setDescription("Direkte URL oder YouTube-Link").setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("stop_at")
+        .setDescription("Optionale Stoppzeit, z.B. 2026-04-30 22:30"),
+    ),
+  new SlashCommandBuilder()
+    .setName("start")
+    .setDescription("Startet einen gespeicherten Kanal mit einem Preset")
+    .setDMPermission(false)
+    .addStringOption((option) =>
+      option.setName("channel").setDescription("Kanalname oder interne ID").setRequired(true),
+    )
+    .addStringOption((option) =>
+      option.setName("preset").setDescription("Preset-Name oder interne ID").setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("stop_at")
+        .setDescription("Optionale Stoppzeit, z.B. 2026-04-30 22:30"),
+    ),
+  new SlashCommandBuilder()
+    .setName("stop")
+    .setDescription("Stoppt aktive Streams")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("restart")
+    .setDescription("Startet einen aktiven Stream neu")
+    .setDMPermission(false)
+    .addStringOption((option) =>
+      option
+        .setName("target")
+        .setDescription("Optional: Bot, Kanal oder Preset eines aktiven Streams"),
+    ),
+  new SlashCommandBuilder()
+    .setName("channels")
+    .setDescription("Listet konfigurierte Kanaele auf")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("presets")
+    .setDescription("Listet konfigurierte Presets auf")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("events")
+    .setDescription("Listet kommende Events auf")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("event")
+    .setDescription("Steuert geplante Events")
+    .setDMPermission(false)
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("start")
+        .setDescription("Startet ein Event sofort")
+        .addStringOption((option) =>
+          option.setName("id").setDescription("Event-ID").setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("cancel")
+        .setDescription("Bricht ein Event ab")
+        .addStringOption((option) =>
+          option.setName("id").setDescription("Event-ID").setRequired(true),
+        ),
+    ),
+  new SlashCommandBuilder()
+    .setName("queue")
+    .setDescription("Steuert die Stream-Queue")
+    .setDMPermission(false)
+    .addSubcommand((subcommand) =>
+      subcommand.setName("status").setDescription("Zeigt die Queue an"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("add")
+        .setDescription("Fuegt eine URL zur Queue hinzu")
+        .addStringOption((option) =>
+          option.setName("url").setDescription("Queue-URL").setRequired(true),
+        )
+        .addStringOption((option) =>
+          option.setName("name").setDescription("Optionaler Anzeigename"),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("start")
+        .setDescription("Startet die Queue")
+        .addStringOption((option) =>
+          option.setName("channel").setDescription("Kanalname oder interne ID").setRequired(true),
+        )
+        .addStringOption((option) =>
+          option.setName("preset").setDescription("Preset-Name oder interne ID").setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("stop").setDescription("Stoppt die Queue"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("skip").setDescription("Springt zum naechsten Queue-Item"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName("clear").setDescription("Leert die Queue"),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("loop")
+        .setDescription("Schaltet den Queue-Loop um")
+        .addBooleanOption((option) =>
+          option.setName("enabled").setDescription("Loop aktivieren").setRequired(true),
+        ),
+    ),
+  new SlashCommandBuilder()
+    .setName("info")
+    .setDescription("Zeigt Runtime- und System-Infos")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
+    .setName("logs")
+    .setDescription("Zeigt die neuesten Logs")
+    .setDMPermission(false)
+    .addIntegerOption((option) =>
+      option
+        .setName("count")
+        .setDescription("Anzahl der Logeintraege")
+        .setMinValue(1)
+        .setMaxValue(20),
+    ),
+].map((command) => command.toJSON());
 
 function toCommandMessage(
   message: SelfbotMessage | ControlBotMessage,
@@ -158,6 +313,9 @@ export class DiscordCommandBridge {
         runtime.controlBotEnabled = false;
         runtime.controlBotUserTag = undefined;
         runtime.controlBotUserId = undefined;
+        runtime.controlBotSlashEnabled = false;
+        runtime.controlBotSlashStatus = "disabled";
+        runtime.controlBotSlashGuildIds = [];
         runtime.commandMentionPrefix = undefined;
       });
     }
@@ -189,6 +347,19 @@ export class DiscordCommandBridge {
     const commandMessage = toCommandMessage(message);
     if (!commandMessage) return;
     await this.handleMessage(commandMessage);
+  };
+
+  private readonly handleControlBotInteraction = async (
+    interaction: ChatInputCommandInteraction,
+  ) => {
+    const commandMessage = this.toInteractionCommandMessage(interaction);
+    if (!commandMessage) return;
+
+    const allowedAuthor = this.isAllowedAuthor(commandMessage.author.id);
+    const body = this.buildSlashCommandBody(interaction);
+    if (!body) return;
+
+    await this.executeCommand(commandMessage, body, "/", allowedAuthor);
   };
 
   private async startControlBot() {
@@ -229,12 +400,29 @@ export class DiscordCommandBridge {
         userTag,
         userId,
       });
+      void this.syncControlBotSlashCommands(client).catch((error: unknown) => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Control bot slash command sync failed";
+        this.store.setRuntime((runtime) => {
+          runtime.controlBotSlashEnabled = true;
+          runtime.controlBotSlashStatus = "error";
+          runtime.controlBotSlashGuildIds = [];
+        });
+        this.store.appendLog("error", "Control bot slash command sync failed", {
+          error: message,
+        });
+      });
     });
 
     client.on("error", (error: Error) => {
       this.store.setRuntime((runtime) => {
         runtime.controlBotEnabled = true;
         runtime.controlBotStatus = "error";
+        runtime.controlBotSlashEnabled = true;
+        runtime.controlBotSlashStatus = "error";
+        runtime.controlBotSlashGuildIds = [];
         runtime.commandMentionPrefix = undefined;
       });
       this.store.appendLog("error", "Discord control bot failed", {
@@ -243,6 +431,12 @@ export class DiscordCommandBridge {
     });
 
     client.on("messageCreate", this.handleControlBotMessage);
+    client.on("interactionCreate", async (interaction) => {
+      if (!interaction.isChatInputCommand()) {
+        return;
+      }
+      await this.handleControlBotInteraction(interaction);
+    });
 
     try {
       await client.login(appConfig.controlBotToken);
@@ -255,6 +449,9 @@ export class DiscordCommandBridge {
       this.store.setRuntime((runtime) => {
         runtime.controlBotEnabled = true;
         runtime.controlBotStatus = "error";
+        runtime.controlBotSlashEnabled = true;
+        runtime.controlBotSlashStatus = "error";
+        runtime.controlBotSlashGuildIds = [];
         runtime.commandMentionPrefix = undefined;
       });
       this.store.appendLog("error", "Discord control bot login failed", {
@@ -267,9 +464,20 @@ export class DiscordCommandBridge {
     const match = this.extractCommandPrefix(message.content);
     if (!match) return;
 
-    const { body, matchedPrefix } = match;
-    const allowedAuthor = this.isAllowedAuthor(message.author.id);
+    await this.executeCommand(
+      message,
+      match.body,
+      match.matchedPrefix,
+      this.isAllowedAuthor(message.author.id),
+    );
+  };
 
+  private async executeCommand(
+    message: CommandMessageLike,
+    body: string,
+    matchedPrefix: string,
+    allowedAuthor: boolean,
+  ) {
     try {
       if (body === "whoami") {
         await this.sendWhoAmI(message, matchedPrefix, allowedAuthor);
@@ -285,12 +493,7 @@ export class DiscordCommandBridge {
         return;
       }
 
-      if (!body) {
-        await this.sendHelp(message);
-        return;
-      }
-
-      if (body === "help") {
+      if (!body || body === "help") {
         await this.sendHelp(message);
         return;
       }
@@ -368,7 +571,6 @@ export class DiscordCommandBridge {
         return;
       }
 
-      // ── Queue Commands ────────────────────────────────────
       if (body === "queue") {
         await this.sendQueue(message);
         return;
@@ -436,7 +638,6 @@ export class DiscordCommandBridge {
         return;
       }
 
-      // ── Info / Logs / Restart ─────────────────────────────
       if (body === "info") {
         await this.sendSystemInfo(message);
         return;
@@ -470,7 +671,220 @@ export class DiscordCommandBridge {
       });
       await message.channel.send(`Fehler: ${messageText}`);
     }
-  };
+  }
+
+  private toInteractionCommandMessage(
+    interaction: ChatInputCommandInteraction,
+  ): CommandMessageLike {
+    const member = interaction.member;
+    return {
+      content: "",
+      author: {
+        id: interaction.user.id,
+        bot: interaction.user.bot,
+      },
+      guildId: interaction.guildId ?? undefined,
+      guildName: interaction.guild?.name,
+      voiceChannelId:
+        member &&
+        typeof member === "object" &&
+        "voice" in member &&
+        member.voice &&
+        typeof member.voice === "object" &&
+        "channelId" in member.voice &&
+        typeof member.voice.channelId === "string"
+          ? member.voice.channelId
+          : undefined,
+      voiceChannelName:
+        member &&
+        typeof member === "object" &&
+        "voice" in member &&
+        member.voice &&
+        typeof member.voice === "object" &&
+        "channel" in member.voice &&
+        member.voice.channel &&
+        typeof member.voice.channel === "object" &&
+        "name" in member.voice.channel &&
+        typeof member.voice.channel.name === "string"
+          ? member.voice.channel.name
+          : undefined,
+      channel: {
+        send: async (content: string) =>
+          this.replyToInteraction(interaction, content),
+      },
+    };
+  }
+
+  private async replyToInteraction(
+    interaction: ChatInputCommandInteraction,
+    content: string,
+  ) {
+    if (interaction.replied || interaction.deferred) {
+      return interaction.followUp({
+        content,
+        ephemeral: true,
+      });
+    }
+    return interaction.reply({
+      content,
+      ephemeral: true,
+    });
+  }
+
+  private buildSlashCommandBody(interaction: ChatInputCommandInteraction) {
+    switch (interaction.commandName) {
+      case "help":
+      case "whoami":
+      case "status":
+      case "stop":
+      case "channels":
+      case "presets":
+      case "events":
+      case "info":
+        return interaction.commandName;
+      case "play": {
+        const url = interaction.options.getString("url", true);
+        const stopAt = interaction.options.getString("stop_at");
+        return stopAt ? `play ${url} | ${stopAt}` : `play ${url}`;
+      }
+      case "start": {
+        const channel = interaction.options.getString("channel", true);
+        const preset = interaction.options.getString("preset", true);
+        const stopAt = interaction.options.getString("stop_at");
+        return stopAt
+          ? `start ${channel} | ${preset} | ${stopAt}`
+          : `start ${channel} | ${preset}`;
+      }
+      case "restart": {
+        const target = interaction.options.getString("target");
+        return target ? `restart ${target}` : "restart";
+      }
+      case "logs": {
+        const count = interaction.options.getInteger("count");
+        return count ? `logs ${count}` : "logs";
+      }
+      case "event": {
+        const subcommand = interaction.options.getSubcommand();
+        const id = interaction.options.getString("id", true);
+        return `event ${subcommand} ${id}`;
+      }
+      case "queue": {
+        const subcommand = interaction.options.getSubcommand();
+        switch (subcommand) {
+          case "status":
+            return "queue";
+          case "stop":
+          case "skip":
+          case "clear":
+            return `queue ${subcommand}`;
+          case "add": {
+            const url = interaction.options.getString("url", true);
+            const name = interaction.options.getString("name");
+            return name ? `queue add ${url} | ${name}` : `queue add ${url}`;
+          }
+          case "start": {
+            const channel = interaction.options.getString("channel", true);
+            const preset = interaction.options.getString("preset", true);
+            return `queue start ${channel} | ${preset}`;
+          }
+          case "loop": {
+            const enabled = interaction.options.getBoolean("enabled", true);
+            return enabled ? "queue loop on" : "queue loop off";
+          }
+          default:
+            return undefined;
+        }
+      }
+      default:
+        return undefined;
+    }
+  }
+
+  private async syncControlBotSlashCommands(client: ControlBotClient) {
+    const selection = this.resolveSlashGuildSelection(client);
+    const desiredGuildIds = new Set(selection.guildIds);
+    const registeredGuildIds: string[] = [];
+
+    this.store.setRuntime((runtime) => {
+      runtime.controlBotSlashEnabled = true;
+      runtime.controlBotSlashStatus = "pending";
+    });
+
+    for (const guild of client.guilds.cache.values()) {
+      const commandPayload = desiredGuildIds.has(guild.id)
+        ? CONTROL_BOT_SLASH_COMMANDS
+        : [];
+      await guild.commands.set(commandPayload);
+      if (commandPayload.length) {
+        registeredGuildIds.push(guild.id);
+      }
+    }
+
+    const missingGuildIds = selection.guildIds.filter(
+      (guildId) => !client.guilds.cache.has(guildId),
+    );
+
+    this.store.setRuntime((runtime) => {
+      runtime.controlBotSlashEnabled = true;
+      runtime.controlBotSlashStatus = registeredGuildIds.length
+        ? "ready"
+        : "skipped";
+      runtime.controlBotSlashGuildIds = registeredGuildIds;
+    });
+
+    this.store.appendLog(
+      registeredGuildIds.length ? "info" : "warn",
+      registeredGuildIds.length
+        ? "Control bot slash commands synced"
+        : "Control bot slash commands skipped",
+      {
+        source: selection.source,
+        guilds: registeredGuildIds.join(",") || "none",
+        missingGuilds: missingGuildIds.join(",") || "",
+      },
+    );
+  }
+
+  private resolveSlashGuildSelection(
+    client: ControlBotClient,
+  ): SlashGuildSelection {
+    if (appConfig.controlBotCommandGuildIds.length) {
+      return {
+        guildIds: [...new Set(appConfig.controlBotCommandGuildIds)],
+        source: "explicit",
+      };
+    }
+
+    const configuredGuildIds = [
+      ...new Set(
+        this.service
+          .snapshot()
+          .channels.map((channel) => channel.guildId)
+          .filter(Boolean),
+      ),
+    ];
+    if (configuredGuildIds.length) {
+      return {
+        guildIds: configuredGuildIds,
+        source: "configured-channels",
+      };
+    }
+
+    if (client.guilds.cache.size === 1) {
+      const guild = client.guilds.cache.first();
+      if (guild) {
+        return {
+          guildIds: [guild.id],
+          source: "single-guild",
+        };
+      }
+    }
+
+    return {
+      guildIds: [],
+      source: "none",
+    };
+  }
 
   private extractCommandPrefix(content: string): CommandPrefixMatch | undefined {
     const prefixes = [
@@ -698,11 +1112,20 @@ export class DiscordCommandBridge {
       (candidate) => candidate !== prefix,
     );
     const mentionPrefix = this.getMentionPrefixes()[0];
+    const slashEnabled =
+      !!appConfig.controlBotToken &&
+      (appConfig.controlBotCommandGuildIds.length > 0 ||
+        this.service.snapshot().channels.length > 0);
     await message.channel.send(
       [
         `Befehle mit ${prefix}`,
         ...(aliases.length ? [`Aliase: ${aliases.join(", ")}`] : []),
         ...(mentionPrefix ? [`Control-Bot Mention: ${mentionPrefix}`] : []),
+        ...(slashEnabled
+          ? [
+              "Guild-gebundene Slash-Commands: /help, /whoami, /play, /start, /stop, /queue, /info",
+            ]
+          : []),
         `${prefix} help`,
         `${prefix} whoami`,
         `${prefix} play <url> | [zeit]`,
@@ -906,6 +1329,13 @@ export class DiscordCommandBridge {
             : ""
         }`
       : "aus";
+    const slashLabel = state.runtime.controlBotSlashEnabled
+      ? `${state.runtime.controlBotSlashStatus ?? "pending"}${
+          state.runtime.controlBotSlashGuildIds?.length
+            ? ` (${state.runtime.controlBotSlashGuildIds.length} Server)`
+            : ""
+        }`
+      : "aus";
     const ytDlpLabel = state.runtime.ytDlpAvailable
       ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})`
       : "nein";
@@ -915,6 +1345,7 @@ export class DiscordCommandBridge {
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
         `Control Bot: ${controlBotLabel}`,
+        `Slash-Commands: ${slashLabel}`,
         `Commands: ${commandPrefixes}`,
         `Command Listener: ${commandListeners}`,
         `Command Auth: ${authMode}`,

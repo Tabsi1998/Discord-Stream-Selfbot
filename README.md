@@ -264,6 +264,7 @@ Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES
 Sie funktionieren ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN`.
 Beim normalen Bot funktioniert nach dem Login auch die Bot-Mention als Prefix.
 Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
+Zusaetzlich kann der normale Bot guild-spezifische Slash-Commands registrieren. Diese werden bewusst nie global angelegt.
 
 Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
 
@@ -273,8 +274,10 @@ Wenn Commands nicht reagieren, pruefe zuerst:
 2. `COMMAND_PREFIX` oder `COMMAND_PREFIX_ALIASES` passt zu deiner Nachricht
 3. Beim normalen Bot steht deine User-ID in `COMMAND_ALLOWED_AUTHOR_IDS`
 4. Beim normalen Bot ist das `Message Content Intent` aktiviert
+5. Fuer Slash-Commands ist der Ziel-Server in `CONTROL_BOT_COMMAND_GUILD_IDS` gesetzt oder wird ueber deine konfigurierten Kanaele erkannt
 
 Mit `play <url>` nutzt der Control-Bot nach Moeglichkeit automatisch deinen aktuellen Voice-Channel.
+Mit Slash-Commands geht dasselbe als `/play`, `/start`, `/stop`, `/queue`, `/info` und `/whoami`.
 
 ### Kurzuebersicht
 
@@ -368,6 +371,7 @@ Discord-Stream-Selfbot/
 | `COMMAND_PREFIX` | Primaeres Prefix fuer Chat-Befehle | $panel |
 | `COMMAND_PREFIX_ALIASES` | Weitere Prefixe, komma-getrennt | leer |
 | `CONTROL_BOT_TOKEN` | Optionaler normaler Discord Bot fuer dieselben Text-Befehle | leer |
+| `CONTROL_BOT_COMMAND_GUILD_IDS` | Server/Guild-IDs fuer guild-spezifische Slash-Commands | automatisch |
 | `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur Selfbot-Accounts |
 | `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots | Primary Selfbot |
 | `SELFBOT_CONFIG_FILE` | TSV/JSON-Datei fuer zusaetzliche Selfbots | `/app/examples/control-panel/data/selfbot-profiles.tsv` |

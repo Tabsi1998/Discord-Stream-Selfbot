@@ -7,6 +7,8 @@
 > Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot (`CONTROL_BOT_TOKEN`) angenommen werden.
 >
 > Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
+>
+> Der normale Control-Bot kann zusaetzlich guild-spezifische Slash-Commands wie `/play`, `/status`, `/queue` und `/info` registrieren. Diese werden nie global angelegt.
 
 ---
 
@@ -35,6 +37,35 @@
 | `queue loop on/off` | Queue-Loop umschalten |
 | `info` | System- und Runtime-Infos |
 | `logs` | Letzte Logs abrufen |
+
+---
+
+## Slash-Commands
+
+Wenn `CONTROL_BOT_TOKEN` gesetzt ist, kann derselbe Bot zusaetzlich guild-spezifische Slash-Commands anlegen:
+
+```bash
+CONTROL_BOT_TOKEN=dein_bot_token
+CONTROL_BOT_COMMAND_GUILD_IDS=123456789012345678
+COMMAND_ALLOWED_AUTHOR_IDS=123456789012345678
+```
+
+Wenn `CONTROL_BOT_COMMAND_GUILD_IDS` leer bleibt, nutzt der Bot zuerst die im Panel konfigurierten Guilds. Nur wenn genau ein Server sichtbar ist, wird dieser automatisch genommen.
+
+Die wichtigsten Slash-Commands:
+
+```text
+/help
+/whoami
+/play url:<link> stop_at:<optional>
+/start channel:<kanal> preset:<preset> stop_at:<optional>
+/stop
+/queue status
+/queue add url:<link> name:<optional>
+/queue start channel:<kanal> preset:<preset>
+/info
+/logs count:10
+```
 
 ---
 

@@ -183,6 +183,7 @@ Weitere Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` ges
 Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
 
 Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN` angenommen werden.
+Der normale Bot kann ausserdem guild-spezifische Slash-Commands registrieren. Diese werden nie global angelegt und koennen ueber `CONTROL_BOT_COMMAND_GUILD_IDS` begrenzt werden.
 
 | Befehl | Beschreibung |
 |--------|-------------|

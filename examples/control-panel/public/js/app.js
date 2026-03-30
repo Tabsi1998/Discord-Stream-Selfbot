@@ -1175,13 +1175,24 @@ function renderOverview() {
               : ""
           }`
         : "";
+    const slashInfo =
+      runtime.controlBotSlashEnabled && runtime.controlBotSlashStatus
+        ? ` | Slash: ${runtime.controlBotSlashStatus}${
+            runtime.controlBotSlashGuildIds?.length
+              ? ` (${runtime.controlBotSlashGuildIds.length} Server)`
+              : ""
+          }`
+        : "";
     els.commandInfo.textContent =
-      `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}`;
+      `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}${slashInfo}`;
     const authInfo = runtime.commandAuthorIds?.length
       ? `Erlaubte User-IDs: ${runtime.commandAuthorIds.join(", ")}`
       : "Aktuell sind nur die Selfbot-Accounts freigeschaltet. Fuer den normalen Bot deine User-ID in COMMAND_ALLOWED_AUTHOR_IDS eintragen.";
     const mentionInfo = runtime.commandMentionPrefix
       ? ` | Mention: ${runtime.commandMentionPrefix}`
+      : "";
+    const slashGuildInfo = runtime.controlBotSlashGuildIds?.length
+      ? ` | Slash-Guilds: ${runtime.controlBotSlashGuildIds.join(", ")}`
       : "";
     const rejectionInfo = runtime.lastRejectedCommandAt
       ? ` | Letzte Ablehnung: ${formatDateTime(runtime.lastRejectedCommandAt)} | ${runtime.lastRejectedCommandAuthorId || "?"} | ${
@@ -1189,7 +1200,7 @@ function renderOverview() {
         }`
       : "";
     els.commandDebugInfo.textContent =
-      `${authInfo}${mentionInfo}${rejectionInfo}`;
+      `${authInfo}${mentionInfo}${slashGuildInfo}${rejectionInfo}`;
   } else {
     els.commandInfo.textContent = "Discord-Commands deaktiviert";
     els.commandDebugInfo.textContent = "";

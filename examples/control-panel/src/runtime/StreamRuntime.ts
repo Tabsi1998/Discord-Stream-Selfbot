@@ -241,6 +241,13 @@ export class StreamRuntime extends EventEmitter {
           : "disabled";
       runtime.controlBotUserTag = undefined;
       runtime.controlBotUserId = undefined;
+      runtime.controlBotSlashEnabled =
+        appConfig.commandEnabled && !!appConfig.controlBotToken;
+      runtime.controlBotSlashStatus =
+        appConfig.commandEnabled && appConfig.controlBotToken
+          ? "pending"
+          : "disabled";
+      runtime.controlBotSlashGuildIds = appConfig.controlBotCommandGuildIds;
       runtime.panelAuthEnabled = appConfig.panelAuthEnabled;
       runtime.availableVideoEncoders = [
         "software",
