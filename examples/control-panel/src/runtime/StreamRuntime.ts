@@ -444,6 +444,12 @@ export class StreamRuntime extends EventEmitter {
         botName: bot.profile.name,
         preset: options.preset.name,
         mode: resolvedSource.resolverKind,
+        sourceUrl: resolvedSource.inputUrl,
+        fallback:
+          resolvedSource.usedFallback &&
+          typeof resolvedSource.fallbackIndex === "number"
+            ? String(resolvedSource.fallbackIndex + 1)
+            : "",
         title: resolvedSource.resolvedTitle ?? "",
         live: resolvedSource.isLive ? "true" : "false",
         separateAudio:

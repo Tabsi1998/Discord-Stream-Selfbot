@@ -16,6 +16,7 @@ import {
 import { coerceRecurrenceRule } from "../domain/recurrence.js";
 import type {
   ControlPanelState,
+  FallbackSource,
   LogEntry,
   LogLevel,
   NotificationSettings,
@@ -66,6 +67,34 @@ function createDefaultState(): ControlPanelState {
   };
 }
 
+function normalizeFallbackSources(
+  input: unknown,
+  sourceMode: "direct" | "yt-dlp",
+): FallbackSource[] {
+  if (!Array.isArray(input)) return [];
+
+  return input.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const url = typeof entry.url === "string" ? entry.url.trim() : "";
+    if (!url) {
+      return [];
+    }
+
+    return [
+      {
+        url,
+        sourceMode:
+          entry.sourceMode === "direct" || entry.sourceMode === "yt-dlp"
+            ? entry.sourceMode
+            : sourceMode,
+      },
+    ];
+  });
+}
+
 function normalizeState(input: unknown): ControlPanelState {
   const fallback = createDefaultState();
   if (!input || typeof input !== "object") return fallback;
@@ -87,6 +116,20 @@ function normalizeState(input: unknown): ControlPanelState {
             typeof preset.sourceMode === "string"
               ? preset.sourceMode
               : "direct";
+          const legacyFallbackUrls = Array.isArray(
+            (preset as { fallbackUrls?: unknown[] }).fallbackUrls,
+          )
+            ? (preset as { fallbackUrls?: unknown[] }).fallbackUrls
+            : [];
+          const fallbackSources = normalizeFallbackSources(
+            Array.isArray(preset.fallbackSources)
+              ? preset.fallbackSources
+              : legacyFallbackUrls.map((url) => ({
+                  url,
+                  sourceMode,
+                })),
+            sourceMode,
+          );
           const qualityProfile = coerceQualityProfile(preset.qualityProfile);
           const bufferProfile = coerceBufferProfile(
             preset.bufferProfile,
@@ -95,6 +138,7 @@ function normalizeState(input: unknown): ControlPanelState {
           return {
             ...preset,
             sourceMode,
+            fallbackSources,
             qualityProfile,
             bufferProfile,
           };

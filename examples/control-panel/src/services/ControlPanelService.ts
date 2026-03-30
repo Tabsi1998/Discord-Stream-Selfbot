@@ -13,6 +13,7 @@ import type {
   EventInput,
   EventSeriesScope,
   EventStatus,
+  FallbackSource,
   ManualRunInput,
   NotificationSettings,
   NotificationSettingsInput,
@@ -461,6 +462,10 @@ export class ControlPanelService {
       name: normalizedInput.name.trim(),
       sourceUrl: normalizedInput.sourceUrl.trim(),
       sourceMode: normalizedInput.sourceMode,
+      fallbackSources: normalizedInput.fallbackSources.map((source) => ({
+        url: source.url.trim(),
+        sourceMode: source.sourceMode,
+      })),
       qualityProfile: normalizedInput.qualityProfile,
       bufferProfile: normalizedInput.bufferProfile,
       description: normalizedInput.description?.trim() ?? "",
@@ -502,6 +507,10 @@ export class ControlPanelService {
       preset.name = normalizedInput.name.trim();
       preset.sourceUrl = normalizedInput.sourceUrl.trim();
       preset.sourceMode = normalizedInput.sourceMode;
+      preset.fallbackSources = normalizedInput.fallbackSources.map((source) => ({
+        url: source.url.trim(),
+        sourceMode: source.sourceMode,
+      }));
       preset.qualityProfile = normalizedInput.qualityProfile;
       preset.bufferProfile = normalizedInput.bufferProfile;
       preset.description = normalizedInput.description?.trim() ?? "";
@@ -903,7 +912,6 @@ export class ControlPanelService {
 
   private validatePresetInput(input: PresetInput) {
     assertNonEmpty(input.name, "name");
-    assertNonEmpty(input.sourceUrl, "sourceUrl");
     assertPositiveInteger(input.width, "width");
     assertPositiveInteger(input.height, "height");
     assertPositiveInteger(input.fps, "fps");
@@ -915,12 +923,33 @@ export class ControlPanelService {
       throw new Error("maxBitrateVideoKbps must be >= bitrateVideoKbps");
     }
 
-    if (input.sourceMode === "direct" && isYouTubeUrl(input.sourceUrl)) {
-      throw new Error("YouTube URLs require source mode 'yt-dlp'");
+    this.validatePresetSource(
+      {
+        url: input.sourceUrl,
+        sourceMode: input.sourceMode,
+      },
+      "sourceUrl",
+    );
+
+    for (const [index, fallbackSource] of input.fallbackSources.entries()) {
+      this.validatePresetSource(
+        fallbackSource,
+        `fallbackSources[${index}].url`,
+      );
+    }
+  }
+
+  private validatePresetSource(source: FallbackSource, fieldName: string) {
+    assertNonEmpty(source.url, fieldName);
+
+    if (source.sourceMode === "direct" && isYouTubeUrl(source.url)) {
+      throw new Error(`YouTube URLs require source mode 'yt-dlp' (${fieldName})`);
     }
 
-    if (input.sourceMode === "yt-dlp" && !appConfig.ytDlpPath) {
-      throw new Error("yt-dlp source mode requires a detected yt-dlp binary");
+    if (source.sourceMode === "yt-dlp" && !appConfig.ytDlpPath) {
+      throw new Error(
+        `yt-dlp source mode requires a detected yt-dlp binary (${fieldName})`,
+      );
     }
   }
 
@@ -1827,6 +1856,41 @@ export class ControlPanelService {
       }
       if (typeof preset.id !== "string" || !preset.id.trim()) {
         throw new Error("Imported presets require a valid id");
+      }
+      preset.sourceMode =
+        preset.sourceMode === "yt-dlp" || preset.sourceMode === "direct"
+          ? preset.sourceMode
+          : "direct";
+      const legacyFallbackUrls = Array.isArray(
+        (preset as { fallbackUrls?: unknown[] }).fallbackUrls,
+      )
+        ? (preset as { fallbackUrls?: unknown[] }).fallbackUrls
+        : [];
+      if (Array.isArray(preset.fallbackSources)) {
+        preset.fallbackSources = preset.fallbackSources
+          .filter(
+            (source) =>
+              source &&
+              typeof source === "object" &&
+              typeof source.url === "string" &&
+              source.url.trim(),
+          )
+          .map((source) => ({
+            url: source.url.trim(),
+            sourceMode:
+              source.sourceMode === "yt-dlp" || source.sourceMode === "direct"
+                ? source.sourceMode
+                : preset.sourceMode,
+          }));
+      } else {
+        preset.fallbackSources = legacyFallbackUrls
+          .filter(
+            (source) => typeof source === "string" && source.trim().length > 0,
+          )
+          .map((source) => ({
+            url: source.trim(),
+            sourceMode: preset.sourceMode,
+          }));
       }
     }
 

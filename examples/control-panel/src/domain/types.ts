@@ -1,6 +1,10 @@
 export type StreamMode = "go-live" | "camera";
 export type VideoCodec = "H264" | "H265";
 export type SourceMode = "direct" | "yt-dlp";
+export type FallbackSource = {
+  url: string;
+  sourceMode: SourceMode;
+};
 export type HardwareEncoder = "nvenc" | "vaapi";
 export type VideoEncoderMode = "software" | HardwareEncoder;
 export type PreferredHardwareEncoder = "auto" | HardwareEncoder;
@@ -80,6 +84,7 @@ export type StreamPreset = {
   name: string;
   sourceUrl: string;
   sourceMode: SourceMode;
+  fallbackSources: FallbackSource[];
   qualityProfile: QualityProfile;
   bufferProfile: BufferProfile;
   description: string;
@@ -242,6 +247,7 @@ export type PresetInput = {
   name: string;
   sourceUrl: string;
   sourceMode: SourceMode;
+  fallbackSources: FallbackSource[];
   qualityProfile: QualityProfile;
   bufferProfile: BufferProfile;
   description?: string;

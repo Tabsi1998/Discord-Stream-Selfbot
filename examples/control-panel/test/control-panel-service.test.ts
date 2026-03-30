@@ -104,6 +104,7 @@ function createPresetInput(name: string, sourceUrl: string): PresetInput {
     name,
     sourceUrl,
     sourceMode: "direct",
+    fallbackSources: [],
     qualityProfile: "720p30",
     bufferProfile: "balanced",
     description: "",
@@ -273,6 +274,28 @@ test("ControlPanelService persists notification settings and includes them in ex
       "https://discord.com/api/webhooks/123/example",
     );
     assert.equal(exported.data.notificationSettings.dmEnabled, true);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService validates fallback sources with source-mode rules", () => {
+  const context = createServiceContext();
+
+  try {
+    assert.throws(
+      () =>
+        context.service.createPreset({
+          ...createPresetInput("Fallback Test", "https://example.com/live.m3u8"),
+          fallbackSources: [
+            {
+              url: "https://youtu.be/example",
+              sourceMode: "direct",
+            },
+          ],
+        }),
+      /YouTube URLs require source mode 'yt-dlp'/,
+    );
   } finally {
     context.dispose();
   }

@@ -350,6 +350,19 @@
               </div>
             </label>
             <p id="presetSourceHint" class="quality-hint full-width hidden" data-tone="info"></p>
+            <label class="full-width">
+              Reserve-Quellen
+              <textarea
+                id="presetFallbackSources"
+                name="fallbackSources"
+                rows="3"
+                placeholder="https://backup.example/live.m3u8&#10;yt-dlp|https://youtu.be/example"
+              ></textarea>
+            </label>
+            <p class="quality-hint full-width" data-tone="info">
+              Eine Reservequelle pro Zeile. Optional mit Modus als
+              <code>direct|URL</code> oder <code>yt-dlp|URL</code>.
+            </p>
             <p id="presetProfileHint" class="quality-hint full-width" data-tone="info">
               Waehle Profil und Stream-Verhalten, die restlichen Werte werden automatisch gesetzt.
             </p>

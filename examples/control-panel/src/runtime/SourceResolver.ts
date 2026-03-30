@@ -4,7 +4,11 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appConfig } from "../config/appConfig.js";
 import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
-import type { SourceMode, StreamPreset } from "../domain/types.js";
+import type {
+  FallbackSource,
+  SourceMode,
+  StreamPreset,
+} from "../domain/types.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 
 // Auto-discover cookie file in the cookies directory
@@ -30,6 +34,8 @@ export type ResolvedSource = {
   resolvedTitle?: string;
   isLive?: boolean;
   resolverKind: "direct" | "yt-dlp";
+  usedFallback?: boolean;
+  fallbackIndex?: number;
 };
 
 const YOUTUBE_HOSTS = new Set([
@@ -126,13 +132,92 @@ export class SourceResolver {
     preset: StreamPreset,
     cancelSignal?: AbortSignal,
   ): Promise<ResolvedSource> {
+    const sources: Array<
+      FallbackSource & {
+        label: string;
+        usedFallback: boolean;
+      }
+    > = [
+      {
+        url: preset.sourceUrl,
+        sourceMode: preset.sourceMode,
+        label: "primary",
+        usedFallback: false,
+      },
+      ...preset.fallbackSources.map((source, index) => ({
+        ...source,
+        label: `fallback-${index + 1}`,
+        usedFallback: true,
+      })),
+    ];
+    const errors: string[] = [];
+
+    for (const [index, source] of sources.entries()) {
+      cancelSignal?.throwIfAborted();
+
+      try {
+        const resolved = await this.resolveSingleSource(
+          preset,
+          source,
+          cancelSignal,
+        );
+
+        if (source.usedFallback) {
+          this.store.appendLog("warn", "Fallback source selected", {
+            preset: preset.name,
+            fallbackIndex: String(index),
+            sourceMode: source.sourceMode,
+            url: source.url,
+          });
+        }
+
+        return {
+          ...resolved,
+          usedFallback: source.usedFallback,
+          fallbackIndex: source.usedFallback ? index - 1 : undefined,
+        };
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Source resolution failed";
+        errors.push(message);
+
+        if (index < sources.length - 1) {
+          this.store.appendLog(
+            "warn",
+            "Source resolution failed, trying fallback",
+            {
+              preset: preset.name,
+              sourceMode: source.sourceMode,
+              url: source.url,
+              next: sources[index + 1]?.label ?? "none",
+              error: message.slice(0, 160),
+            },
+          );
+          continue;
+        }
+      }
+    }
+
+    const baseError = errors[0] ?? "Source resolution failed";
+    throw new Error(
+      errors.length > 1
+        ? `${baseError}\n${errors.length - 1} fallback attempt(s) also failed.`
+        : baseError,
+    );
+  }
+
+  private async resolveSingleSource(
+    preset: StreamPreset,
+    source: FallbackSource,
+    cancelSignal?: AbortSignal,
+  ): Promise<ResolvedSource> {
     cancelSignal?.throwIfAborted();
 
-    if (preset.sourceMode === "direct") {
+    if (source.sourceMode === "direct") {
       return {
-        input: preset.sourceUrl,
-        inputUrl: preset.sourceUrl,
-        sourceMode: preset.sourceMode,
+        input: source.url,
+        inputUrl: source.url,
+        sourceMode: source.sourceMode,
         resolverKind: "direct",
       };
     }
@@ -145,40 +230,38 @@ export class SourceResolver {
       );
     }
 
-    // Smart auth strategy:
-    // 1. First try WITHOUT any auth (fastest, works when IP is not flagged)
-    // 2. If bot-check → retry with OAuth2 (if available)
-    // 3. If still failing → retry with alternate YouTube clients
     const hasOAuth2 = existsSync(OAUTH2_TOKEN_PATH);
     const _hasCookies = buildCookieArgs().length > 0;
-
-    const errors: string[] = [];
     let lastBotCheck = false;
 
-    // Phase 1: Try without any special auth
     try {
       cancelSignal?.throwIfAborted();
-      return await this.resolveViaYtDlp(preset, cancelSignal, undefined, false);
+      return await this.resolveViaYtDlp(
+        preset,
+        source,
+        cancelSignal,
+        undefined,
+        false,
+      );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "yt-dlp failed";
-      errors.push(message);
       lastBotCheck = YOUTUBE_BOT_CHECK_PATTERN.test(message);
 
-      // If it worked but had a different error (not bot-check), throw immediately
-      if (!lastBotCheck && !isYouTubeUrl(preset.sourceUrl)) {
+      if (!lastBotCheck && !isYouTubeUrl(source.url)) {
         throw error;
       }
     }
 
-    // Phase 2: If bot-check and OAuth2 is available, try with OAuth2
     if (lastBotCheck && hasOAuth2) {
       this.store.appendLog("info", "Bot-check detected, retrying with OAuth2", {
         preset: preset.name,
+        url: source.url,
       });
       try {
         cancelSignal?.throwIfAborted();
         return await this.resolveViaYtDlp(
           preset,
+          source,
           cancelSignal,
           undefined,
           true,
@@ -186,7 +269,6 @@ export class SourceResolver {
       } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : "OAuth2 attempt failed";
-        errors.push(message);
         this.store.appendLog(
           "warn",
           "OAuth2 attempt failed, trying client fallbacks",
@@ -197,8 +279,7 @@ export class SourceResolver {
       }
     }
 
-    // Phase 3: Try alternate YouTube clients (without OAuth2)
-    if (isYouTubeUrl(preset.sourceUrl)) {
+    if (isYouTubeUrl(source.url)) {
       const clients = [
         appConfig.ytDlpYouTubeExtractorArgs,
         "youtube:player_client=ios",
@@ -212,6 +293,7 @@ export class SourceResolver {
           cancelSignal?.throwIfAborted();
           return await this.resolveViaYtDlp(
             preset,
+            source,
             cancelSignal,
             client,
             false,
@@ -219,7 +301,6 @@ export class SourceResolver {
         } catch (error: unknown) {
           const message =
             error instanceof Error ? error.message : "client retry failed";
-          errors.push(message);
           this.store.appendLog("warn", "yt-dlp retry failed", {
             preset: preset.name,
             extractorArgs: client,
@@ -230,17 +311,12 @@ export class SourceResolver {
       }
     }
 
-    // All attempts failed
-    const baseError = errors[0] ?? "yt-dlp resolution failed";
-    throw new Error(
-      errors.length > 1
-        ? `${baseError}\n${errors.length - 1} retry attempt(s) also failed.`
-        : baseError,
-    );
+    throw new Error("yt-dlp resolution failed");
   }
 
   private async resolveViaYtDlp(
     preset: StreamPreset,
+    source: FallbackSource,
     cancelSignal?: AbortSignal,
     extractorArgs?: string,
     forceOAuth2 = false,
@@ -270,14 +346,15 @@ export class SourceResolver {
       "--print",
       "%(is_live)s",
       "-g",
-      preset.sourceUrl,
+      source.url,
     ];
 
     const authSource = oauth2Args.length ? "oauth2" : getCookieSourceLabel();
 
     this.store.appendLog("info", "Resolving source via yt-dlp", {
       preset: preset.name,
-      url: preset.sourceUrl,
+      url: source.url,
+      sourceMode: source.sourceMode,
       cookieSource: authSource,
       extractorArgs: extractorArgs ?? "",
     });
@@ -354,8 +431,8 @@ export class SourceResolver {
 
       return {
         input,
-        inputUrl: preset.sourceUrl,
-        sourceMode: preset.sourceMode,
+        inputUrl: source.url,
+        sourceMode: source.sourceMode,
         resolvedTitle,
         isLive: isLiveFlag.toLowerCase() === "true",
         resolverKind: "yt-dlp",

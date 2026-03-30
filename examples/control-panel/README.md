@@ -8,6 +8,7 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 
 - Gespeicherte Discord Voice Channels
 - Stream-Presets (Quelle, Qualitaet, Encoder, Buffer)
+- Reserve-Quellen pro Preset mit automatischem Fallback bei Fehlern
 - Zeitgesteuerte Events (einmalig, taeglich, woechentlich)
 - Discord Event Synchronisation (Create, Start, Complete, Cancel, Update)
 - Manueller Start/Stop per Web Panel oder Chat-Befehl
@@ -138,6 +139,12 @@ FFMPEG_LOG_LEVEL=warning
 ```
 
 Wenn Docker Zugriff auf `/dev/dri` oder eine NVIDIA-GPU hat, nutzt ein Preset mit aktivierter Hardware-Beschleunigung automatisch den passenden Encoder.
+
+Reserve-Quellen kannst du direkt im Preset pflegen:
+
+- eine Quelle pro Zeile
+- optional mit Quellmodus als `direct|https://...` oder `yt-dlp|https://...`
+- wenn die Hauptquelle fehlschlaegt, versucht der Resolver automatisch die naechste Reservequelle
 
 Web Panel: **http://localhost:3099**
 

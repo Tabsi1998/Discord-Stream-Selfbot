@@ -190,3 +190,77 @@ test("AppStateStore falls back to backup files when the primary state file is co
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("AppStateStore migrates legacy fallbackUrls to fallbackSources", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "stream-bot-state-"));
+  const filePath = join(tempDir, "state.json");
+
+  try {
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        channels: [],
+        presets: [
+          {
+            id: "preset-1",
+            name: "Fallback Preset",
+            sourceUrl: "https://example.com/live.m3u8",
+            sourceMode: "direct",
+            fallbackUrls: [
+              "https://backup.example/live.m3u8",
+              "https://backup.example/live-2.m3u8",
+            ],
+            qualityProfile: "720p30",
+            bufferProfile: "balanced",
+            description: "",
+            includeAudio: true,
+            width: 1280,
+            height: 720,
+            fps: 30,
+            bitrateVideoKbps: 3500,
+            maxBitrateVideoKbps: 4500,
+            bitrateAudioKbps: 160,
+            videoCodec: "H264",
+            hardwareAcceleration: false,
+            minimizeLatency: false,
+            createdAt: "2026-03-30T10:00:00.000Z",
+            updatedAt: "2026-03-30T10:00:00.000Z",
+          },
+        ],
+        events: [],
+        queue: [],
+        queueConfig: {
+          active: false,
+          loop: false,
+          currentIndex: 0,
+        },
+        notificationSettings: {
+          webhookUrl: "",
+          dmEnabled: false,
+        },
+        runtime: {
+          discordStatus: "ready",
+          activeRuns: [],
+        },
+        logs: [],
+      }),
+      "utf-8",
+    );
+
+    const store = new AppStateStore(filePath);
+    const snapshot = store.snapshot();
+
+    assert.deepEqual(snapshot.presets[0]?.fallbackSources, [
+      {
+        url: "https://backup.example/live.m3u8",
+        sourceMode: "direct",
+      },
+      {
+        url: "https://backup.example/live-2.m3u8",
+        sourceMode: "direct",
+      },
+    ]);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

@@ -58,6 +58,41 @@ test("parsePresetInput rejects malformed numeric fields", () => {
   );
 });
 
+test("parsePresetInput accepts fallback sources and defaults their mode", () => {
+  const result = parsePresetInput({
+    name: "Preset",
+    sourceUrl: "https://example.com/live.m3u8",
+    sourceMode: "direct",
+    fallbackSources: [
+      { url: " https://backup.example/live.m3u8 " },
+      { url: " https://youtu.be/example ", sourceMode: "yt-dlp" },
+    ],
+    qualityProfile: "720p30",
+    bufferProfile: "balanced",
+    includeAudio: true,
+    width: 1280,
+    height: 720,
+    fps: 30,
+    bitrateVideoKbps: 3500,
+    maxBitrateVideoKbps: 4500,
+    bitrateAudioKbps: 160,
+    videoCodec: "H264",
+    hardwareAcceleration: false,
+    minimizeLatency: false,
+  });
+
+  assert.deepEqual(result.fallbackSources, [
+    {
+      url: "https://backup.example/live.m3u8",
+      sourceMode: "direct",
+    },
+    {
+      url: "https://youtu.be/example",
+      sourceMode: "yt-dlp",
+    },
+  ]);
+});
+
 test("parseEventInput validates recurrence blocks", () => {
   const result = parseEventInput({
     name: "Weekly Event",

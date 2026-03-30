@@ -23,6 +23,7 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 | Scheduler | Streams zeitgesteuert planen - einmalig, taeglich, woechentlich |
 | Discord Events | Geplante Streams werden automatisch als Discord Events erstellt |
 | YouTube / Twitch | Automatisch ueber yt-dlp, einfach URL reinkopieren |
+| Reserve-Quellen | Mehrere Backup-URLs pro Preset mit automatischem Fallback |
 | MPEG-TS / IPTV | Dispatcharr, Tvheadend und andere TS-Proxies direkt nutzen |
 | Direkt-URLs | Jede MP4, HLS, M3U8 oder sonstige Media-URL |
 | Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
@@ -128,6 +129,7 @@ Stream-Vorlagen mit Quelle, Qualitaet und Encoder-Einstellungen.
 **Auto-Erkennung:** Das Panel erkennt automatisch:
 - YouTube/Twitch URLs → schaltet auf yt-dlp um
 - MPEG-TS Proxy URLs (Dispatcharr) → setzt Buffer auf Stabil
+- Pro Preset koennen Reserve-Quellen hinterlegt werden; bei Fehlern probiert das Panel automatisch die naechste Quelle
 
 #### Qualitaetsprofile
 

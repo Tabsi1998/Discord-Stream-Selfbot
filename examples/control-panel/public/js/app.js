@@ -165,6 +165,7 @@ const els = {
   presetQualityProfile: document.querySelector("#presetQualityProfile"),
   presetBufferProfile: document.querySelector("#presetBufferProfile"),
   presetSourceUrl: document.querySelector("#presetSourceUrl"),
+  presetFallbackSources: document.querySelector("#presetFallbackSources"),
   presetProfileHint: document.querySelector("#presetProfileHint"),
   presetWidth: document.querySelector("#presetWidth"),
   presetHeight: document.querySelector("#presetHeight"),
@@ -906,6 +907,71 @@ function presetLabel(item) {
   return `${item.name} (${item.sourceMode})`;
 }
 
+function parseFallbackSourcesInput(value, defaultSourceMode) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndex = line.indexOf("|");
+      if (separatorIndex <= 0) {
+        return {
+          url: line,
+          sourceMode: defaultSourceMode,
+        };
+      }
+
+      const mode = line.slice(0, separatorIndex).trim();
+      const url = line.slice(separatorIndex + 1).trim();
+      if ((mode === "direct" || mode === "yt-dlp") && url) {
+        return {
+          url,
+          sourceMode: mode,
+        };
+      }
+
+      return {
+        url: line,
+        sourceMode: defaultSourceMode,
+      };
+    });
+}
+
+function formatFallbackSourcesInput(sources, defaultSourceMode) {
+  if (!Array.isArray(sources) || !sources.length) {
+    return "";
+  }
+
+  return sources
+    .map((source) =>
+      source.sourceMode && source.sourceMode !== defaultSourceMode
+        ? `${source.sourceMode}|${source.url}`
+        : source.url,
+    )
+    .join("\n");
+}
+
+function describeFallbackSources(item) {
+  const sources = Array.isArray(item.fallbackSources)
+    ? item.fallbackSources
+    : [];
+  if (!sources.length) {
+    return "keine Reservequelle";
+  }
+
+  const preview = sources
+    .slice(0, 2)
+    .map((source) =>
+      source.sourceMode === item.sourceMode
+        ? source.url
+        : `${source.sourceMode}: ${source.url}`,
+    )
+    .join(" | ");
+  const extra =
+    sources.length > 2 ? ` | +${sources.length - 2} weitere` : "";
+  return `${sources.length} Reservequelle${sources.length === 1 ? "" : "n"} | ${preview}${extra}`;
+}
+
 function describePresetQuality(item) {
   const profile = getQualityProfileConfig(item.qualityProfile || "custom");
   const buffer = getBufferStrategy(
@@ -1187,6 +1253,7 @@ function renderPresets() {
               <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(describePresetQuality(item))}</p>
               <p class="item-meta">${item.bitrateVideoKbps}/${item.maxBitrateVideoKbps} kbps Video | ${item.bitrateAudioKbps} kbps Audio | ${item.includeAudio ? "Audio an" : "Audio aus"}</p>
               <p class="item-meta">${escapeHtml(item.sourceUrl)}</p>
+              <p class="item-meta">Fallbacks: ${escapeHtml(describeFallbackSources(item))}</p>
               <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
             </div>
           </div>
@@ -1449,6 +1516,7 @@ function resetPresetForm() {
   els.presetSourceMode.value = "direct";
   els.presetQualityProfile.value = "720p30";
   els.presetBufferProfile.value = "auto";
+  els.presetFallbackSources.value = "";
   els.presetWidth.value = "1280";
   els.presetHeight.value = "720";
   els.presetFps.value = "30";
@@ -1521,6 +1589,10 @@ function buildPresetPayload() {
   return {
     name: els.presetName.value.trim(),
     sourceMode: els.presetSourceMode.value,
+    fallbackSources: parseFallbackSourcesInput(
+      els.presetFallbackSources.value,
+      els.presetSourceMode.value,
+    ),
     qualityProfile: resolved.qualityProfile,
     bufferProfile: resolved.bufferProfile,
     sourceUrl: els.presetSourceUrl.value.trim(),
@@ -1599,6 +1671,10 @@ function editPreset(id) {
   els.presetQualityProfile.value = item.qualityProfile || "custom";
   els.presetBufferProfile.value = item.bufferProfile || "auto";
   els.presetSourceUrl.value = item.sourceUrl;
+  els.presetFallbackSources.value = formatFallbackSourcesInput(
+    item.fallbackSources,
+    item.sourceMode || "direct",
+  );
   els.presetWidth.value = String(item.width);
   els.presetHeight.value = String(item.height);
   els.presetFps.value = String(item.fps);

@@ -227,10 +227,12 @@ export function parseChannelInput(value: unknown): ChannelInput {
 
 export function parsePresetInput(value: unknown): PresetInput {
   const body = ensureObject(value, "Preset payload");
+  const sourceMode = readEnum(body.sourceMode, "sourceMode", SOURCE_MODES);
   return {
     name: readRequiredString(body.name, "name"),
     sourceUrl: readRequiredString(body.sourceUrl, "sourceUrl"),
-    sourceMode: readEnum(body.sourceMode, "sourceMode", SOURCE_MODES),
+    sourceMode,
+    fallbackSources: parseFallbackSources(body.fallbackSources, sourceMode),
     qualityProfile: readEnum(
       body.qualityProfile,
       "qualityProfile",
@@ -260,6 +262,29 @@ export function parsePresetInput(value: unknown): PresetInput {
     ),
     minimizeLatency: readBoolean(body.minimizeLatency, "minimizeLatency"),
   };
+}
+
+function parseFallbackSources(value: unknown, defaultSourceMode: SourceMode) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new HttpError(400, "fallbackSources must be an array");
+  }
+
+  return value.map((entry, index) => {
+    const body = ensureObject(entry, `fallbackSources[${index}]`);
+    return {
+      url: readRequiredString(body.url, `fallbackSources[${index}].url`),
+      sourceMode:
+        readOptionalEnum(
+          body.sourceMode,
+          `fallbackSources[${index}].sourceMode`,
+          SOURCE_MODES,
+        ) ?? defaultSourceMode,
+    };
+  });
 }
 
 function parseRecurrenceInput(value: unknown): RecurrenceInput | undefined {
