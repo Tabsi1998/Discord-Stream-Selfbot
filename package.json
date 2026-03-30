@@ -38,7 +38,11 @@
     },
     "scripts": {
         "build": "tsc",
+        "build:control-panel": "npm --prefix examples/control-panel run build",
         "test:control-panel": "npm --prefix examples/control-panel run test",
+        "ci": "npm run ci:control-panel",
+        "ci:control-panel": "npm run build && npm --prefix examples/control-panel ci && npm run build:control-panel && npm run test:control-panel",
+        "docker:build:control-panel": "docker build --pull -f docker/control-panel.Dockerfile .",
         "lint": "biome lint --error-on-warnings .",
         "lint:fix": "biome lint --write .",
         "check": "biome check .",
