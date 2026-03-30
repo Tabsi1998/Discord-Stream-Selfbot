@@ -16,7 +16,7 @@ Dieses Repo kann als persistenter Docker-Dienst auf deinem eigenen Server betrie
 
 ```bash
 # 1. Repo klonen
-git clone <dein-repo-url>
+git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
 cd stream-bot
 
 # 2. Interaktive Installation
@@ -56,6 +56,7 @@ Zeigt die aktuelle Konfiguration und bietet Optionen:
 | 7 | yt-dlp Format |
 | 8 | Scheduler (Poll-Intervall, Timeout) |
 | 9 | Web-Panel Login |
+| 10 | Selfbots + Presence-Templates |
 | a | Alles auf einmal |
 | q | Abbrechen |
 
@@ -139,6 +140,10 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 
 - Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
 - Das Panel kann direkt per `PANEL_AUTH_ENABLED=1` plus Benutzername/Passwort abgesichert werden
+- Mehrere Selfbots werden ueber `PRIMARY_SELFBOT_NAME` plus `SELFBOT_CONFIG_FILE` verwaltet
+- Zusatzbots liegen standardmaessig in `examples/control-panel/data/selfbot-profiles.tsv`
+- Geplante Events und manuelle Streams koennen parallel laufen, solange sie unterschiedliche Selfbots verwenden
+- Die Queue ist bot-gebunden: sie streamt immer ueber den Selfbot des ausgewaehlten Queue-Kanals
 - YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bei jedem `./update.sh` frisch ohne Build-Cache neu gebaut wird
 - Standard fuer Docker ist jetzt der offizielle `pip`-Pfad `--pre "yt-dlp[default]"`, damit YouTube-Fixes schneller im Server landen
 - Aktivierte Hardware-Beschleunigung im Preset nutzt jetzt echte Hardware-Encoder statt nur Hardware-Decoding
@@ -152,6 +157,24 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 - FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten
 - Die State-Datei wird bei jedem Schreibvorgang automatisch gespeichert
 - Fuer Aenderungen an Code oder Abhaengigkeiten: `./update.sh` ausfuehren
+
+---
+
+## Mehrere Selfbots
+
+Der primaere Bot kommt direkt aus `deploy/.env`. Weitere Bots kannst du ueber `config.sh` unter `10) Selfbots` anlegen oder manuell in `examples/control-panel/data/selfbot-profiles.tsv` eintragen.
+
+Die wichtigsten Variablen:
+
+```bash
+PRIMARY_SELFBOT_NAME=Primary Selfbot
+SELFBOT_CONFIG_FILE=/app/examples/control-panel/data/selfbot-profiles.tsv
+IDLE_ACTIVITY_TEXT=THE LION SQUAD - eSPORTS
+STREAM_ACTIVITY_TEXT={{title}}
+VOICE_STATUS_TEMPLATE=Now streaming: {{title}}
+```
+
+Jeder Channel in der Web-UI ist genau einem Selfbot zugeordnet. Dadurch koennen mehrere Streams parallel laufen, ohne sich gegenseitig auf denselben Bot zu legen.
 
 ---
 

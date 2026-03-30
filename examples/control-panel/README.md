@@ -24,6 +24,8 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 - Queue-Steuerung direkt im Web-Panel (Add, Start, Skip, Reorder, Clear)
 - Eingebauter Login-Schutz fuer das Panel per `PANEL_AUTH_*`
 - Automatische Hardware-Encoder-Erkennung fuer NVENC / VAAPI
+- Mehrere Selfbots mit eigener Presence und Voice-Status
+- Parallele Streams pro Selfbot statt global nur einer Session
 - Discord Chat-Befehle (help, status, start, stop, queue, logs, etc.)
 
 ---
@@ -61,7 +63,7 @@ public/
 | GET | `/api/bootstrap` | Gesamtstatus (Channels, Presets, Events, Runtime, Logs) |
 | GET | `/api/state` | Vollstaendiger App-State |
 | GET | `/api/logs` | Neueste Log-Eintraege |
-| GET | `/api/stream/health` | Stream Health (aktiv/inaktiv, Uptime, Kanal, Preset) |
+| GET | `/api/stream/health` | Stream Health inkl. `activeRuns`, optional per `?botId=` |
 | GET | `/api/channels` | Alle Kanaele |
 | POST | `/api/channels` | Kanal erstellen |
 | PUT | `/api/channels/:id` | Kanal aktualisieren |
@@ -78,7 +80,7 @@ public/
 | POST | `/api/events/:id/cancel` | Event abbrechen |
 | POST | `/api/events/:id/start` | Event sofort starten |
 | POST | `/api/manual/start` | Manuellen Stream starten |
-| POST | `/api/stop` | Aktiven Stream stoppen |
+| POST | `/api/stop` | Einzelnen Bot oder alle aktiven Streams stoppen |
 | GET | `/api/voice-channels` | Verfuegbare Discord Voice Channels |
 | GET | `/api/queue` | Queue + Queue-Konfiguration |
 | POST | `/api/queue` | Queue-Item anlegen |
@@ -141,6 +143,16 @@ Web Panel: **http://localhost:3099**
 
 ---
 
+## Tests
+
+```bash
+npm run test
+```
+
+Der Testpfad baut eine separate `dist-test` Ausgabe und deckt aktuell Wiederholungen, Scheduler, State-Migration und bot-spezifische Service-Logik ab.
+
+---
+
 ## Docker / Self-Hosting
 
 Fuer den produktiven Betrieb: siehe [SELFHOSTING.md](../../SELFHOSTING.md)
@@ -163,7 +175,8 @@ Standard-Prefix: `$panel`
 | `$panel help` | Alle Befehle |
 | `$panel status` | Stream-Status |
 | `$panel start <kanal> \| <preset> \| [zeit]` | Stream starten |
-| `$panel stop` | Stream stoppen |
+| `$panel stop` | Einen oder mehrere Streams stoppen |
+| `$panel restart [bot\|kanal\|id]` | Gezielter Neustart eines aktiven Streams |
 | `$panel channels` | Kanaele auflisten |
 | `$panel presets` | Presets auflisten |
 | `$panel events` | Events auflisten |

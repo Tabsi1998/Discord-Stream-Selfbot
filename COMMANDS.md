@@ -11,8 +11,8 @@
 | `help` | Alle Befehle anzeigen |
 | `status` | Aktuellen Stream-Status |
 | `start` | Stream manuell starten |
-| `stop` | Aktiven Stream stoppen |
-| `restart` | Aktiven Stream neu starten |
+| `stop` | Einen oder mehrere aktive Streams stoppen |
+| `restart` | Aktiven Stream gezielt neu starten |
 | `channels` | Kanaele auflisten |
 | `presets` | Presets auflisten |
 | `events` | Kommende Events auflisten |
@@ -47,7 +47,7 @@ $panel help
 $panel status
 $panel start <kanal|id> | <preset|id> | [zeit]
 $panel stop
-$panel restart
+$panel restart [bot|kanal|id]
 $panel channels
 $panel presets
 $panel events
@@ -77,10 +77,9 @@ $panel status
 
 **Ausgabe wenn aktiv:**
 ```
-Aktiv: Gaming Kanal -> YouTube HD
-Status: running
-Seit: 19.03.26, 22:00
-Geplantes Ende: 19.03.26, 23:30
+Aktive Streams: 2
+1. Primary Bot | Gaming Kanal -> YouTube HD | running | 19.03.26, 22:00 | Stop 19.03.26, 23:30
+2. Backup Bot | IPTV -> Dispatcharr | running | 19.03.26, 22:05
 ```
 
 **Ausgabe wenn inaktiv:**
@@ -127,15 +126,20 @@ Stop um: 31.12.25, 23:00
 
 ### `$panel stop`
 
-Stoppt den aktuell laufenden Stream.
+Stoppt den aktuell laufenden Stream. Wenn mehrere Streams aktiv sind, werden alle aktiven Streams gestoppt.
 
 ```
 $panel stop
 ```
 
-**Ausgabe:**
+**Ausgabe mit einem Stream:**
 ```
-Aktiver Stream wird gestoppt.
+Stream wird gestoppt: Gaming Kanal
+```
+
+**Ausgabe mit mehreren Streams:**
+```
+2 aktive Streams werden gestoppt.
 ```
 
 Oder wenn kein Stream laeuft:
@@ -145,17 +149,25 @@ Kein aktiver Stream.
 
 ---
 
-### `$panel restart`
+### `$panel restart [bot|kanal|id]`
 
-Stoppt den aktiven Stream und startet ihn mit demselben Kanal/Preset erneut. Eine gesetzte Stoppzeit wird uebernommen.
+Stoppt einen aktiven Stream und startet ihn mit demselben Kanal/Preset erneut. Eine gesetzte Stoppzeit wird uebernommen.
 
 ```text
 $panel restart
+$panel restart backup-bot
+$panel restart Gaming Kanal
 ```
 
 **Ausgabe:**
 ```text
-Stream wird neugestartet: Gaming Kanal → YouTube HD
+Stream wird neugestartet: Primary Bot | Gaming Kanal -> YouTube HD
+```
+
+Wenn mehrere Streams aktiv sind und kein Ziel uebergeben wird:
+
+```text
+Fehler: Mehrere Streams aktiv. Nutze: restart <bot|kanal|id>
 ```
 
 ---

@@ -18,6 +18,8 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 |---------|-------------|
 | Web Panel | Dashboard zum Verwalten von Kanaelen, Presets, Queue und Events |
 | Web Panel Login | Optionaler HTTP Basic Auth Schutz direkt in der App |
+| Multi-Selfbot | Mehrere Selfbots mit eigenem Token, Presence und Voice-Status |
+| Parallele Streams | Mehrere Streams gleichzeitig, jeweils getrennt pro Selfbot |
 | Scheduler | Streams zeitgesteuert planen - einmalig, taeglich, woechentlich |
 | Discord Events | Geplante Streams werden automatisch als Discord Events erstellt |
 | YouTube / Twitch | Automatisch ueber yt-dlp, einfach URL reinkopieren |
@@ -46,7 +48,7 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 ### Installation
 
 ```bash
-git clone <dein-repo-url>
+git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
 cd stream-bot
 ./install.sh
 ```
@@ -86,7 +88,7 @@ Holt die neueste Version von GitHub, sichert vorher alles (Token, Einstellungen,
 Die Startseite zeigt dir auf einen Blick:
 
 - **Discord Status** - Verbunden/Offline
-- **Aktiver Stream** - Was gerade laeuft, mit Live-Uptime-Counter
+- **Aktive Streams** - Alle laufenden Streams pro Selfbot mit eigener Uptime
 - **Naechstes Event** - Wann der naechste geplante Stream startet
 - **Manueller Start** - Kanal + Preset auswaehlen und sofort starten
 - **Letzte Logs** - Was zuletzt passiert ist
@@ -97,6 +99,7 @@ Hier konfigurierst du die Discord Voice Channels in denen gestreamt werden soll.
 
 | Feld | Beschreibung |
 |------|-------------|
+| Selfbot | Welcher Selfbot diesen Voice Channel bedient |
 | Name | Frei waehlbarer Name (z.B. "Gaming Kanal") |
 | Guild ID | Server-ID (Rechtsklick auf Server → ID kopieren) |
 | Voice Channel ID | Kanal-ID (Rechtsklick auf Voice Channel → ID kopieren) |
@@ -191,6 +194,28 @@ Alle Systemereignisse mit Filtern:
 
 ---
 
+## Multi-Selfbot Betrieb
+
+- Der primaere Selfbot wird direkt ueber `deploy/.env` konfiguriert.
+- Weitere Selfbots liegen in `examples/control-panel/data/selfbot-profiles.tsv`.
+- Jeder konfigurierte Discord Voice Channel ist genau einem Selfbot zugeordnet.
+- Scheduler, Queue und manuelle Starts arbeiten bot-spezifisch. Dadurch koennen verschiedene Selfbots parallel streamen, ohne sich global zu blockieren.
+- Die Queue ist weiterhin global als Playlist, streamt aber immer ueber genau den Selfbot des gewaehlten Queue-Kanals.
+
+Die wichtigsten Presence-Variablen:
+
+| Variable | Beschreibung |
+|----------|-------------|
+| `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots |
+| `IDLE_ACTIVITY_TEXT` | Idle-Status wenn der Bot gerade nichts streamt |
+| `STREAM_ACTIVITY_TEXT` | Status-Template waehrend eines Streams, z.B. `{{title}}` |
+| `VOICE_STATUS_TEMPLATE` | Voice-Status-Template, z.B. `Now streaming: {{title}}` |
+| `SELFBOT_CONFIG_FILE` | Pfad zur TSV/JSON Datei mit Zusatzbots |
+
+`config.sh` bietet dafuer den Punkt `10) Selfbots`.
+
+---
+
 ## MPEG-TS / Dispatcharr / IPTV Integration
 
 Du hast einen IPTV-Proxy wie Dispatcharr, Tvheadend oder aehnliches? Perfekt.
@@ -242,8 +267,8 @@ Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
 | `$panel status` | Aktuellen Stream-Status anzeigen |
 | `$panel start Kanal \| Preset` | Stream sofort starten |
 | `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
-| `$panel stop` | Aktiven Stream stoppen |
-| `$panel restart` | Aktiven Stream mit gleichem Kanal/Preset neu starten |
+| `$panel stop` | Einen oder mehrere aktive Streams stoppen |
+| `$panel restart [bot\|kanal\|id]` | Aktiven Stream gezielt neu starten |
 | `$panel channels` | Alle konfigurierten Kanaele anzeigen |
 | `$panel presets` | Alle Presets anzeigen |
 | `$panel events` | Kommende Events anzeigen |
@@ -322,6 +347,11 @@ Discord-Stream-Selfbot/
 | `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
 | `COMMAND_PREFIX` | Prefix fuer Chat-Befehle | $panel |
 | `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur du selbst |
+| `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots | Primary Selfbot |
+| `SELFBOT_CONFIG_FILE` | TSV/JSON-Datei fuer zusaetzliche Selfbots | `/app/examples/control-panel/data/selfbot-profiles.tsv` |
+| `IDLE_ACTIVITY_TEXT` | Idle-Status Text | THE LION SQUAD - eSPORTS |
+| `STREAM_ACTIVITY_TEXT` | Streaming-Status Template | `{{title}}` |
+| `VOICE_STATUS_TEMPLATE` | Voice-Status Template | `Now streaming: {{title}}` |
 | `PANEL_AUTH_ENABLED` | Web-Panel per Login absichern | 0 |
 | `PANEL_AUTH_USERNAME` | Benutzername fuer das Panel | leer |
 | `PANEL_AUTH_PASSWORD` | Passwort fuer das Panel | leer |
@@ -330,6 +360,23 @@ Discord-Stream-Selfbot/
 | `FFMPEG_LOG_LEVEL` | FFmpeg Log-Level fuer Streams | warning |
 | `SCHEDULER_POLL_MS` | Wie oft der Scheduler Events prueft | 1000 |
 | `STARTUP_TIMEOUT_MS` | Max. Wartezeit bis Discord verbunden | 15000 |
+
+---
+
+## Tests
+
+Fuer das Control Panel gibt es jetzt einen separaten Testpfad fuer Wiederholungen, Scheduler, State-Migration und bot-spezifische Service-Logik.
+
+```bash
+npm run test:control-panel
+```
+
+Direkt im Control-Panel-Ordner:
+
+```bash
+cd examples/control-panel
+npm run test
+```
 
 ---
 
