@@ -363,6 +363,21 @@ export class StreamRuntime extends EventEmitter {
     return result;
   }
 
+  public findBotForGuild(guildId: string) {
+    const primary = this.bots.get(appConfig.primarySelfbotId);
+    if (primary?.client.guilds.cache.has(guildId)) {
+      return primary.profile.id;
+    }
+
+    for (const bot of this.bots.values()) {
+      if (bot.client.guilds.cache.has(guildId)) {
+        return bot.profile.id;
+      }
+    }
+
+    return undefined;
+  }
+
   public async startRun(options: StartRunOptions): Promise<ActiveRun> {
     const botId = options.channel.botId || appConfig.primarySelfbotId;
     if (this.activeSessions.has(botId)) {

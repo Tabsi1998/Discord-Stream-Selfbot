@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { appConfig } from "../config/appConfig.js";
-import { normalizePresetInput } from "../domain/presetProfiles.js";
+import {
+  detectSourceProfile,
+  normalizePresetInput,
+} from "../domain/presetProfiles.js";
 import {
   buildOccurrenceWindows,
   normalizeRecurrenceInput,
@@ -136,6 +139,65 @@ function sortPresets(presets: StreamPreset[]) {
 
 function sortEvents(events: ScheduledEvent[]) {
   events.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+}
+
+function describeEventSource(preset: StreamPreset | undefined) {
+  if (!preset) {
+    return undefined;
+  }
+  if (preset.sourceMode === "yt-dlp" || isYouTubeUrl(preset.sourceUrl)) {
+    return "YouTube / yt-dlp";
+  }
+
+  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
+  switch (sourceProfile) {
+    case "hls":
+      return "HLS / Live-Stream";
+    case "mpeg-ts":
+      return "MPEG-TS / IPTV";
+    case "file":
+      return "Datei / Direktlink";
+    default:
+      return "Direktlink";
+  }
+}
+
+function buildDiscordEventDescription(
+  event: ScheduledEvent,
+  channel: ChannelDefinition,
+  preset: StreamPreset | undefined,
+) {
+  const description = event.description?.trim() || "";
+
+  return [
+    description,
+    ...(description ? [""] : []),
+    `Kanal: ${channel.name}`,
+    preset ? `Preset: ${preset.name}` : "",
+    preset ? `Quelle: ${describeEventSource(preset)}` : "",
+    preset
+      ? `Qualitaet: ${preset.width}x${preset.height} @ ${preset.fps} FPS`
+      : "",
+    event.seriesId ? `Serie: Folge ${event.occurrenceIndex}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function buildAdHocPresetName(
+  sourceUrl: string,
+  sourceMode: "direct" | "yt-dlp",
+) {
+  if (sourceMode === "yt-dlp" || isYouTubeUrl(sourceUrl)) {
+    return "Quick Play YouTube";
+  }
+  try {
+    const url = new URL(sourceUrl);
+    return `Quick Play ${url.hostname}`;
+  } catch {
+    return "Quick Play";
+  }
 }
 
 function createDefaultQueueConfig(): QueueConfig {
@@ -899,6 +961,73 @@ export class ControlPanelService {
       });
   }
 
+  public async startAdHocRun(input: {
+    channel: ChannelDefinition;
+    sourceUrl: string;
+    sourceMode?: "direct" | "yt-dlp";
+    stopAt?: string;
+    name?: string;
+  }) {
+    assertNonEmpty(input.channel.id, "channel.id");
+    assertNonEmpty(input.channel.botId, "channel.botId");
+    assertNonEmpty(input.channel.guildId, "channel.guildId");
+    assertNonEmpty(input.channel.channelId, "channel.channelId");
+    assertNonEmpty(input.sourceUrl, "sourceUrl");
+
+    const sourceMode =
+      input.sourceMode ?? (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
+    const normalizedPreset = normalizePresetInput({
+      name:
+        input.name?.trim() || buildAdHocPresetName(input.sourceUrl, sourceMode),
+      sourceUrl: input.sourceUrl.trim(),
+      sourceMode,
+      fallbackSources: [],
+      qualityProfile: "1080p30",
+      bufferProfile: sourceMode === "yt-dlp" ? "stable" : "auto",
+      description: "Temporaeres Command-Preset",
+      includeAudio: true,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      bitrateVideoKbps: 7000,
+      maxBitrateVideoKbps: 9500,
+      bitrateAudioKbps: 160,
+      videoCodec: "H264",
+      hardwareAcceleration: true,
+      minimizeLatency: false,
+    });
+    const timestamp = nowIso();
+    const preset: StreamPreset = {
+      id: `adhoc-preset-${randomUUID()}`,
+      ...normalizedPreset,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const plannedStopAt = input.stopAt
+      ? asDate(input.stopAt, "stopAt").toISOString()
+      : undefined;
+
+    if (plannedStopAt && Date.parse(plannedStopAt) <= Date.now()) {
+      throw new Error("stopAt must be in the future");
+    }
+
+    return this.runtime
+      .startRun({
+        kind: "manual",
+        channel: input.channel,
+        preset,
+        plannedStopAt,
+      })
+      .then((result) => {
+        this.sendNotification(
+          `Stream gestartet: ${input.channel.name} mit ${preset.name}`,
+          "manualRuns",
+          input.channel.botId,
+        ).catch(() => {});
+        return result;
+      });
+  }
+
   public stopActive(reason = "manual-stop") {
     return this.stopActiveForBot(reason);
   }
@@ -1270,10 +1399,6 @@ export class ControlPanelService {
       const client = this.runtime.getClient(channel.botId);
       if (!client.user) return;
 
-      const preset = events[0]
-        ? state.presets.find((p) => p.id === events[0].presetId)
-        : undefined;
-
       const guild = client.guilds.cache.get(channel.guildId);
       if (!guild) {
         this.store.appendLog(
@@ -1285,20 +1410,12 @@ export class ControlPanelService {
 
       for (const event of events) {
         try {
-          const description = [
-            event.description || "",
-            "",
-            `Stream: ${channel.name} (${channel.streamMode})`,
-            preset ? `Preset: ${preset.name}` : "",
-            preset ? `Quelle: ${preset.sourceUrl}` : "",
-            preset
-              ? `Qualitaet: ${preset.width}x${preset.height} @ ${preset.fps}fps`
-              : "",
-            event.seriesId ? `Serie #${event.occurrenceIndex}` : "",
-          ]
-            .filter(Boolean)
-            .join("\n")
-            .trim();
+          const preset = state.presets.find((p) => p.id === event.presetId);
+          const description = buildDiscordEventDescription(
+            event,
+            channel,
+            preset,
+          );
 
           const discordEvent = await guild.scheduledEvents.create({
             name: event.name,

@@ -274,14 +274,18 @@ Wenn Commands nicht reagieren, pruefe zuerst:
 3. Beim normalen Bot steht deine User-ID in `COMMAND_ALLOWED_AUTHOR_IDS`
 4. Beim normalen Bot ist das `Message Content Intent` aktiviert
 
+Mit `play <url>` nutzt der Control-Bot nach Moeglichkeit automatisch deinen aktuellen Voice-Channel.
+
 ### Kurzuebersicht
 
 | Befehl | Was es tut |
 |--------|-----------|
 | `$panel help` | Alle Befehle anzeigen |
 | `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
+| `$panel play URL` | URL direkt im aktuellen Voice-Channel starten |
 | `$panel status` | Aktuellen Stream-Status anzeigen |
 | `$panel start Kanal \| Preset` | Stream sofort starten |
+| `$panel start URL` | Schnellstart fuer eine URL |
 | `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
 | `$panel stop` | Einen oder mehrere aktive Streams stoppen |
 | `$panel restart [bot\|kanal\|id]` | Aktiven Stream gezielt neu starten |

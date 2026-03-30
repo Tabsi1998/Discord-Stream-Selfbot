@@ -6,7 +6,10 @@ import {
 } from "discord.js";
 import type { Message as SelfbotMessage } from "discord.js-selfbot-v13";
 import { appConfig } from "../config/appConfig.js";
-import type { ScheduledEvent } from "../domain/types.js";
+import type {
+  ChannelDefinition,
+  ScheduledEvent,
+} from "../domain/types.js";
 import type { ControlPanelService } from "../services/ControlPanelService.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 import type { StreamRuntime } from "./StreamRuntime.js";
@@ -17,6 +20,10 @@ type CommandMessageLike = {
     id: string;
     bot?: boolean;
   };
+  guildId?: string;
+  guildName?: string;
+  voiceChannelId?: string;
+  voiceChannelName?: string;
   channel: {
     send(content: string): Promise<unknown>;
   };
@@ -41,6 +48,43 @@ function toCommandMessage(
       id: message.author.id,
       bot: "bot" in message.author ? !!message.author.bot : false,
     },
+    guildId:
+      "guildId" in message && typeof message.guildId === "string"
+        ? message.guildId
+        : undefined,
+    guildName:
+      "guild" in message &&
+      message.guild &&
+      typeof message.guild === "object" &&
+      "name" in message.guild &&
+      typeof message.guild.name === "string"
+        ? message.guild.name
+        : undefined,
+    voiceChannelId:
+      "member" in message &&
+      message.member &&
+      typeof message.member === "object" &&
+      "voice" in message.member &&
+      message.member.voice &&
+      typeof message.member.voice === "object" &&
+      "channelId" in message.member.voice &&
+      typeof message.member.voice.channelId === "string"
+        ? message.member.voice.channelId
+        : undefined,
+    voiceChannelName:
+      "member" in message &&
+      message.member &&
+      typeof message.member === "object" &&
+      "voice" in message.member &&
+      message.member.voice &&
+      typeof message.member.voice === "object" &&
+      "channel" in message.member.voice &&
+      message.member.voice.channel &&
+      typeof message.member.voice.channel === "object" &&
+      "name" in message.member.voice.channel &&
+      typeof message.member.voice.channel.name === "string"
+        ? message.member.voice.channel.name
+        : undefined,
     channel: {
       send: (content: string) => channel.send(content),
     },
@@ -59,6 +103,10 @@ function splitSegments(input: string) {
     .split("|")
     .map((segment) => segment.trim())
     .filter(Boolean);
+}
+
+function looksLikeUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
 }
 
 function normalizeValue(value: string) {
@@ -156,6 +204,7 @@ export class DiscordCommandBridge {
       intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
       ],
@@ -292,6 +341,11 @@ export class DiscordCommandBridge {
 
       if (body === "events") {
         await this.sendEventList(message);
+        return;
+      }
+
+      if (body.startsWith("play ")) {
+        await this.playFromCommand(message, body.slice("play ".length));
         return;
       }
 
@@ -520,6 +574,91 @@ export class DiscordCommandBridge {
     throw new Error(`${typeName} not found: ${trimmed}`);
   }
 
+  private resolveVoiceChannelForMessage(message: CommandMessageLike) {
+    const state = this.service.snapshot();
+
+    if (message.guildId && message.voiceChannelId) {
+      const configured = state.channels.find(
+        (channel) =>
+          channel.guildId === message.guildId &&
+          channel.channelId === message.voiceChannelId,
+      );
+      if (configured) {
+        return {
+          channel: configured,
+          inferred: false,
+        };
+      }
+
+      const botId = this.runtime.findBotForGuild(message.guildId);
+      if (!botId) {
+        throw new Error(
+          "Kein konfigurierter Selfbot ist in diesem Server verfuegbar.",
+        );
+      }
+      const timestamp = new Date().toISOString();
+      const transientChannel: ChannelDefinition = {
+        id: `adhoc-channel:${botId}:${message.guildId}:${message.voiceChannelId}`,
+        botId,
+        name: message.voiceChannelName?.trim() || "Aktueller Sprachkanal",
+        guildId: message.guildId,
+        channelId: message.voiceChannelId,
+        streamMode: "go-live",
+        description: "Temporaerer Command-Kanal",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      return {
+        channel: transientChannel,
+        inferred: true,
+      };
+    }
+
+    if (state.channels.length === 1) {
+      return {
+        channel: state.channels[0],
+        inferred: false,
+      };
+    }
+
+    throw new Error(
+      "Tritt einem Sprachkanal bei oder nutze: start <kanal|id> | <preset|id>",
+    );
+  }
+
+  private async playFromCommand(message: CommandMessageLike, rawArgs: string) {
+    const [url, stopAtRaw] = splitSegments(rawArgs);
+    if (!url || !looksLikeUrl(url)) {
+      throw new Error("Use: play <url> | [stopAt]");
+    }
+
+    const { channel, inferred } = this.resolveVoiceChannelForMessage(message);
+    const stopAt = stopAtRaw ? new Date(stopAtRaw) : undefined;
+    if (stopAtRaw && (!stopAt || Number.isNaN(stopAt.getTime()))) {
+      throw new Error("stopAt must be a valid date/time");
+    }
+
+    await this.service.startAdHocRun({
+      channel,
+      sourceUrl: url,
+      stopAt: stopAt?.toISOString(),
+    });
+
+    await message.channel.send(
+      [
+        `Ad-hoc Stream startet: ${channel.name}`,
+        `Bot: ${channel.botId}`,
+        `Quelle: ${url}`,
+        inferred
+          ? "Kanal wurde aus deinem aktuellen Voice-Channel erkannt."
+          : "Kanal stammt aus deiner gespeicherten Konfiguration.",
+        stopAt
+          ? `Stop um: ${formatDate(stopAt.toISOString())}`
+          : "Stop: manuell",
+      ].join("\n"),
+    );
+  }
+
   private async sendWhoAmI(
     message: CommandMessageLike,
     matchedPrefix: string,
@@ -541,6 +680,13 @@ export class DiscordCommandBridge {
         `Auth-Modus: ${authMode}`,
         `Erkanntes Prefix: ${matchedPrefix}`,
         `Primaeres Prefix: ${appConfig.commandPrefix}`,
+        ...(message.voiceChannelId
+          ? [
+              `Aktueller Voice-Channel: ${
+                message.voiceChannelName ?? message.voiceChannelId
+              }`,
+            ]
+          : ["Aktueller Voice-Channel: keiner"]),
         guide,
       ].join("\n"),
     );
@@ -559,7 +705,9 @@ export class DiscordCommandBridge {
         ...(mentionPrefix ? [`Control-Bot Mention: ${mentionPrefix}`] : []),
         `${prefix} help`,
         `${prefix} whoami`,
+        `${prefix} play <url> | [zeit]`,
         `${prefix} status`,
+        `${prefix} start <url>`,
         `${prefix} start <kanal|id> | <preset|id> | [zeit]`,
         `${prefix} stop`,
         `${prefix} restart [bot|kanal|id]`,
@@ -651,6 +799,14 @@ export class DiscordCommandBridge {
     rawArgs: string,
   ) {
     const [channelQuery, presetQuery, stopAtRaw] = splitSegments(rawArgs);
+    if (channelQuery && looksLikeUrl(channelQuery)) {
+      const quickPlayArgs = (presetQuery || stopAtRaw)
+        ? `${channelQuery} | ${presetQuery || stopAtRaw}`
+        : channelQuery;
+      await this.playFromCommand(message, quickPlayArgs);
+      return;
+    }
+
     if (!channelQuery || !presetQuery) {
       throw new Error("Use: start <channel|id> | <preset|id> | [stopAt]");
     }

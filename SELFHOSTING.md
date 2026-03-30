@@ -189,6 +189,7 @@ COMMAND_ALLOWED_AUTHOR_IDS=
 
 Wichtig fuer den normalen Bot:
 - `Message Content Intent` im Discord Developer Portal aktivieren
+- fuer `play <url>` automatisch den aktuellen Voice-Channel erkennen zu koennen, braucht der Bot `Guild Voice States` als Gateway-Intent im Client
 - denselben Bot auf deinen Server einladen
 - sobald `CONTROL_BOT_TOKEN` gesetzt ist, antworten die Selfbots nicht mehr auf Chat-Commands; nur der normale Bot schreibt zurueck
 - wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer bleibt, duerfen nur Selfbot-Accounts Commands ausfuehren
