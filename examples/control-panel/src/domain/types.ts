@@ -187,15 +187,28 @@ export type LogEntry = {
   context?: Record<string, string>;
 };
 
+export type NotificationRuleSet = {
+  manualRuns: boolean;
+  scheduledEvents: boolean;
+  queueLifecycle: boolean;
+  queueItems: boolean;
+  failures: boolean;
+  performanceWarnings: boolean;
+};
+
+export type NotificationEventType = keyof NotificationRuleSet;
+
 export type NotificationSettings = {
   webhookUrl: string;
   dmEnabled: boolean;
+  rules: NotificationRuleSet;
   updatedAt?: string;
 };
 
 export type NotificationSettingsInput = {
   webhookUrl?: string;
   dmEnabled?: boolean;
+  rules?: Partial<NotificationRuleSet>;
 };
 
 export type ControlPanelState = {

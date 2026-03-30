@@ -20,6 +20,7 @@ import type {
   LogEntry,
   LogLevel,
   NotificationSettings,
+  NotificationRuleSet,
   QueueConfig,
   RuntimeState,
 } from "../domain/types.js";
@@ -51,6 +52,18 @@ function defaultNotificationSettings(): NotificationSettings {
   return {
     webhookUrl: "",
     dmEnabled: false,
+    rules: defaultNotificationRules(),
+  };
+}
+
+function defaultNotificationRules(): NotificationRuleSet {
+  return {
+    manualRuns: true,
+    scheduledEvents: true,
+    queueLifecycle: true,
+    queueItems: false,
+    failures: true,
+    performanceWarnings: true,
   };
 }
 
@@ -179,6 +192,14 @@ function normalizeState(input: unknown): ControlPanelState {
                 ? state.notificationSettings.webhookUrl.trim()
                 : "",
             dmEnabled: !!state.notificationSettings.dmEnabled,
+            rules:
+              state.notificationSettings.rules &&
+              typeof state.notificationSettings.rules === "object"
+                ? {
+                    ...defaultNotificationRules(),
+                    ...state.notificationSettings.rules,
+                  }
+                : defaultNotificationRules(),
             updatedAt:
               typeof state.notificationSettings.updatedAt === "string"
                 ? state.notificationSettings.updatedAt

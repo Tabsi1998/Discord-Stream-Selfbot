@@ -260,6 +260,10 @@ test("ControlPanelService persists notification settings and includes them in ex
     const settings = context.service.updateNotificationSettings({
       webhookUrl: "https://discord.com/api/webhooks/123/example",
       dmEnabled: true,
+      rules: {
+        queueItems: true,
+        performanceWarnings: false,
+      },
     });
 
     assert.equal(
@@ -267,6 +271,8 @@ test("ControlPanelService persists notification settings and includes them in ex
       "https://discord.com/api/webhooks/123/example",
     );
     assert.equal(settings.dmEnabled, true);
+    assert.equal(settings.rules.queueItems, true);
+    assert.equal(settings.rules.performanceWarnings, false);
 
     const exported = context.service.exportConfiguration();
     assert.equal(
@@ -274,6 +280,59 @@ test("ControlPanelService persists notification settings and includes them in ex
       "https://discord.com/api/webhooks/123/example",
     );
     assert.equal(exported.data.notificationSettings.dmEnabled, true);
+    assert.equal(exported.data.notificationSettings.rules.queueItems, true);
+    assert.equal(
+      exported.data.notificationSettings.rules.performanceWarnings,
+      false,
+    );
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService suppresses notifications when a rule is disabled", async () => {
+  const context = createServiceContext();
+  const delivered: string[] = [];
+
+  try {
+    context.service.updateNotificationSettings({
+      webhookUrl: "https://discord.com/api/webhooks/123/example",
+      dmEnabled: true,
+      rules: {
+        manualRuns: false,
+      },
+    });
+
+    (
+      context.service as unknown as {
+        sendWebhookNotification: (message: string) => Promise<void>;
+        sendDmNotification: (message: string) => Promise<void>;
+      }
+    ).sendWebhookNotification = async (message: string) => {
+      delivered.push(`webhook:${message}`);
+    };
+    (
+      context.service as unknown as {
+        sendDmNotification: (message: string) => Promise<void>;
+      }
+    ).sendDmNotification = async (message: string) => {
+      delivered.push(`dm:${message}`);
+    };
+
+    await ControlPanelService.prototype.sendNotification.call(
+      context.service,
+      "Manual stream",
+      "manualRuns",
+      "primary",
+    );
+    await ControlPanelService.prototype.sendNotification.call(
+      context.service,
+      "Failure",
+      "failures",
+      "primary",
+    );
+
+    assert.deepEqual(delivered, ["webhook:Failure", "dm:Failure"]);
   } finally {
     context.dispose();
   }
@@ -445,6 +504,14 @@ test("ControlPanelService import normalizes stale running state and replaces per
         notificationSettings: {
           webhookUrl: "https://discord.com/api/webhooks/999/imported",
           dmEnabled: false,
+          rules: {
+            manualRuns: true,
+            scheduledEvents: false,
+            queueLifecycle: true,
+            queueItems: false,
+            failures: true,
+            performanceWarnings: true,
+          },
         },
         channels: [
           {

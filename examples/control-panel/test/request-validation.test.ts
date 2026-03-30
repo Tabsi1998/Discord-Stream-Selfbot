@@ -7,6 +7,7 @@ import {
   parseEventDeleteInput,
   parseEventInput,
   parseEventUpdateInput,
+  parseNotificationSettingsInput,
   parsePresetInput,
   parseQueueConfigInput,
 } from "../src/server/requestValidation.js";
@@ -113,6 +114,30 @@ test("parseEventInput validates recurrence blocks", () => {
     interval: 2,
     daysOfWeek: [1, 3, 5],
     until: "2026-06-10T18:00:00.000Z",
+  });
+});
+
+test("parseNotificationSettingsInput accepts partial notification rules", () => {
+  const result = parseNotificationSettingsInput({
+    webhookUrl: "https://discord.com/api/webhooks/123/example",
+    dmEnabled: true,
+    rules: {
+      manualRuns: false,
+      failures: true,
+    },
+  });
+
+  assert.deepEqual(result, {
+    webhookUrl: "https://discord.com/api/webhooks/123/example",
+    dmEnabled: true,
+    rules: {
+      manualRuns: false,
+      scheduledEvents: undefined,
+      queueLifecycle: undefined,
+      queueItems: undefined,
+      failures: true,
+      performanceWarnings: undefined,
+    },
   });
 });
 

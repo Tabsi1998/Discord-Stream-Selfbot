@@ -19,6 +19,14 @@ function createBaseState(): ControlPanelState {
     notificationSettings: {
       webhookUrl: "",
       dmEnabled: false,
+      rules: {
+        manualRuns: true,
+        scheduledEvents: true,
+        queueLifecycle: true,
+        queueItems: false,
+        failures: true,
+        performanceWarnings: true,
+      },
     },
     runtime: {
       discordStatus: "ready",

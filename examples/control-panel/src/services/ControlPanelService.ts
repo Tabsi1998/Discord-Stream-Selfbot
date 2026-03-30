@@ -15,6 +15,8 @@ import type {
   EventStatus,
   FallbackSource,
   ManualRunInput,
+  NotificationEventType,
+  NotificationRuleSet,
   NotificationSettings,
   NotificationSettingsInput,
   QueueConfig,
@@ -27,6 +29,7 @@ import type {
 } from "../domain/types.js";
 import { isYouTubeUrl } from "../runtime/SourceResolver.js";
 import type {
+  PerformanceWarningInfo,
   StreamRuntime,
   RunEndedInfo,
   RunFailedInfo,
@@ -75,6 +78,48 @@ function normalizeWebhookUrl(value: string | undefined) {
   }
 
   return parsed.toString();
+}
+
+function createDefaultNotificationRules(): NotificationRuleSet {
+  return {
+    manualRuns: true,
+    scheduledEvents: true,
+    queueLifecycle: true,
+    queueItems: false,
+    failures: true,
+    performanceWarnings: true,
+  };
+}
+
+function mergeNotificationRules(
+  input?: Partial<NotificationRuleSet>,
+  fallback?: NotificationRuleSet,
+): NotificationRuleSet {
+  const base = fallback ?? createDefaultNotificationRules();
+  return {
+    manualRuns:
+      typeof input?.manualRuns === "boolean"
+        ? input.manualRuns
+        : base.manualRuns,
+    scheduledEvents:
+      typeof input?.scheduledEvents === "boolean"
+        ? input.scheduledEvents
+        : base.scheduledEvents,
+    queueLifecycle:
+      typeof input?.queueLifecycle === "boolean"
+        ? input.queueLifecycle
+        : base.queueLifecycle,
+    queueItems:
+      typeof input?.queueItems === "boolean"
+        ? input.queueItems
+        : base.queueItems,
+    failures:
+      typeof input?.failures === "boolean" ? input.failures : base.failures,
+    performanceWarnings:
+      typeof input?.performanceWarnings === "boolean"
+        ? input.performanceWarnings
+        : base.performanceWarnings,
+  };
 }
 
 function blocksScheduling(status: EventStatus) {
@@ -129,6 +174,9 @@ export class ControlPanelService {
       this.onRunFailed(info);
       this.onQueueRunFailed(info);
     });
+    this.runtime.on("performanceWarning", (info: PerformanceWarningInfo) => {
+      this.onPerformanceWarning(info);
+    });
   }
 
   public snapshot(): ControlPanelState {
@@ -180,6 +228,7 @@ export class ControlPanelService {
       {
         webhook: settings.webhookUrl ? "configured" : "disabled",
         dmEnabled: settings.dmEnabled ? "1" : "0",
+        activeRules: String(Object.values(settings.rules).filter(Boolean).length),
       },
     );
     return settings;
@@ -202,6 +251,7 @@ export class ControlPanelService {
     }
     await this.sendNotification(
       "Test-Benachrichtigung vom Stream Bot",
+      "manualRuns",
       botId,
       settings,
     );
@@ -773,6 +823,11 @@ export class ControlPanelService {
         preset,
         plannedStopAt: event.endAt,
       });
+      this.sendNotification(
+        `Event gestartet: ${event.name} in ${channel.name}`,
+        "scheduledEvents",
+        channel.botId,
+      ).catch(() => {});
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to start event";
@@ -809,6 +864,7 @@ export class ControlPanelService {
       .then((result) => {
         this.sendNotification(
           `Stream gestartet: ${channel.name} mit ${preset.name}`,
+          "manualRuns",
           channel.botId,
         ).catch(() => {});
         return result;
@@ -825,6 +881,7 @@ export class ControlPanelService {
     if (stopped && run && reason !== "queue-preempted-for-event") {
       this.sendNotification(
         `Stream gestoppt: ${run.channelName}`,
+        "manualRuns",
         run.botId,
       ).catch(() => {});
     }
@@ -839,6 +896,7 @@ export class ControlPanelService {
         stoppedCount === 1
           ? `Stream gestoppt: ${runs[0]?.channelName ?? "unbekannt"}`
           : `${stoppedCount} Streams werden gestoppt`,
+        "manualRuns",
       ).catch(() => {});
     }
     return stoppedCount;
@@ -856,6 +914,7 @@ export class ControlPanelService {
     let shouldMarkCompleted = false;
     let discordEventId: string | undefined;
     let channelId: string | undefined;
+    let notificationMessage: string | undefined;
 
     this.store.update((draft) => {
       const event = this.requireEventFromDraft(draft, info.run.eventId!);
@@ -868,8 +927,10 @@ export class ControlPanelService {
           info.abortReason === "manual-stop")
       ) {
         event.status = "canceled";
+        notificationMessage = `Event abgebrochen: ${event.name}`;
       } else {
         event.status = "completed";
+        notificationMessage = `Event abgeschlossen: ${event.name}`;
         if (event.discordEventId) {
           shouldMarkCompleted = true;
           discordEventId = event.discordEventId;
@@ -891,13 +952,45 @@ export class ControlPanelService {
       }
     }
 
+    if (notificationMessage) {
+      this.sendNotification(
+        notificationMessage,
+        "scheduledEvents",
+        info.run.botId,
+      ).catch(() => {});
+    }
+
     this.resumeQueueAfterScheduledEvent(info.run.botId, info.run.eventId);
   }
 
   private onRunFailed(info: RunFailedInfo) {
-    if (info.run.kind !== "event" || !info.run.eventId) return;
+    if (info.run.kind !== "event" || !info.run.eventId) {
+      this.sendNotification(
+        `Stream fehlgeschlagen: ${info.run.channelName} | ${info.error}`,
+        "failures",
+        info.run.botId,
+      ).catch(() => {});
+      return;
+    }
     this.failEvent(info.run.eventId, info.error);
+    this.sendNotification(
+      `Event fehlgeschlagen: ${info.run.channelName} | ${info.error}`,
+      "failures",
+      info.run.botId,
+    ).catch(() => {});
     this.resumeQueueAfterScheduledEvent(info.run.botId, info.run.eventId);
+  }
+
+  private onPerformanceWarning(info: PerformanceWarningInfo) {
+    const detail =
+      info.kind === "lag"
+        ? `Speed ${info.speed ?? "?"} | FPS ${info.fps ?? "?"}`
+        : `Dropped Frames ${info.dropFrames ?? "?"}`;
+    this.sendNotification(
+      `Performance-Warnung: ${info.run.channelName} | ${detail}`,
+      "performanceWarnings",
+      info.run.botId,
+    ).catch(() => {});
   }
 
   private failEvent(id: string, error: string) {
@@ -1418,6 +1511,7 @@ export class ControlPanelService {
     });
     await this.sendNotification(
       `Queue gestartet: ${state.queue.length} Items in ${channel.name}`,
+      "queueLifecycle",
       channel.botId,
     );
     await this.playCurrentQueueItem();
@@ -1448,6 +1542,7 @@ export class ControlPanelService {
   public stopQueue() {
     const queueState = this.store.snapshot().queueConfig;
     const queueBotId = queueState.botId;
+    const wasActive = queueState.active;
     this.store.update((draft) => {
       draft.queueConfig.active = false;
       draft.queueConfig.pausedByEvent = false;
@@ -1458,6 +1553,11 @@ export class ControlPanelService {
       this.stopActiveForBot("manual-stop", queueBotId);
     }
     this.store.appendLog("info", "Queue gestoppt");
+    if (wasActive) {
+      this.sendNotification("Queue gestoppt", "queueLifecycle", queueBotId).catch(
+        () => {},
+      );
+    }
   }
 
   public reorderQueue(id: string, newIndex: number) {
@@ -1587,6 +1687,7 @@ export class ControlPanelService {
       });
       await this.sendNotification(
         `Queue [${queueConfig.currentIndex + 1}/${queue.length}]: ${item.name}`,
+        "queueItems",
         channel.botId,
       );
     } catch (err: unknown) {
@@ -1599,6 +1700,11 @@ export class ControlPanelService {
         name: item.name,
         error: msg,
       });
+      await this.sendNotification(
+        `Queue-Item fehlgeschlagen: ${item.name} | ${msg}`,
+        "failures",
+        channel.botId,
+      );
       await this.advanceQueue();
     }
   }
@@ -1628,6 +1734,7 @@ export class ControlPanelService {
           this.store.appendLog("info", "Queue abgeschlossen");
           await this.sendNotification(
             "Queue abgeschlossen - alle Items gespielt",
+            "queueLifecycle",
             state.queueConfig.botId,
           );
         }
@@ -1678,10 +1785,14 @@ export class ControlPanelService {
 
   public async sendNotification(
     message: string,
+    eventType: NotificationEventType,
     botId?: string,
     settingsOverride?: NotificationSettings,
   ) {
     const settings = settingsOverride ?? this.resolveNotificationSettings();
+    if (!settings.rules[eventType]) {
+      return;
+    }
     const tasks: Promise<void>[] = [];
 
     if (settings.webhookUrl) {
@@ -1744,6 +1855,7 @@ export class ControlPanelService {
         : {
             webhookUrl: appConfig.notificationWebhookUrl,
             dmEnabled: appConfig.notificationDmEnabled,
+            rules: createDefaultNotificationRules(),
           });
 
     return {
@@ -1752,6 +1864,7 @@ export class ControlPanelService {
         typeof input?.dmEnabled === "boolean"
           ? input.dmEnabled
           : !!base.dmEnabled,
+      rules: mergeNotificationRules(input?.rules, base.rules),
       updatedAt: stampUpdate ? nowIso() : base.updatedAt,
     };
   }

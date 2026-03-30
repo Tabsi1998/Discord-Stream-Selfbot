@@ -28,11 +28,13 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 | Direkt-URLs | Jede MP4, HLS, M3U8 oder sonstige Media-URL |
 | Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
 | Queue | Mehrere URLs nacheinander abspielen, optional mit Loop |
+| Notification-Regeln | Getrennte Schalter fuer manuelle Streams, Events, Queue, Fehler und Performance-Warnungen |
 | Stream Health | Live Uptime-Anzeige und Status im Dashboard |
 | Live Telemetrie | FPS, Speed, Bitrate und Frame-Drops direkt im Panel |
 | URL-Test | Vor dem Streamen pruefen ob die Quelle erreichbar ist |
 | Qualitaetsprofile | 720p bis 4K, 30/60fps, Custom Encoder-Settings |
 | Buffer-Profile | Auto, Stabil, Ausgewogen, Minimale Latenz |
+| Source-Auto-Tuning | HLS, MPEG-TS/IPTV, MP4 und yt-dlp bekommen passendere Auto-Profile |
 | Hardware-Encoding | NVENC/VAAPI wird automatisch erkannt und bei Bedarf genutzt |
 | Go Live / Camera | Beide Discord Stream-Modi unterstuetzt |
 

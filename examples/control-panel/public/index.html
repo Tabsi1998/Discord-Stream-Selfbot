@@ -546,6 +546,35 @@
                 <input id="notificationDmEnabled" name="dmEnabled" type="checkbox" />
                 DM an den aktiven Selfbot senden
               </label>
+              <div class="full-width">
+                <p class="muted">Benachrichtigen bei</p>
+                <div class="checkbox-grid">
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRuleManualRuns" type="checkbox" />
+                    Manuelle Streams
+                  </label>
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRuleScheduledEvents" type="checkbox" />
+                    Geplante Events
+                  </label>
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRuleQueueLifecycle" type="checkbox" />
+                    Queue Start/Stop/Fertig
+                  </label>
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRuleQueueItems" type="checkbox" />
+                    Jedes Queue-Item
+                  </label>
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRuleFailures" type="checkbox" />
+                    Fehler
+                  </label>
+                  <label class="checkbox-field compact-checkbox">
+                    <input id="notificationRulePerformanceWarnings" type="checkbox" />
+                    Performance-Warnungen
+                  </label>
+                </div>
+              </div>
               <div class="form-actions full-width">
                 <button class="primary-button" type="submit">Speichern</button>
                 <button id="notificationTestButton" class="ghost-button" type="button">

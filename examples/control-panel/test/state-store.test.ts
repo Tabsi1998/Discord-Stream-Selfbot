@@ -79,6 +79,14 @@ test("AppStateStore migrates legacy activeRun state to activeRuns and default bo
     assert.deepEqual(snapshot.notificationSettings, {
       webhookUrl: "",
       dmEnabled: false,
+      rules: {
+        manualRuns: true,
+        scheduledEvents: true,
+        queueLifecycle: true,
+        queueItems: false,
+        failures: true,
+        performanceWarnings: true,
+      },
     });
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -157,6 +165,14 @@ test("AppStateStore falls back to backup files when the primary state file is co
         notificationSettings: {
           webhookUrl: "",
           dmEnabled: true,
+          rules: {
+            manualRuns: false,
+            scheduledEvents: true,
+            queueLifecycle: true,
+            queueItems: false,
+            failures: true,
+            performanceWarnings: false,
+          },
         },
         runtime: {
           discordStatus: "ready",
@@ -237,6 +253,14 @@ test("AppStateStore migrates legacy fallbackUrls to fallbackSources", () => {
         notificationSettings: {
           webhookUrl: "",
           dmEnabled: false,
+          rules: {
+            manualRuns: true,
+            scheduledEvents: true,
+            queueLifecycle: true,
+            queueItems: false,
+            failures: true,
+            performanceWarnings: true,
+          },
         },
         runtime: {
           discordStatus: "ready",

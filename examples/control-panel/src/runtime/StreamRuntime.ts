@@ -59,6 +59,14 @@ export type RunFailedInfo = {
   error: string;
 };
 
+export type PerformanceWarningInfo = {
+  kind: "lag" | "dropped-frames";
+  run: ActiveRun;
+  speed?: string;
+  fps?: string;
+  dropFrames?: number;
+};
+
 type ManagedBot = {
   profile: SelfbotProfileConfig;
   client: Client;
@@ -461,6 +469,7 @@ export class StreamRuntime extends EventEmitter {
         height: String(guardedPreset.height),
         fps: String(guardedPreset.fps),
         qualityProfile: resolvedPreset.qualityProfile,
+        sourceProfile: resolvedPreset.sourceProfile,
         bufferProfile: resolvedPreset.effectiveBufferProfile,
       });
 
@@ -1145,6 +1154,12 @@ export class StreamRuntime extends EventEmitter {
             ? "Use hardware acceleration or lower the preset"
             : "Lower the preset or bitrate if the source remains unstable",
       });
+      this.emit("performanceWarning", {
+        kind: "lag",
+        run: session.run,
+        speed: typeof speed === "number" ? speed.toFixed(2) : undefined,
+        fps: typeof fps === "number" ? fps.toFixed(1) : undefined,
+      } satisfies PerformanceWarningInfo);
     }
 
     if (!session.dropWarningIssued && dropFrames >= 20) {
@@ -1157,6 +1172,11 @@ export class StreamRuntime extends EventEmitter {
         encoder: session.selectedEncoderMode,
         dropped: String(dropFrames),
       });
+      this.emit("performanceWarning", {
+        kind: "dropped-frames",
+        run: session.run,
+        dropFrames,
+      } satisfies PerformanceWarningInfo);
     }
   }
 

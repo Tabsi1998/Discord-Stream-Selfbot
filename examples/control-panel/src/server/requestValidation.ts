@@ -4,6 +4,7 @@ import type {
   EventInput,
   EventSeriesScope,
   ManualRunInput,
+  NotificationRuleSet,
   NotificationSettingsInput,
   PresetInput,
   QualityProfile,
@@ -427,6 +428,7 @@ export function parseNotificationSettingsInput(value: unknown) {
   return {
     webhookUrl: readOptionalString(body.webhookUrl, "webhookUrl"),
     dmEnabled: readOptionalBoolean(body.dmEnabled, "dmEnabled"),
+    rules: parseNotificationRules(body.rules),
   } satisfies NotificationSettingsInput;
 }
 
@@ -435,8 +437,34 @@ export function parseNotificationTestInput(value: unknown) {
   return {
     webhookUrl: readOptionalString(body.webhookUrl, "webhookUrl"),
     dmEnabled: readOptionalBoolean(body.dmEnabled, "dmEnabled"),
+    rules: parseNotificationRules(body.rules),
     botId: readOptionalString(body.botId, "botId"),
   };
+}
+
+function parseNotificationRules(value: unknown) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const body = ensureObject(value, "rules");
+  return {
+    manualRuns: readOptionalBoolean(body.manualRuns, "rules.manualRuns"),
+    scheduledEvents: readOptionalBoolean(
+      body.scheduledEvents,
+      "rules.scheduledEvents",
+    ),
+    queueLifecycle: readOptionalBoolean(
+      body.queueLifecycle,
+      "rules.queueLifecycle",
+    ),
+    queueItems: readOptionalBoolean(body.queueItems, "rules.queueItems"),
+    failures: readOptionalBoolean(body.failures, "rules.failures"),
+    performanceWarnings: readOptionalBoolean(
+      body.performanceWarnings,
+      "rules.performanceWarnings",
+    ),
+  } satisfies Partial<NotificationRuleSet>;
 }
 
 export function parseConfigImportInput(value: unknown) {

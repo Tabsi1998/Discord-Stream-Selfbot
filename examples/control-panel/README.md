@@ -23,8 +23,10 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 - Buffer-Profile: Auto, Stabil, Ausgewogen, Minimale Latenz
 - Queue fuer mehrere Quellen mit Loop-Unterstuetzung
 - Queue-Steuerung direkt im Web-Panel (Add, Start, Skip, Reorder, Clear)
+- Benachrichtigungsregeln fuer manuelle Streams, Events, Queue, Fehler und Performance-Warnungen
 - Eingebauter Login-Schutz fuer das Panel per `PANEL_AUTH_*`
 - Automatische Hardware-Encoder-Erkennung fuer NVENC / VAAPI
+- Source-aware Auto-Tuning fuer yt-dlp, HLS, MPEG-TS/IPTV und Dateiquellen
 - Mehrere Selfbots mit eigener Presence und Voice-Status
 - Parallele Streams pro Selfbot statt global nur einer Session
 - Discord Chat-Befehle (help, status, start, stop, queue, logs, etc.)

@@ -106,6 +106,15 @@ const BUFFER_STRATEGIES = {
   },
 };
 
+const DEFAULT_NOTIFICATION_RULES = {
+  manualRuns: true,
+  scheduledEvents: true,
+  queueLifecycle: true,
+  queueItems: false,
+  failures: true,
+  performanceWarnings: true,
+};
+
 const els = {
   notice: document.querySelector("#notice"),
   refreshButton: document.querySelector("#refreshButton"),
@@ -140,6 +149,22 @@ const els = {
   notificationForm: document.querySelector("#notificationForm"),
   notificationWebhookUrl: document.querySelector("#notificationWebhookUrl"),
   notificationDmEnabled: document.querySelector("#notificationDmEnabled"),
+  notificationRuleManualRuns: document.querySelector(
+    "#notificationRuleManualRuns",
+  ),
+  notificationRuleScheduledEvents: document.querySelector(
+    "#notificationRuleScheduledEvents",
+  ),
+  notificationRuleQueueLifecycle: document.querySelector(
+    "#notificationRuleQueueLifecycle",
+  ),
+  notificationRuleQueueItems: document.querySelector(
+    "#notificationRuleQueueItems",
+  ),
+  notificationRuleFailures: document.querySelector("#notificationRuleFailures"),
+  notificationRulePerformanceWarnings: document.querySelector(
+    "#notificationRulePerformanceWarnings",
+  ),
   notificationSummary: document.querySelector("#notificationSummary"),
   notificationTestButton: document.querySelector("#notificationTestButton"),
   notificationResetButton: document.querySelector("#notificationResetButton"),
@@ -351,13 +376,40 @@ function getBufferStrategy(profile) {
   return BUFFER_STRATEGIES[profile] || BUFFER_STRATEGIES.auto;
 }
 
+function detectSourceProfile(sourceMode, sourceUrl) {
+  const normalized = (sourceUrl || "").trim().toLowerCase();
+  if (sourceMode === "yt-dlp") {
+    return "yt-dlp";
+  }
+  if (
+    normalized.includes("/proxy/ts/stream/") ||
+    normalized.includes("/ts/stream/") ||
+    /\.ts(?:[?#].*)?$/.test(normalized)
+  ) {
+    return "mpeg-ts";
+  }
+  if (
+    /\.m3u8(?:[?#].*)?$/.test(normalized) ||
+    normalized.includes("format=m3u8")
+  ) {
+    return "hls";
+  }
+  if (/\.(mp4|mkv|webm|mov)(?:[?#].*)?$/.test(normalized)) {
+    return "file";
+  }
+  return "generic";
+}
+
 function getRecommendedBitrates(
   width,
   height,
   fps,
   codec,
   _qualityProfile = "custom",
+  sourceMode = "direct",
+  sourceUrl = "",
 ) {
+  const sourceProfile = detectSourceProfile(sourceMode, sourceUrl);
   const pixels = width * height;
   const highFrameRate = fps >= 50;
   let video = 2500;
@@ -388,6 +440,14 @@ function getRecommendedBitrates(
     videoMax = Math.round(videoMax * 0.82);
   }
 
+  if (sourceProfile === "yt-dlp" || sourceProfile === "hls") {
+    video = Math.round(video * 0.92);
+    videoMax = Math.round(videoMax * 0.94);
+  } else if (sourceProfile === "mpeg-ts") {
+    video = Math.round(video * 0.88);
+    videoMax = Math.round(videoMax * 0.9);
+  }
+
   return {
     video: roundToNearest(video),
     videoMax: roundToNearest(videoMax),
@@ -397,6 +457,7 @@ function getRecommendedBitrates(
 
 function getEffectiveBufferProfile(
   sourceMode,
+  sourceUrl,
   _qualityProfile,
   width,
   height,
@@ -406,7 +467,12 @@ function getEffectiveBufferProfile(
   if (selectedProfile && selectedProfile !== "auto") {
     return selectedProfile;
   }
+  const sourceProfile = detectSourceProfile(sourceMode, sourceUrl);
+  if (sourceProfile === "mpeg-ts" || sourceProfile === "hls") return "stable";
   if (sourceMode === "yt-dlp" && fps >= 60) return "stable";
+  if (sourceMode === "yt-dlp" && (height >= 1080 || width >= 1920)) {
+    return "stable";
+  }
   if (fps >= 60) return "stable";
   if (height >= 1080 || width >= 1920) return "stable";
   return "balanced";
@@ -433,6 +499,8 @@ function getResolvedPresetFormSettings() {
     fps,
     codec,
     qualityProfile,
+    sourceMode,
+    els.presetSourceUrl.value,
   );
   const bitrateVideoKbps =
     qualityProfile === "custom"
@@ -457,6 +525,7 @@ function getResolvedPresetFormSettings() {
       : bitrateRecommendation.audio;
   const effectiveBufferProfile = getEffectiveBufferProfile(
     sourceMode,
+    els.presetSourceUrl.value,
     qualityProfile,
     width,
     height,
@@ -500,6 +569,10 @@ function getCurrentPresetRecommendation() {
 
 function syncPresetFieldsFromProfiles() {
   const resolved = getResolvedPresetFormSettings();
+  const sourceProfile = detectSourceProfile(
+    resolved.sourceMode,
+    els.presetSourceUrl.value,
+  );
   const autoManaged = resolved.qualityProfile !== "custom";
 
   if (autoManaged) {
@@ -533,7 +606,7 @@ function syncPresetFieldsFromProfiles() {
     : `${resolved.quality.label}: ${resolved.width}x${resolved.height} @ ${resolved.fps} FPS, Buffering auf ${bufferLabel}.`;
   els.presetProfileHint.dataset.tone =
     resolved.effectiveBufferProfile === "low-latency" ? "warn" : "info";
-  els.presetProfileHint.textContent = `${profileText} ${resolved.quality.description}`;
+  els.presetProfileHint.textContent = `${profileText} Quelle: ${sourceProfileLabel(sourceProfile)}. ${resolved.quality.description}`;
 }
 
 function updatePresetQualityHint() {
@@ -972,11 +1045,35 @@ function describeFallbackSources(item) {
   return `${sources.length} Reservequelle${sources.length === 1 ? "" : "n"} | ${preview}${extra}`;
 }
 
+function normalizeNotificationRules(rules) {
+  return {
+    ...DEFAULT_NOTIFICATION_RULES,
+    ...(rules && typeof rules === "object" ? rules : {}),
+  };
+}
+
+function sourceProfileLabel(sourceProfile) {
+  switch (sourceProfile) {
+    case "yt-dlp":
+      return "yt-dlp / Remote";
+    case "hls":
+      return "HLS / m3u8";
+    case "mpeg-ts":
+      return "MPEG-TS / IPTV";
+    case "file":
+      return "Datei / MP4";
+    default:
+      return "Direkt / generisch";
+  }
+}
+
 function describePresetQuality(item) {
   const profile = getQualityProfileConfig(item.qualityProfile || "custom");
+  const sourceProfile = detectSourceProfile(item.sourceMode, item.sourceUrl);
   const buffer = getBufferStrategy(
     getEffectiveBufferProfile(
       item.sourceMode,
+      item.sourceUrl,
       item.qualityProfile || "custom",
       item.width,
       item.height,
@@ -986,10 +1083,10 @@ function describePresetQuality(item) {
   );
 
   if (profile.preserveSource) {
-    return `${profile.label} | ${buffer.label}`;
+    return `${profile.label} | ${buffer.label} | ${sourceProfileLabel(sourceProfile)}`;
   }
 
-  return `${profile.label} | ${item.videoCodec} | ${item.width}x${item.height} @ ${item.fps} fps | ${buffer.label}`;
+  return `${profile.label} | ${item.videoCodec} | ${item.width}x${item.height} @ ${item.fps} fps | ${buffer.label} | ${sourceProfileLabel(sourceProfile)}`;
 }
 
 function fillSelect(select, items, placeholder, mapper) {
@@ -1375,12 +1472,20 @@ function renderLogs() {
 }
 
 function renderNotifications() {
-  const settings = state.app.notificationSettings || {
+  const settings = state.app?.notificationSettings || {
     webhookUrl: "",
     dmEnabled: false,
+    rules: DEFAULT_NOTIFICATION_RULES,
   };
+  const rules = normalizeNotificationRules(settings.rules);
   els.notificationWebhookUrl.value = settings.webhookUrl || "";
   els.notificationDmEnabled.checked = !!settings.dmEnabled;
+  els.notificationRuleManualRuns.checked = !!rules.manualRuns;
+  els.notificationRuleScheduledEvents.checked = !!rules.scheduledEvents;
+  els.notificationRuleQueueLifecycle.checked = !!rules.queueLifecycle;
+  els.notificationRuleQueueItems.checked = !!rules.queueItems;
+  els.notificationRuleFailures.checked = !!rules.failures;
+  els.notificationRulePerformanceWarnings.checked = !!rules.performanceWarnings;
 
   const parts = [];
   if (settings.webhookUrl) {
@@ -1389,6 +1494,8 @@ function renderNotifications() {
     parts.push("Webhook aus");
   }
   parts.push(settings.dmEnabled ? "DM aktiv" : "DM aus");
+  const enabledRuleCount = Object.values(rules).filter(Boolean).length;
+  parts.push(`${enabledRuleCount}/6 Regeln aktiv`);
   if (settings.updatedAt) {
     parts.push(`Zuletzt gespeichert: ${formatDateTime(settings.updatedAt)}`);
   }
@@ -1551,9 +1658,17 @@ function resetNotificationForm() {
   const settings = state.app?.notificationSettings || {
     webhookUrl: "",
     dmEnabled: false,
+    rules: DEFAULT_NOTIFICATION_RULES,
   };
+  const rules = normalizeNotificationRules(settings.rules);
   els.notificationWebhookUrl.value = settings.webhookUrl || "";
   els.notificationDmEnabled.checked = !!settings.dmEnabled;
+  els.notificationRuleManualRuns.checked = !!rules.manualRuns;
+  els.notificationRuleScheduledEvents.checked = !!rules.scheduledEvents;
+  els.notificationRuleQueueLifecycle.checked = !!rules.queueLifecycle;
+  els.notificationRuleQueueItems.checked = !!rules.queueItems;
+  els.notificationRuleFailures.checked = !!rules.failures;
+  els.notificationRulePerformanceWarnings.checked = !!rules.performanceWarnings;
 }
 
 async function refresh(forceChannels = false) {
@@ -1643,9 +1758,18 @@ function buildQueuePayload() {
 }
 
 function buildNotificationPayload() {
+  const rules = {
+    manualRuns: els.notificationRuleManualRuns.checked,
+    scheduledEvents: els.notificationRuleScheduledEvents.checked,
+    queueLifecycle: els.notificationRuleQueueLifecycle.checked,
+    queueItems: els.notificationRuleQueueItems.checked,
+    failures: els.notificationRuleFailures.checked,
+    performanceWarnings: els.notificationRulePerformanceWarnings.checked,
+  };
   return {
     webhookUrl: els.notificationWebhookUrl.value.trim(),
     dmEnabled: els.notificationDmEnabled.checked,
+    rules,
   };
 }
 

@@ -8,6 +8,13 @@ import type {
   VideoCodec,
 } from "./types.js";
 
+export type SourceProfile =
+  | "generic"
+  | "yt-dlp"
+  | "hls"
+  | "mpeg-ts"
+  | "file";
+
 type QualityProfileConfig = {
   id: QualityProfile;
   label: string;
@@ -35,6 +42,7 @@ type BufferStrategy = {
 type PresetLike = Pick<
   StreamPreset | PresetInput,
   | "sourceMode"
+  | "sourceUrl"
   | "qualityProfile"
   | "bufferProfile"
   | "width"
@@ -196,13 +204,44 @@ export function getBufferStrategy(profile: BufferStrategyId) {
   return BUFFER_STRATEGIES[profile];
 }
 
+export function detectSourceProfile(
+  sourceMode: SourceMode,
+  sourceUrl: string,
+): SourceProfile {
+  if (sourceMode === "yt-dlp") {
+    return "yt-dlp";
+  }
+
+  const normalized = sourceUrl.trim().toLowerCase();
+  if (
+    normalized.includes("/proxy/ts/stream/") ||
+    normalized.includes("/ts/stream/") ||
+    /\.ts(?:[?#].*)?$/.test(normalized)
+  ) {
+    return "mpeg-ts";
+  }
+  if (
+    /\.m3u8(?:[?#].*)?$/.test(normalized) ||
+    normalized.includes("format=m3u8")
+  ) {
+    return "hls";
+  }
+  if (/\.(mp4|mkv|webm|mov)(?:[?#].*)?$/.test(normalized)) {
+    return "file";
+  }
+  return "generic";
+}
+
 export function getRecommendedBitrates(
   _qualityProfile: QualityProfile,
   width: number,
   height: number,
   fps: number,
   codec: VideoCodec,
+  sourceMode: SourceMode = "direct",
+  sourceUrl = "",
 ) {
+  const sourceProfile = detectSourceProfile(sourceMode, sourceUrl);
   const pixels = width * height;
   const highFrameRate = fps >= 50;
   let bitrateVideoKbps = 2500;
@@ -233,6 +272,14 @@ export function getRecommendedBitrates(
     maxBitrateVideoKbps = Math.round(maxBitrateVideoKbps * 0.85);
   }
 
+  if (sourceProfile === "yt-dlp" || sourceProfile === "hls") {
+    bitrateVideoKbps = Math.round(bitrateVideoKbps * 0.92);
+    maxBitrateVideoKbps = Math.round(maxBitrateVideoKbps * 0.94);
+  } else if (sourceProfile === "mpeg-ts") {
+    bitrateVideoKbps = Math.round(bitrateVideoKbps * 0.88);
+    maxBitrateVideoKbps = Math.round(maxBitrateVideoKbps * 0.9);
+  }
+
   return {
     bitrateVideoKbps: Math.max(500, Math.round(bitrateVideoKbps / 50) * 50),
     maxBitrateVideoKbps: Math.max(
@@ -245,12 +292,18 @@ export function getRecommendedBitrates(
 
 function pickAutoBufferProfile(
   sourceMode: SourceMode,
+  sourceUrl: string,
   _qualityProfile: QualityProfile,
   width: number,
   height: number,
   fps: number,
 ): BufferStrategyId {
+  const sourceProfile = detectSourceProfile(sourceMode, sourceUrl);
+  if (sourceProfile === "mpeg-ts" || sourceProfile === "hls") return "stable";
   if (sourceMode === "yt-dlp" && fps >= 60) return "stable";
+  if (sourceMode === "yt-dlp" && (height >= 1080 || width >= 1920)) {
+    return "stable";
+  }
   if (fps >= 60) return "stable";
   if (height >= 1080 || width >= 1920) return "stable";
   return "balanced";
@@ -281,6 +334,8 @@ export function normalizePresetInput(input: PresetInput) {
       height,
       fps,
       input.videoCodec,
+      input.sourceMode,
+      input.sourceUrl,
     );
     bitrateVideoKbps = recommended.bitrateVideoKbps;
     maxBitrateVideoKbps = recommended.maxBitrateVideoKbps;
@@ -291,6 +346,7 @@ export function normalizePresetInput(input: PresetInput) {
     bufferProfile === "auto"
       ? pickAutoBufferProfile(
           input.sourceMode,
+          input.sourceUrl,
           qualityProfile,
           width,
           height,
@@ -320,10 +376,12 @@ export function resolveRuntimePresetConfig(preset: PresetLike) {
     preset.minimizeLatency,
   );
   const qualityConfig = getQualityProfileConfig(qualityProfile);
+  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
   const effectiveBufferProfile =
     bufferProfile === "auto"
       ? pickAutoBufferProfile(
           preset.sourceMode,
+          preset.sourceUrl,
           qualityProfile,
           preset.width,
           preset.height,
@@ -331,9 +389,20 @@ export function resolveRuntimePresetConfig(preset: PresetLike) {
         )
       : bufferProfile;
   const bufferStrategy = getBufferStrategy(effectiveBufferProfile);
+  let bitrateBufferFactor = bufferStrategy.bitrateBufferFactor;
+  let readrateInitialBurst = bufferStrategy.readrateInitialBurst;
+
+  if (sourceProfile === "yt-dlp" || sourceProfile === "hls") {
+    bitrateBufferFactor += 0.5;
+    readrateInitialBurst = Math.max(readrateInitialBurst, 6);
+  } else if (sourceProfile === "mpeg-ts") {
+    bitrateBufferFactor += 0.75;
+    readrateInitialBurst = Math.max(readrateInitialBurst, 8);
+  }
 
   return {
     qualityProfile,
+    sourceProfile,
     qualityConfig,
     bufferProfile,
     effectiveBufferProfile,
@@ -344,8 +413,8 @@ export function resolveRuntimePresetConfig(preset: PresetLike) {
       `-probesize ${bufferStrategy.probeSize}`,
       `-analyzeduration ${bufferStrategy.analyzeDuration}`,
     ],
-    bitrateBufferFactor: bufferStrategy.bitrateBufferFactor,
-    readrateInitialBurst: bufferStrategy.readrateInitialBurst,
+    bitrateBufferFactor,
+    readrateInitialBurst,
     minimizeLatency: bufferStrategy.minimizeLatency,
   };
 }
@@ -371,6 +440,7 @@ export function applyRuntimePerformanceGuardrails(
   preset: Pick<
     StreamPreset,
     | "sourceMode"
+    | "sourceUrl"
     | "width"
     | "height"
     | "fps"
@@ -381,6 +451,7 @@ export function applyRuntimePerformanceGuardrails(
   >,
   selectedEncoderMode: VideoEncoderMode,
 ) {
+  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
   let width = preset.width;
   let height = preset.height;
   let fps = preset.fps;
@@ -413,6 +484,8 @@ export function applyRuntimePerformanceGuardrails(
         height,
         fps,
         preset.videoCodec,
+        preset.sourceMode,
+        preset.sourceUrl,
       );
       bitrateVideoKbps = Math.min(
         bitrateVideoKbps,
@@ -425,6 +498,19 @@ export function applyRuntimePerformanceGuardrails(
       bitrateAudioKbps = Math.min(
         bitrateAudioKbps,
         recommended.bitrateAudioKbps,
+      );
+    }
+
+    if (
+      (sourceProfile === "yt-dlp" ||
+        sourceProfile === "hls" ||
+        sourceProfile === "mpeg-ts") &&
+      bitrateVideoKbps > 9000
+    ) {
+      bitrateVideoKbps = 9000;
+      maxBitrateVideoKbps = Math.min(maxBitrateVideoKbps, 10000);
+      warnings.push(
+        "Remote live-style sources were capped to safer software bitrates",
       );
     }
   }
