@@ -950,6 +950,13 @@ export class StreamRuntime extends EventEmitter {
         cleanup();
         resolve();
       };
+      const onStderr = (line: string) => {
+        const trimmed = line.trim();
+        if (trimmed === "progress=continue" || trimmed === "progress=end") {
+          cleanup();
+          resolve();
+        }
+      };
       const onError = (error: unknown) => {
         cleanup();
         if (cancelSignal.aborted) {
@@ -968,11 +975,13 @@ export class StreamRuntime extends EventEmitter {
       const cleanup = () => {
         clearTimeout(timeout);
         command.off("progress", onProgress);
+        command.off("stderr", onStderr);
         command.off("error", onError);
         command.off("end", onEnd);
       };
 
       command.once("progress", onProgress);
+      command.on("stderr", onStderr);
       command.once("error", onError);
       command.once("end", onEnd);
 
