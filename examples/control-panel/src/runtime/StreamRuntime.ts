@@ -163,7 +163,7 @@ export class StreamRuntime extends EventEmitter {
   private readonly store: AppStateStore;
   private readonly sourceResolver: SourceResolver;
   private readonly bots = new Map<string, ManagedBot>();
-  private activeSession?: ActiveSession;
+  private readonly activeSessions = new Map<string, ActiveSession>();
 
   constructor(store: AppStateStore) {
     super();
@@ -192,6 +192,12 @@ export class StreamRuntime extends EventEmitter {
       runtime.discordStatus = "starting";
       runtime.primaryBotId = appConfig.primarySelfbotId;
       runtime.bots = appConfig.selfbotProfiles.map(buildManagedSelfbotState);
+      runtime.activeRun = undefined;
+      runtime.activeRuns = [];
+      runtime.telemetry = undefined;
+      runtime.telemetryByBot = {};
+      runtime.selectedVideoEncoder = undefined;
+      runtime.selectedVideoEncodersByBot = {};
       runtime.ffmpegPath = appConfig.ffmpegPath;
       runtime.ffprobePath = appConfig.ffprobePath;
       runtime.ytDlpPath = appConfig.ytDlpPath;
@@ -217,6 +223,12 @@ export class StreamRuntime extends EventEmitter {
 
   public hasBot(botId: string) {
     return this.bots.has(botId);
+  }
+
+  public getActiveRuns() {
+    return [...this.activeSessions.values()]
+      .map((session) => session.run)
+      .sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
   }
 
   public async ensureReady(botId = appConfig.primarySelfbotId) {
@@ -250,8 +262,11 @@ export class StreamRuntime extends EventEmitter {
     await bot.loginPromise;
   }
 
-  public getActiveRun() {
-    return this.activeSession?.run;
+  public getActiveRun(botId?: string) {
+    if (botId) {
+      return this.activeSessions.get(botId)?.run;
+    }
+    return this.pickPreferredRun(this.getActiveRuns());
   }
 
   public getClient(botId = appConfig.primarySelfbotId) {
@@ -309,11 +324,10 @@ export class StreamRuntime extends EventEmitter {
   }
 
   public async startRun(options: StartRunOptions): Promise<ActiveRun> {
-    if (this.activeSession) {
-      throw new Error("A stream is already active");
-    }
-
     const botId = options.channel.botId || appConfig.primarySelfbotId;
+    if (this.activeSessions.has(botId)) {
+      throw new Error("A stream is already active for this selfbot");
+    }
     const bot = this.requireBot(botId);
     await this.ensureReady(botId);
 
@@ -330,19 +344,6 @@ export class StreamRuntime extends EventEmitter {
       plannedStopAt: options.plannedStopAt,
       status: "starting",
     };
-
-    this.store.setRuntime((runtime) => {
-      runtime.activeRun = run;
-      runtime.lastStartedAt = run.startedAt;
-      runtime.lastError = undefined;
-    });
-    this.store.appendLog("info", "Starting stream", {
-      botId: bot.profile.id,
-      botName: bot.profile.name,
-      kind: run.kind,
-      channel: options.channel.name,
-      preset: options.preset.name,
-    });
 
     const controller = new AbortController();
     const resolvedEncoder = this.resolveVideoEncoder(options.preset);
@@ -375,7 +376,19 @@ export class StreamRuntime extends EventEmitter {
       controller,
       closed: false,
     };
-    this.activeSession = session;
+    this.activeSessions.set(bot.profile.id, session);
+    this.store.setRuntime((runtime) => {
+      runtime.lastStartedAt = run.startedAt;
+      runtime.lastError = undefined;
+      this.syncRuntimeDerivedState(runtime);
+    });
+    this.store.appendLog("info", "Starting stream", {
+      botId: bot.profile.id,
+      botName: bot.profile.name,
+      kind: run.kind,
+      channel: options.channel.name,
+      preset: options.preset.name,
+    });
 
     const channel = await bot.client.channels.fetch(options.channel.channelId);
     if (!channel || !channel.isVoice()) {
@@ -451,10 +464,13 @@ export class StreamRuntime extends EventEmitter {
       }
 
       this.store.setRuntime((runtime) => {
-        runtime.selectedVideoEncoder = resolvedEncoder.mode;
-        runtime.telemetry = {
+        runtime.selectedVideoEncodersByBot ??= {};
+        runtime.telemetryByBot ??= {};
+        runtime.selectedVideoEncodersByBot[bot.profile.id] = resolvedEncoder.mode;
+        runtime.telemetryByBot[bot.profile.id] = {
           updatedAt: new Date().toISOString(),
         };
+        this.syncRuntimeDerivedState(runtime);
       });
 
       ({ command, output } = prepareStream(
@@ -532,19 +548,18 @@ export class StreamRuntime extends EventEmitter {
       throw error instanceof Error ? error : new Error(message);
     }
 
-    if (this.activeSession !== session) {
+    if (this.activeSessions.get(session.botId) !== session) {
       throw new Error("Stream session ended before startup completed");
     }
 
-    this.activeSession.run = {
-      ...this.activeSession.run,
+    session.run = {
+      ...session.run,
       status: "running",
     };
     this.store.setRuntime((runtime) => {
-      if (!runtime.activeRun) return;
-      runtime.activeRun.status = "running";
+      this.syncRuntimeDerivedState(runtime);
     });
-    this.emit("runStarted", this.activeSession.run);
+    this.emit("runStarted", session.run);
     this.store.appendLog("info", "Stream is running", {
       botId: bot.profile.id,
       botName: bot.profile.name,
@@ -563,31 +578,43 @@ export class StreamRuntime extends EventEmitter {
       });
     });
 
-    return this.activeSession.run;
+    return session.run;
   }
 
-  public stopActive(reason = "manual-stop"): boolean {
-    if (!this.activeSession) return false;
-    if (this.activeSession.run.status === "stopping") {
-      this.activeSession.stopReason ??= reason;
-      if (!this.activeSession.stopTimeout) {
-        this.armStopFallback(this.activeSession);
+  public stopActive(reason = "manual-stop", botId?: string): boolean {
+    const session = botId
+      ? this.activeSessions.get(botId)
+      : this.pickPreferredSession();
+    if (!session) return false;
+    if (session.run.status === "stopping") {
+      session.stopReason ??= reason;
+      if (!session.stopTimeout) {
+        this.armStopFallback(session);
       }
       return true;
     }
 
-    this.activeSession.stopReason = reason;
-    this.activeSession.run = {
-      ...this.activeSession.run,
+    session.stopReason = reason;
+    session.run = {
+      ...session.run,
       status: "stopping",
     };
     this.store.setRuntime((runtime) => {
-      if (!runtime.activeRun) return;
-      runtime.activeRun.status = "stopping";
+      this.syncRuntimeDerivedState(runtime);
     });
-    this.activeSession.controller.abort();
-    this.armStopFallback(this.activeSession);
+    session.controller.abort();
+    this.armStopFallback(session);
     return true;
+  }
+
+  public stopAllActive(reason = "manual-stop") {
+    let stopped = 0;
+    for (const botId of this.activeSessions.keys()) {
+      if (this.stopActive(reason, botId)) {
+        stopped += 1;
+      }
+    }
+    return stopped;
   }
 
   private requireBot(botId: string) {
@@ -596,6 +623,35 @@ export class StreamRuntime extends EventEmitter {
       throw new Error(`Configured selfbot "${botId}" was not found`);
     }
     return bot;
+  }
+
+  private pickPreferredRun(activeRuns: ActiveRun[]) {
+    if (!activeRuns.length) return undefined;
+    return activeRuns.find((run) => run.botId === appConfig.primarySelfbotId)
+      ?? activeRuns.find((run) => run.status === "running")
+      ?? activeRuns[0];
+  }
+
+  private pickPreferredSession() {
+    const preferredBotSession = this.activeSessions.get(appConfig.primarySelfbotId);
+    if (preferredBotSession) {
+      return preferredBotSession;
+    }
+    return this.activeSessions.values().next().value as ActiveSession | undefined;
+  }
+
+  private syncRuntimeDerivedState(runtime: RuntimeState) {
+    const activeRuns = this.getActiveRuns();
+    runtime.activeRuns = activeRuns;
+    runtime.activeRun = this.pickPreferredRun(activeRuns);
+
+    const activeBotId = runtime.activeRun?.botId;
+    runtime.selectedVideoEncoder = activeBotId
+      ? runtime.selectedVideoEncodersByBot?.[activeBotId]
+      : undefined;
+    runtime.telemetry = activeBotId
+      ? runtime.telemetryByBot?.[activeBotId]
+      : undefined;
   }
 
   private registerBotEvents(bot: ManagedBot) {
@@ -620,7 +676,7 @@ export class StreamRuntime extends EventEmitter {
         userTag: bot.client.user?.tag ?? "unknown",
       });
 
-      if (!this.activeSession || this.activeSession.botId !== bot.profile.id) {
+      if (!this.activeSessions.has(bot.profile.id)) {
         void this.applyIdlePresence(bot).catch((error: unknown) => {
           const message =
             error instanceof Error ? error.message : "Failed to apply idle presence";
@@ -763,7 +819,7 @@ export class StreamRuntime extends EventEmitter {
     }
 
     session.stopTimeout = setTimeout(() => {
-      if (session.closed || this.activeSession !== session) return;
+      if (session.closed || this.activeSessions.get(session.botId) !== session) return;
       this.store.appendLog("warn", "Force-closing stuck stream session", {
         botId: session.botId,
         botName: session.run.botName,
@@ -855,19 +911,19 @@ export class StreamRuntime extends EventEmitter {
       session.stopTimeout = undefined;
     }
 
-    if (this.activeSession === session) {
-      this.activeSession = undefined;
-    }
+    this.activeSessions.delete(session.botId);
 
     const bot = this.requireBot(session.botId);
     void this.cleanupVoiceState(bot);
     void this.applyIdlePresence(bot).catch(() => {});
 
     this.store.setRuntime((runtime) => {
-      runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
-      runtime.selectedVideoEncoder = undefined;
-      runtime.telemetry = undefined;
+      runtime.selectedVideoEncodersByBot ??= {};
+      runtime.telemetryByBot ??= {};
+      delete runtime.selectedVideoEncodersByBot[session.botId];
+      delete runtime.telemetryByBot[session.botId];
+      this.syncRuntimeDerivedState(runtime);
       if (reason === "aborted" && abortReason) {
         runtime.lastError = undefined;
       }
@@ -898,19 +954,19 @@ export class StreamRuntime extends EventEmitter {
       session.stopTimeout = undefined;
     }
 
-    if (this.activeSession === session) {
-      this.activeSession = undefined;
-    }
+    this.activeSessions.delete(session.botId);
 
     const bot = this.requireBot(session.botId);
     void this.cleanupVoiceState(bot);
     void this.applyIdlePresence(bot).catch(() => {});
 
     this.store.setRuntime((runtime) => {
-      runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
-      runtime.selectedVideoEncoder = undefined;
-      runtime.telemetry = undefined;
+      runtime.selectedVideoEncodersByBot ??= {};
+      runtime.telemetryByBot ??= {};
+      delete runtime.selectedVideoEncodersByBot[session.botId];
+      delete runtime.telemetryByBot[session.botId];
+      this.syncRuntimeDerivedState(runtime);
       runtime.lastError = error;
     });
     this.store.appendLog("error", "Stream failed", {
@@ -990,7 +1046,7 @@ export class StreamRuntime extends EventEmitter {
     session: ActiveSession,
     telemetry: StreamTelemetry,
   ) {
-    if (this.activeSession !== session || session.closed) return;
+    if (this.activeSessions.get(session.botId) !== session || session.closed) return;
 
     const speed = telemetry.speed;
     const fps = telemetry.fps;
@@ -1054,7 +1110,7 @@ export class StreamRuntime extends EventEmitter {
     const sample: StreamTelemetry = {};
 
     command.on("stderr", (line: string) => {
-      if (this.activeSession !== session || session.closed) return;
+      if (this.activeSessions.get(session.botId) !== session || session.closed) return;
 
       const trimmed = line.trim();
       if (!trimmed || !trimmed.includes("=")) return;
@@ -1098,11 +1154,13 @@ export class StreamRuntime extends EventEmitter {
               updatedAt: new Date().toISOString(),
             };
             this.store.setRuntime((runtime) => {
-              if (this.activeSession !== session || !runtime.activeRun) return;
-              runtime.telemetry = {
-                ...runtime.telemetry,
+              if (this.activeSessions.get(session.botId) !== session) return;
+              runtime.telemetryByBot ??= {};
+              runtime.telemetryByBot[session.botId] = {
+                ...runtime.telemetryByBot[session.botId],
                 ...telemetrySnapshot,
               };
+              this.syncRuntimeDerivedState(runtime);
             });
             this.evaluatePerformance(session, telemetrySnapshot);
           }

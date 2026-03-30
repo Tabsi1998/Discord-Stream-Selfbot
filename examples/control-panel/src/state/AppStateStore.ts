@@ -27,6 +27,9 @@ function defaultRuntime(): RuntimeState {
     discordStatus: "starting",
     primaryBotId: DEFAULT_SELFBOT_ID,
     bots: [],
+    activeRuns: [],
+    telemetryByBot: {},
+    selectedVideoEncodersByBot: {},
     ytDlpAvailable: false,
     commandAuthorIds: [],
   };
@@ -106,7 +109,25 @@ function normalizeState(input: unknown): ControlPanelState {
         : defaultQueueConfig(),
     runtime:
       state.runtime && typeof state.runtime === "object"
-        ? { ...fallback.runtime, ...state.runtime }
+        ? {
+            ...fallback.runtime,
+            ...state.runtime,
+            activeRuns: Array.isArray(state.runtime.activeRuns)
+              ? state.runtime.activeRuns
+              : state.runtime.activeRun
+                ? [state.runtime.activeRun]
+                : fallback.runtime.activeRuns,
+            telemetryByBot:
+              state.runtime.telemetryByBot &&
+                typeof state.runtime.telemetryByBot === "object"
+                ? state.runtime.telemetryByBot
+                : fallback.runtime.telemetryByBot,
+            selectedVideoEncodersByBot:
+              state.runtime.selectedVideoEncodersByBot &&
+                typeof state.runtime.selectedVideoEncodersByBot === "object"
+                ? state.runtime.selectedVideoEncodersByBot
+                : fallback.runtime.selectedVideoEncodersByBot,
+          }
         : fallback.runtime,
     logs: Array.isArray(state.logs) ? state.logs.slice(0, 200) : fallback.logs,
   };

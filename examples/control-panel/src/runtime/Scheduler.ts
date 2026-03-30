@@ -32,32 +32,48 @@ export class Scheduler {
       this.service.markMissedEvents();
 
       const state = this.service.snapshot();
-      const activeRun = state.runtime.activeRun;
       const now = Date.now();
+      const activeRuns = state.runtime.activeRuns ?? [];
+      let stoppedAny = false;
 
-      if (activeRun?.plannedStopAt) {
-        if (Date.parse(activeRun.plannedStopAt) <= now) {
-          this.service.stopActive(
+      for (const activeRun of activeRuns) {
+        if (!activeRun.plannedStopAt) continue;
+        if (Date.parse(activeRun.plannedStopAt) > now) continue;
+        if (
+          this.service.stopActiveForBot(
             activeRun.kind === "event" ? "scheduled-end" : "planned-stop",
-          );
-          return;
+            activeRun.botId,
+          )
+        ) {
+          stoppedAny = true;
         }
       }
 
-      if (activeRun) return;
+      if (stoppedAny) return;
 
-      const dueEvent = state.events
+      const busyBotIds = new Set(
+        activeRuns.map((run) => run.botId),
+      );
+      if (state.queueConfig.active && state.queueConfig.botId) {
+        busyBotIds.add(state.queueConfig.botId);
+      }
+
+      const dueEvents = state.events
         .filter(
           (event) =>
             event.status === "scheduled" &&
             Date.parse(event.startAt) <= now &&
             Date.parse(event.endAt) > now,
         )
-        .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt))[0];
+        .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
 
-      if (!dueEvent) return;
-
-      await this.service.startScheduledEvent(dueEvent.id);
+      for (const dueEvent of dueEvents) {
+        const channel = state.channels.find((entry) => entry.id === dueEvent.channelId);
+        const botId = channel?.botId ?? state.runtime.primaryBotId;
+        if (!botId || busyBotIds.has(botId)) continue;
+        await this.service.startScheduledEvent(dueEvent.id);
+        busyBotIds.add(botId);
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Scheduler tick failed";

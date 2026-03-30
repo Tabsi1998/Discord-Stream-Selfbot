@@ -73,9 +73,27 @@ export class DiscordCommandBridge {
       }
 
       if (body === "stop") {
-        const stopped = this.service.stopActive();
+        const activeRuns = this.runtime.getActiveRuns();
+        if (!activeRuns.length) {
+          await message.channel.send("Kein aktiver Stream.");
+          return;
+        }
+
+        if (activeRuns.length === 1) {
+          const stopped = this.service.stopActiveForBot("manual-stop", activeRuns[0].botId);
+          await message.channel.send(
+            stopped
+              ? `Stream wird gestoppt: ${activeRuns[0].channelName}`
+              : "Kein aktiver Stream.",
+          );
+          return;
+        }
+
+        const stoppedCount = this.service.stopAllActive();
         await message.channel.send(
-          stopped ? "Aktiver Stream wird gestoppt." : "Kein aktiver Stream.",
+          stoppedCount > 0
+            ? `${stoppedCount} aktive Streams werden gestoppt.`
+            : "Kein aktiver Stream.",
         );
         return;
       }
@@ -193,39 +211,11 @@ export class DiscordCommandBridge {
         return;
       }
 
-      if (body === "restart") {
-        const run = this.runtime.getActiveRun();
-        if (!run) {
-          await message.channel.send("Kein aktiver Stream zum Neustarten.");
-          return;
-        }
-        const channelName = run.channelName;
-        const presetName = run.presetName;
-        const stopAt = run.plannedStopAt;
-        this.service.stopActive();
-        await message.channel.send(
-          `Stream wird neugestartet: ${channelName} → ${presetName}`,
+      if (body === "restart" || body.startsWith("restart ")) {
+        await this.restartActive(
+          message,
+          body === "restart" ? undefined : body.slice("restart ".length),
         );
-        const state = this.store.snapshot();
-        const ch = state.channels.find((c) => c.id === run.channelId);
-        const pr = state.presets.find((p) => p.id === run.presetId);
-        if (ch && pr) {
-          setTimeout(async () => {
-            try {
-              await this.service.startManualRun({
-                channelId: ch.id,
-                presetId: pr.id,
-                stopAt,
-              });
-            } catch {
-              await message.channel.send("Neustart fehlgeschlagen.");
-            }
-          }, 2000);
-        } else {
-          await message.channel.send(
-            "Neustart nicht moeglich: Kanal oder Preset nicht mehr vorhanden.",
-          );
-        }
         return;
       }
 
@@ -305,7 +295,7 @@ export class DiscordCommandBridge {
         `${prefix} status`,
         `${prefix} start <kanal|id> | <preset|id> | [zeit]`,
         `${prefix} stop`,
-        `${prefix} restart`,
+        `${prefix} restart [bot|kanal|id]`,
         `${prefix} channels`,
         `${prefix} presets`,
         `${prefix} events`,
@@ -326,21 +316,21 @@ export class DiscordCommandBridge {
 
   private async sendStatus(message: Message) {
     const state = this.service.snapshot();
-    const activeRun = state.runtime.activeRun;
-    if (!activeRun) {
+    const activeRuns = state.runtime.activeRuns ?? [];
+    if (!activeRuns.length) {
       await message.channel.send("Kein aktiver Stream.");
       return;
     }
 
     await message.channel.send(
       [
-        `Aktiv: ${activeRun.channelName} -> ${activeRun.presetName}`,
-        `Bot: ${activeRun.botName} (${activeRun.botId})`,
-        `Status: ${activeRun.status}`,
-        `Seit: ${formatDate(activeRun.startedAt)}`,
-        activeRun.plannedStopAt
-          ? `Geplantes Ende: ${formatDate(activeRun.plannedStopAt)}`
-          : "Geplantes Ende: offen",
+        `Aktive Streams: ${activeRuns.length}`,
+        ...activeRuns.slice(0, 8).map(
+          (run, index) =>
+            `${index + 1}. ${run.botName} | ${run.channelName} -> ${run.presetName} | ${run.status} | ${formatDate(run.startedAt)}${
+              run.plannedStopAt ? ` | Stop ${formatDate(run.plannedStopAt)}` : ""
+            }`,
+        ),
       ].join("\n"),
     );
   }
@@ -432,7 +422,7 @@ export class DiscordCommandBridge {
       return `${marker} ${i + 1}. ${item.name} ${status}`;
     });
     const header = queueConfig.active
-      ? `Queue (aktiv, ${queueConfig.loop ? "Loop AN" : "Loop AUS"})`
+      ? `Queue (aktiv auf ${queueConfig.botId ?? "unbekannt"}, ${queueConfig.loop ? "Loop AN" : "Loop AUS"})`
       : `Queue (${queue.length} Items)`;
     await message.channel.send([header, ...lines].join("\n"));
   }
@@ -446,13 +436,23 @@ export class DiscordCommandBridge {
     const rss = Math.round(mem.rss / 1024 / 1024);
     const heap = Math.round(mem.heapUsed / 1024 / 1024);
 
+    const activeRuns = state.runtime.activeRuns ?? [];
+    const encoderSummary = activeRuns.length
+      ? activeRuns
+        .map((run) =>
+          `${run.botName}:${state.runtime.selectedVideoEncodersByBot?.[run.botId] ?? "idle"}`,
+        )
+        .join(", ")
+      : state.runtime.selectedVideoEncoder ?? "idle";
+
     await message.channel.send(
       [
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
         `yt-dlp: ${state.runtime.ytDlpAvailable ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})` : "nein"}`,
         `Panel Login: ${state.runtime.panelAuthEnabled ? "an" : "aus"}`,
-        `Encoder: ${state.runtime.selectedVideoEncoder ?? "idle"} (bevorzugt: ${state.runtime.preferredHardwareEncoder ?? "auto"})`,
+        `Aktive Streams: ${activeRuns.length}`,
+        `Encoder: ${encoderSummary} (bevorzugt: ${state.runtime.preferredHardwareEncoder ?? "auto"})`,
         `Kanaele: ${state.channels.length}`,
         `Presets: ${state.presets.length}`,
         `Events: ${state.events.length}`,
@@ -476,5 +476,76 @@ export class DiscordCommandBridge {
     await message.channel.send(
       text.length > 1900 ? text.slice(0, 1900) + "..." : text,
     );
+  }
+
+  private resolveActiveRun(query?: string) {
+    const activeRuns = this.runtime.getActiveRuns();
+    if (!activeRuns.length) {
+      throw new Error("Kein aktiver Stream zum Neustarten.");
+    }
+
+    const trimmed = query?.trim();
+    if (!trimmed) {
+      if (activeRuns.length > 1) {
+        throw new Error("Mehrere Streams aktiv. Nutze: restart <bot|kanal|id>");
+      }
+      return activeRuns[0];
+    }
+
+    const exact = activeRuns.find(
+      (run) =>
+        run.botId === trimmed
+        || run.channelId === trimmed
+        || run.presetId === trimmed,
+    );
+    if (exact) return exact;
+
+    const matches = activeRuns.filter(
+      (run) =>
+        matchesQuery(run.botName, trimmed)
+        || matchesQuery(run.channelName, trimmed)
+        || matchesQuery(run.presetName, trimmed)
+        || matchesQuery(run.botId, trimmed)
+        || matchesQuery(run.channelId, trimmed)
+        || matchesQuery(run.presetId, trimmed),
+    );
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1) {
+      throw new Error(`Mehrere aktive Streams passen zu "${trimmed}"`);
+    }
+    throw new Error(`Kein aktiver Stream passt zu "${trimmed}"`);
+  }
+
+  private async restartActive(message: Message, query?: string) {
+    const run = this.resolveActiveRun(query);
+    const stopAt = run.plannedStopAt;
+    const state = this.store.snapshot();
+    const channel = state.channels.find((entry) => entry.id === run.channelId);
+    const preset = state.presets.find((entry) => entry.id === run.presetId);
+    if (!channel || !preset) {
+      await message.channel.send(
+        "Neustart nicht moeglich: Kanal oder Preset nicht mehr vorhanden.",
+      );
+      return;
+    }
+
+    this.service.stopActiveForBot("manual-stop", run.botId);
+    await message.channel.send(
+      `Stream wird neugestartet: ${run.botName} | ${run.channelName} -> ${run.presetName}`,
+    );
+
+    setTimeout(async () => {
+      try {
+        await this.service.startManualRun({
+          channelId: channel.id,
+          presetId: preset.id,
+          stopAt,
+        });
+      } catch {
+        await message.channel.send("Neustart fehlgeschlagen.");
+      }
+    }, 2000);
   }
 }

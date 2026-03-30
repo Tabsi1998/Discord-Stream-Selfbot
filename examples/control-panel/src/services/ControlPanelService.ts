@@ -108,12 +108,39 @@ export class ControlPanelService {
 
   public reconcileStateOnStartup() {
     const now = Date.now();
-    const recoveredRun = this.store.snapshot().runtime.activeRun;
+    const runtime = this.store.snapshot().runtime;
+    const recoveredQueue = this.store.snapshot().queueConfig.active;
+    const recoveredRuns = Array.isArray(runtime.activeRuns) && runtime.activeRuns.length
+      ? runtime.activeRuns
+      : runtime.activeRun
+        ? [runtime.activeRun]
+        : [];
 
     this.store.update((draft) => {
-      if (draft.runtime.activeRun) {
+      if (
+        draft.runtime.activeRun
+        || draft.runtime.activeRuns?.length
+        || draft.runtime.telemetry
+        || Object.keys(draft.runtime.telemetryByBot ?? {}).length
+        || draft.runtime.selectedVideoEncoder
+        || Object.keys(draft.runtime.selectedVideoEncodersByBot ?? {}).length
+      ) {
         draft.runtime.activeRun = undefined;
+        draft.runtime.activeRuns = [];
+        draft.runtime.telemetry = undefined;
+        draft.runtime.telemetryByBot = {};
+        draft.runtime.selectedVideoEncoder = undefined;
+        draft.runtime.selectedVideoEncodersByBot = {};
         draft.runtime.lastEndedAt = nowIso();
+      }
+
+      if (draft.queueConfig.active) {
+        draft.queueConfig.active = false;
+        for (const item of draft.queue) {
+          if (item.status === "playing") {
+            item.status = "pending";
+          }
+        }
       }
 
       for (const event of draft.events) {
@@ -131,11 +158,15 @@ export class ControlPanelService {
       sortEvents(draft.events);
     });
 
-    if (recoveredRun) {
-      this.store.appendLog("warn", "Recovered stale active run after restart", {
-        kind: recoveredRun.kind,
-        channel: recoveredRun.channelName,
-        preset: recoveredRun.presetName,
+    if (recoveredRuns.length) {
+      this.store.appendLog("warn", "Recovered stale active runs after restart", {
+        count: String(recoveredRuns.length),
+        bots: recoveredRuns.map((run) => run.botId).join(", "),
+      });
+    }
+    if (recoveredQueue) {
+      this.store.appendLog("warn", "Recovered active queue after restart", {
+        action: "queue-stopped",
       });
     }
   }
@@ -234,7 +265,7 @@ export class ControlPanelService {
 
   public deleteChannel(id: string) {
     this.store.update((draft) => {
-      if (draft.runtime.activeRun?.channelId === id) {
+      if (draft.runtime.activeRuns?.some((run) => run.channelId === id)) {
         throw new Error("Cannot delete a channel while it is active");
       }
       if (draft.events.some((event) => event.channelId === id)) {
@@ -291,7 +322,7 @@ export class ControlPanelService {
     let updated: StreamPreset | undefined;
 
     this.store.update((draft) => {
-      if (draft.runtime.activeRun?.presetId === id) {
+      if (draft.runtime.activeRuns?.some((run) => run.presetId === id)) {
         throw new Error("Cannot edit a preset while it is active");
       }
 
@@ -322,7 +353,7 @@ export class ControlPanelService {
 
   public deletePreset(id: string) {
     this.store.update((draft) => {
-      if (draft.runtime.activeRun?.presetId === id) {
+      if (draft.runtime.activeRuns?.some((run) => run.presetId === id)) {
         throw new Error("Cannot delete a preset while it is active");
       }
       if (draft.events.some((event) => event.presetId === id)) {
@@ -343,7 +374,7 @@ export class ControlPanelService {
     this.store.update((draft) => {
       this.requireChannelFromDraft(draft, input.channelId);
       this.requirePresetFromDraft(draft, input.presetId);
-      this.assertNoOverlap(draft.events, plan.events);
+      this.assertNoOverlap(draft, draft.events, plan.events);
       draft.events.push(...plan.events);
       sortEvents(draft.events);
     });
@@ -394,7 +425,7 @@ export class ControlPanelService {
 
       const retained = draft.events.filter((event) => !replaceIds.has(event.id));
 
-      this.assertNoOverlap(retained, replacement);
+      this.assertNoOverlap(draft, retained, replacement);
 
       draft.events = [...retained, ...replacement];
       sortEvents(draft.events);
@@ -449,9 +480,10 @@ export class ControlPanelService {
   public async cancelEvent(id: string) {
     const state = this.store.snapshot();
     const event = this.requireEventFromSnapshot(state, id);
+    const channel = this.requireChannelFromSnapshot(state, event.channelId);
 
     if (event.status === "running") {
-      const stopped = this.runtime.stopActive("event-cancelled");
+      const stopped = this.runtime.stopActive("event-cancelled", channel.botId);
       if (!stopped) {
         throw new Error("The running event could not be stopped");
       }
@@ -460,12 +492,9 @@ export class ControlPanelService {
 
     // Cancel Discord scheduled event
     if (event.discordEventId) {
-      const channel = state.channels.find((c) => c.id === event.channelId);
-      if (channel) {
-        this.deleteDiscordEvents(channel.botId, channel.guildId, [event.discordEventId]).catch(
-          () => {},
-        );
-      }
+      this.deleteDiscordEvents(channel.botId, channel.guildId, [event.discordEventId]).catch(
+        () => {},
+      );
     }
 
     this.store.update((draft) => {
@@ -546,24 +575,44 @@ export class ControlPanelService {
     }).then((result) => {
       this.sendNotification(
         `Stream gestartet: ${channel.name} mit ${preset.name}`,
+        channel.botId,
       ).catch(() => {});
       return result;
     });
   }
 
   public stopActive(reason = "manual-stop") {
-    const run = this.runtime.getActiveRun();
-    const stopped = this.runtime.stopActive(reason);
+    return this.stopActiveForBot(reason);
+  }
+
+  public stopActiveForBot(reason = "manual-stop", botId?: string) {
+    const run = this.runtime.getActiveRun(botId);
+    const stopped = this.runtime.stopActive(reason, botId);
     if (stopped && run) {
-      this.sendNotification(`Stream gestoppt: ${run.channelName}`).catch(
+      this.sendNotification(`Stream gestoppt: ${run.channelName}`, run.botId).catch(
         () => {},
       );
     }
     return stopped;
   }
 
-  public hasActiveRun() {
-    return !!this.runtime.getActiveRun();
+  public stopAllActive(reason = "manual-stop") {
+    const runs = this.runtime.getActiveRuns();
+    const stoppedCount = this.runtime.stopAllActive(reason);
+    if (stoppedCount > 0) {
+      this.sendNotification(
+        stoppedCount === 1
+          ? `Stream gestoppt: ${runs[0]?.channelName ?? "unbekannt"}`
+          : `${stoppedCount} Streams werden gestoppt`,
+      ).catch(() => {});
+    }
+    return stoppedCount;
+  }
+
+  public hasActiveRun(botId?: string) {
+    return botId
+      ? !!this.runtime.getActiveRun(botId)
+      : this.runtime.getActiveRuns().length > 0;
   }
 
   private onRunEnded(info: RunEndedInfo) {
@@ -710,6 +759,7 @@ export class ControlPanelService {
   }
 
   private assertNoOverlap(
+    state: Pick<ControlPanelState, "channels">,
     existingEvents: ScheduledEvent[],
     candidateEvents: ScheduledEvent[],
   ) {
@@ -720,7 +770,12 @@ export class ControlPanelService {
 
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
-      const overlap = blocking.find((event) => this.eventsOverlap(candidate, event));
+      const candidateBotId = this.resolveEventBotId(state, candidate);
+      const overlap = blocking.find(
+        (event) =>
+          this.resolveEventBotId(state, event) === candidateBotId
+          && this.eventsOverlap(candidate, event),
+      );
       if (overlap) {
         throw new Error(
           `Event overlaps with "${overlap.name}" (${overlap.startAt} - ${overlap.endAt})`,
@@ -729,13 +784,25 @@ export class ControlPanelService {
 
       const selfOverlap = candidates
         .slice(index + 1)
-        .find((event) => this.eventsOverlap(candidate, event));
+        .find(
+          (event) =>
+            this.resolveEventBotId(state, event) === candidateBotId
+            && this.eventsOverlap(candidate, event),
+        );
       if (selfOverlap) {
         throw new Error(
           `Recurring series overlaps with itself (${candidate.startAt} - ${candidate.endAt})`,
         );
       }
     }
+  }
+
+  private resolveEventBotId(
+    state: Pick<ControlPanelState, "channels">,
+    event: Pick<ScheduledEvent, "channelId">,
+  ) {
+    return state.channels.find((channel) => channel.id === event.channelId)?.botId
+      ?? this.runtime.getPrimaryBotId();
   }
 
   private eventsOverlap(left: Pick<ScheduledEvent, "startAt" | "endAt">, right: Pick<ScheduledEvent, "startAt" | "endAt">) {
@@ -1009,9 +1076,13 @@ export class ControlPanelService {
     if (!channel) throw new Error("Channel not found");
     const preset = state.presets.find((p) => p.id === presetId);
     if (!preset) throw new Error("Preset not found");
+    if (this.hasActiveRun(channel.botId)) {
+      throw new Error("Selected selfbot is already streaming");
+    }
 
     this.store.update((draft) => {
       draft.queueConfig.active = true;
+      draft.queueConfig.botId = channel.botId;
       draft.queueConfig.channelId = channelId;
       draft.queueConfig.presetId = presetId;
       draft.queueConfig.currentIndex = 0;
@@ -1023,9 +1094,11 @@ export class ControlPanelService {
     this.store.appendLog("info", "Queue gestartet", {
       items: String(state.queue.length),
       channel: channel.name,
+      botId: channel.botId,
     });
     await this.sendNotification(
       `Queue gestartet: ${state.queue.length} Items in ${channel.name}`,
+      channel.botId,
     );
     await this.playCurrentQueueItem();
   }
@@ -1033,6 +1106,7 @@ export class ControlPanelService {
   public async skipQueueItem() {
     const state = this.store.snapshot();
     if (!state.queueConfig.active) throw new Error("Queue is not active");
+    const queueBotId = state.queueConfig.botId;
 
     this.store.update((draft) => {
       const item = draft.queue[draft.queueConfig.currentIndex];
@@ -1041,19 +1115,20 @@ export class ControlPanelService {
       }
     });
 
-    if (this.runtime.getActiveRun()) {
-      this.stopActive();
+    if (this.runtime.getActiveRun(queueBotId)) {
+      this.stopActiveForBot("manual-stop", queueBotId);
     } else {
       await this.advanceQueue();
     }
   }
 
   public stopQueue() {
+    const queueBotId = this.store.snapshot().queueConfig.botId;
     this.store.update((draft) => {
       draft.queueConfig.active = false;
     });
-    if (this.runtime.getActiveRun()) {
-      this.stopActive();
+    if (this.runtime.getActiveRun(queueBotId)) {
+      this.stopActiveForBot("manual-stop", queueBotId);
     }
     this.store.appendLog("info", "Queue gestoppt");
   }
@@ -1074,7 +1149,12 @@ export class ControlPanelService {
   private async playCurrentQueueItem() {
     const state = this.store.snapshot();
     const { queueConfig, queue } = state;
-    if (!queueConfig.active || !queueConfig.channelId || !queueConfig.presetId)
+    if (
+      !queueConfig.active
+      || !queueConfig.botId
+      || !queueConfig.channelId
+      || !queueConfig.presetId
+    )
       return;
     if (queueConfig.currentIndex >= queue.length) return;
 
@@ -1113,6 +1193,7 @@ export class ControlPanelService {
       });
       await this.sendNotification(
         `Queue [${queueConfig.currentIndex + 1}/${queue.length}]: ${item.name}`,
+        channel.botId,
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
@@ -1151,7 +1232,10 @@ export class ControlPanelService {
             draft.queueConfig.active = false;
           });
           this.store.appendLog("info", "Queue abgeschlossen");
-          await this.sendNotification("Queue abgeschlossen - alle Items gespielt");
+          await this.sendNotification(
+            "Queue abgeschlossen - alle Items gespielt",
+            state.queueConfig.botId,
+          );
         }
       } else {
         this.store.update((draft) => {
@@ -1164,9 +1248,10 @@ export class ControlPanelService {
     }
   }
 
-  private onQueueRunEnded(_info: RunEndedInfo) {
+  private onQueueRunEnded(info: RunEndedInfo) {
     const state = this.store.snapshot();
-    if (!state.queueConfig.active) return;
+    if (!state.queueConfig.active || !state.queueConfig.botId) return;
+    if (info.run.botId !== state.queueConfig.botId) return;
 
     this.store.update((draft) => {
       const item = draft.queue[draft.queueConfig.currentIndex];
@@ -1178,9 +1263,10 @@ export class ControlPanelService {
     setTimeout(() => this.advanceQueue().catch(() => {}), 1500);
   }
 
-  private onQueueRunFailed(_info: RunFailedInfo) {
+  private onQueueRunFailed(info: RunFailedInfo) {
     const state = this.store.snapshot();
-    if (!state.queueConfig.active) return;
+    if (!state.queueConfig.active || !state.queueConfig.botId) return;
+    if (info.run.botId !== state.queueConfig.botId) return;
 
     this.store.update((draft) => {
       const item = draft.queue[draft.queueConfig.currentIndex];
@@ -1194,14 +1280,14 @@ export class ControlPanelService {
 
   // ── Notifications ─────────────────────────────────────────────
 
-  public async sendNotification(message: string) {
+  public async sendNotification(message: string, botId?: string) {
     const tasks: Promise<void>[] = [];
 
     if (appConfig.notificationWebhookUrl) {
       tasks.push(this.sendWebhookNotification(message));
     }
     if (appConfig.notificationDmEnabled) {
-      tasks.push(this.sendDmNotification(message));
+      tasks.push(this.sendDmNotification(message, botId));
     }
 
     await Promise.allSettled(tasks);
@@ -1225,11 +1311,14 @@ export class ControlPanelService {
     }
   }
 
-  private async sendDmNotification(message: string) {
+  private async sendDmNotification(message: string, botId?: string) {
     try {
-      const activeBotId = this.runtime.getActiveRun()?.botId;
-      await this.runtime.ensureReady(activeBotId);
-      const client = this.runtime.getClient(activeBotId);
+      const resolvedBotId =
+        botId
+        ?? this.runtime.getActiveRun()?.botId
+        ?? this.runtime.getPrimaryBotId();
+      await this.runtime.ensureReady(resolvedBotId);
+      const client = this.runtime.getClient(resolvedBotId);
       if (!client.user) return;
       const dmChannel = await client.user.createDM();
       await dmChannel.send(message);

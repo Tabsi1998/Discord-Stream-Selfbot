@@ -120,6 +120,7 @@ const els = {
   commandInfo: document.querySelector("#commandInfo"),
   activeRunPrimary: document.querySelector("#activeRunPrimary"),
   activeRunSecondary: document.querySelector("#activeRunSecondary"),
+  activeRunsList: document.querySelector("#activeRunsList"),
   telemetryPrimary: document.querySelector("#telemetryPrimary"),
   telemetrySecondary: document.querySelector("#telemetrySecondary"),
   telemetryMetrics: document.querySelector("#telemetryMetrics"),
@@ -632,6 +633,131 @@ function botDisplayLabel(bot) {
   return `${bot.name}${identity}`;
 }
 
+function getActiveRuns() {
+  const activeRuns = state.app?.runtime?.activeRuns;
+  if (Array.isArray(activeRuns) && activeRuns.length) {
+    return activeRuns;
+  }
+  return state.app?.runtime?.activeRun ? [state.app.runtime.activeRun] : [];
+}
+
+function getPreferredActiveRun() {
+  const activeRuns = getActiveRuns();
+  if (!activeRuns.length) return null;
+  return (
+    activeRuns.find((run) => run.botId === getPrimaryBotId())
+    || activeRuns.find((run) => run.status === "running")
+    || state.app?.runtime?.activeRun
+    || activeRuns[0]
+  );
+}
+
+function getRunTelemetry(run) {
+  if (!run) return null;
+  const runtime = state.app?.runtime;
+  return (
+    runtime?.telemetryByBot?.[run.botId]
+    || (runtime?.activeRun?.botId === run.botId ? runtime.telemetry : null)
+    || null
+  );
+}
+
+function getRunEncoder(run) {
+  if (!run) return "software";
+  const runtime = state.app?.runtime;
+  return (
+    runtime?.selectedVideoEncodersByBot?.[run.botId]
+    || (runtime?.activeRun?.botId === run.botId ? runtime.selectedVideoEncoder : null)
+    || "software"
+  );
+}
+
+function buildTelemetryChips(telemetry) {
+  const telemetryChips = [];
+  if (typeof telemetry?.fps === "number") {
+    telemetryChips.push({
+      label: "FPS",
+      value: formatMetricNumber(telemetry.fps),
+      tone:
+        telemetry.fps < 20 ? "danger" : telemetry.fps < 28 ? "warning" : "success",
+    });
+  }
+  if (typeof telemetry?.speed === "number") {
+    telemetryChips.push({
+      label: "Speed",
+      value: `${formatMetricNumber(telemetry.speed, 2)}x`,
+      tone:
+        telemetry.speed < 0.95
+          ? "danger"
+          : telemetry.speed < 1
+            ? "warning"
+            : "success",
+    });
+  }
+  if (typeof telemetry?.bitrateKbps === "number") {
+    telemetryChips.push({
+      label: "Bitrate",
+      value: `${Math.round(telemetry.bitrateKbps)} kbps`,
+      tone: "muted",
+    });
+  }
+  if (typeof telemetry?.dropFrames === "number") {
+    telemetryChips.push({
+      label: "Drop",
+      value: String(telemetry.dropFrames),
+      tone: telemetry.dropFrames > 0 ? "danger" : "success",
+    });
+  }
+  if (typeof telemetry?.dupFrames === "number") {
+    telemetryChips.push({
+      label: "Dup",
+      value: String(telemetry.dupFrames),
+      tone: telemetry.dupFrames > 0 ? "warning" : "success",
+    });
+  }
+  if (typeof telemetry?.outTimeSeconds === "number") {
+    telemetryChips.push({
+      label: "Media",
+      value: formatSecondsCompact(telemetry.outTimeSeconds),
+      tone: "muted",
+    });
+  }
+  return telemetryChips;
+}
+
+function renderTelemetryChipMarkup(telemetry) {
+  const telemetryChips = buildTelemetryChips(telemetry);
+  return telemetryChips.length
+    ? telemetryChips
+      .map(
+        (item) =>
+          `<span class="metric-chip ${item.tone ? `metric-chip-${item.tone}` : ""}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`,
+      )
+      .join("")
+    : '<span class="metric-chip metric-chip-muted">keine Daten</span>';
+}
+
+function summarizeRunTelemetry(run) {
+  const telemetry = getRunTelemetry(run);
+  const parts = [`Encoder: ${String(getRunEncoder(run)).toUpperCase()}`];
+  if (typeof telemetry?.fps === "number") {
+    parts.push(`FPS ${formatMetricNumber(telemetry.fps)}`);
+  }
+  if (typeof telemetry?.speed === "number") {
+    parts.push(`Speed ${formatMetricNumber(telemetry.speed, 2)}x`);
+  }
+  if (typeof telemetry?.bitrateKbps === "number") {
+    parts.push(`${Math.round(telemetry.bitrateKbps)} kbps`);
+  }
+  if (typeof telemetry?.dropFrames === "number") {
+    parts.push(`Drop ${telemetry.dropFrames}`);
+  }
+  if (typeof telemetry?.dupFrames === "number") {
+    parts.push(`Dup ${telemetry.dupFrames}`);
+  }
+  return parts.join(" | ");
+}
+
 function channelLabel(item) {
   const bot = findBot(item.botId);
   return `${item.name} (${item.streamMode}${bot ? ` | ${bot.name}` : ""})`;
@@ -695,11 +821,15 @@ function fillDiscoveredChannelSelect() {
 function renderOverview() {
   const runtime = state.app.runtime;
   const bots = getBots();
-  const activeRun = runtime.activeRun;
-  const telemetry = runtime.telemetry;
+  const activeRuns = getActiveRuns();
+  const activeRun = getPreferredActiveRun();
+  const telemetry = getRunTelemetry(activeRun);
   const queue = state.app.queue;
   const queueConfig = state.app.queueConfig;
   const queueItem = queue[queueConfig.currentIndex];
+  const queueBotName = queueConfig.botId
+    ? findBot(queueConfig.botId)?.name || queueConfig.botId
+    : null;
   const scheduled = state.app.events.filter((event) => event.status === "scheduled");
   const nextEvent = [...scheduled].sort(
     (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
@@ -738,8 +868,11 @@ function renderOverview() {
       ? `Letztes Ende: ${formatDateTime(runtime.lastEndedAt)}`
       : "kein letzter Lauf";
     els.streamHealthBar.classList.add("hidden");
+    els.activeRunsList.innerHTML = "";
   } else {
-    els.activeRunPrimary.textContent = `${activeRun.channelName} -> ${activeRun.presetName}`;
+    els.activeRunPrimary.textContent = activeRuns.length === 1
+      ? `${activeRun.channelName} -> ${activeRun.presetName}`
+      : `${activeRuns.length} aktive Streams`;
     const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
     els.activeRunSecondary.textContent = [
       `Bot: ${activeRun.botName || activeRun.botId || "unbekannt"}`,
@@ -755,7 +888,32 @@ function renderOverview() {
     } else {
       els.streamHealthBar.classList.add("hidden");
     }
+
+    els.activeRunsList.innerHTML = activeRuns
+      .map((run) => {
+        const uptimeLabel = formatUptime(Date.now() - Date.parse(run.startedAt));
+        return `
+          <article class="item-card">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(run.botName)} | ${escapeHtml(run.channelName)}</h3>
+                <p class="item-meta">${escapeHtml(run.presetName)} | ${escapeHtml(run.status)} | seit ${escapeHtml(formatDateTime(run.startedAt))}${run.plannedStopAt ? ` | Stop ${escapeHtml(formatDateTime(run.plannedStopAt))}` : ""}</p>
+                <p class="item-meta">Uptime: ${escapeHtml(uptimeLabel)} | ${escapeHtml(summarizeRunTelemetry(run))}</p>
+              </div>
+            </div>
+            <div class="item-actions">
+              <button type="button" data-action="stop-active-run" data-bot-id="${escapeHtml(run.botId)}">Stop</button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
   }
+
+  els.stopButton.textContent = activeRuns.length > 1
+    ? "Alle aktiven Streams stoppen"
+    : "Aktiven Stream stoppen";
+  els.stopButton.disabled = !activeRuns.length;
 
   els.scheduledSummary.textContent = `${scheduled.length} Events geplant`;
   els.nextEventSummary.textContent = nextEvent
@@ -763,7 +921,7 @@ function renderOverview() {
     : "kein naechstes Event";
 
   els.telemetryPrimary.textContent = activeRun
-    ? `${(runtime.selectedVideoEncoder || "software").toUpperCase()} | FFmpeg ${runtime.ffmpegLogLevel || "warning"}`
+    ? `${String(getRunEncoder(activeRun)).toUpperCase()} | ${activeRuns.length} aktiv | FFmpeg ${runtime.ffmpegLogLevel || "warning"}`
     : "keine aktive Session";
   els.telemetrySecondary.textContent = telemetry?.updatedAt
     ? `Letztes Update: ${formatDateTime(telemetry.updatedAt)}`
@@ -771,71 +929,14 @@ function renderOverview() {
       ? "warte auf FFmpeg-Progress"
       : "keine Live-Metriken";
 
-  const telemetryChips = [];
-  if (typeof telemetry?.fps === "number") {
-    telemetryChips.push({
-      label: "FPS",
-      value: formatMetricNumber(telemetry.fps),
-      tone:
-        telemetry.fps < 20 ? "danger" : telemetry.fps < 28 ? "warning" : "success",
-    });
-  }
-  if (typeof telemetry?.speed === "number") {
-    telemetryChips.push({
-      label: "Speed",
-      value: `${formatMetricNumber(telemetry.speed, 2)}x`,
-      tone:
-        telemetry.speed < 0.95
-          ? "danger"
-          : telemetry.speed < 1
-            ? "warning"
-            : "success",
-    });
-  }
-  if (typeof telemetry?.bitrateKbps === "number") {
-    telemetryChips.push({
-      label: "Bitrate",
-      value: `${Math.round(telemetry.bitrateKbps)} kbps`,
-      tone: "muted",
-    });
-  }
-  if (typeof telemetry?.dropFrames === "number") {
-    telemetryChips.push({
-      label: "Drop",
-      value: String(telemetry.dropFrames),
-      tone: telemetry.dropFrames > 0 ? "danger" : "success",
-    });
-  }
-  if (typeof telemetry?.dupFrames === "number") {
-    telemetryChips.push({
-      label: "Dup",
-      value: String(telemetry.dupFrames),
-      tone: telemetry.dupFrames > 0 ? "warning" : "success",
-    });
-  }
-  if (typeof telemetry?.outTimeSeconds === "number") {
-    telemetryChips.push({
-      label: "Media",
-      value: formatSecondsCompact(telemetry.outTimeSeconds),
-      tone: "muted",
-    });
-  }
-
-  els.telemetryMetrics.innerHTML = telemetryChips.length
-    ? telemetryChips
-        .map(
-          (item) =>
-            `<span class="metric-chip ${item.tone ? `metric-chip-${item.tone}` : ""}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`,
-        )
-        .join("")
-    : '<span class="metric-chip metric-chip-muted">keine Daten</span>';
+  els.telemetryMetrics.innerHTML = renderTelemetryChipMarkup(telemetry);
 
   if (!queue.length) {
     els.queuePrimary.textContent = "keine Queue aktiv";
     els.queueSecondary.textContent = "0 Items";
   } else if (queueConfig.active && queueItem) {
     els.queuePrimary.textContent = `${queueItem.name}`;
-    els.queueSecondary.textContent = `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}`;
+    els.queueSecondary.textContent = `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}${queueBotName ? ` | Bot ${queueBotName}` : ""}`;
   } else {
     els.queuePrimary.textContent = `${queue.length} Items bereit`;
     els.queueSecondary.textContent = queueConfig.loop
@@ -846,6 +947,7 @@ function renderOverview() {
 
 function renderSelfbots() {
   const bots = getBots();
+  const activeRuns = getActiveRuns();
   if (!bots.length) {
     els.selfbotsList.innerHTML = '<p class="muted">Keine Selfbots konfiguriert.</p>';
     return;
@@ -853,7 +955,8 @@ function renderSelfbots() {
 
   els.selfbotsList.innerHTML = bots
     .map((bot) => {
-      const isStreaming = state.app.runtime.activeRun?.botId === bot.id;
+      const botRuns = activeRuns.filter((run) => run.botId === bot.id);
+      const isStreaming = botRuns.length > 0;
       const presence = bot.lastPresenceText
         ? `Presence: ${bot.lastPresenceText}`
         : "Presence: keine";
@@ -865,9 +968,10 @@ function renderSelfbots() {
           <div class="item-topline">
             <div>
               <h3 class="item-title">${escapeHtml(bot.name)}</h3>
-              <p class="item-meta"><span class="badge ${badgeClass(bot.status)}">${escapeHtml(bot.status)}</span>${bot.userTag ? ` | ${escapeHtml(bot.userTag)}` : ""}${bot.commandEnabled ? " | Commands" : ""}${isStreaming ? " | streamt gerade" : ""}</p>
+              <p class="item-meta"><span class="badge ${badgeClass(bot.status)}">${escapeHtml(bot.status)}</span>${bot.userTag ? ` | ${escapeHtml(bot.userTag)}` : ""}${bot.commandEnabled ? " | Commands" : ""}${isStreaming ? ` | ${botRuns.length} aktiver Stream${botRuns.length === 1 ? "" : "s"}` : ""}</p>
               <p class="item-meta">${escapeHtml(presence)}</p>
               <p class="item-meta">${escapeHtml(voiceStatus)}</p>
+              ${isStreaming ? `<p class="item-meta">${escapeHtml(botRuns.map((run) => `${run.channelName} -> ${run.presetName}`).join(" | "))}</p>` : ""}
               ${bot.lastError ? `<p class="item-meta">Fehler: ${escapeHtml(bot.lastError)}</p>` : ""}
             </div>
           </div>
@@ -1414,7 +1518,15 @@ async function handleListAction(event) {
 
   const action = button.dataset.action;
   const id = button.dataset.id;
-  if (!action || !id) return;
+  const botId = button.dataset.botId;
+  if (!action) return;
+
+  if (action === "stop-active-run" && botId) {
+    await stopActiveRun(botId);
+    return;
+  }
+
+  if (!id) return;
 
   if (action === "edit-channel") {
     editChannel(id);
@@ -1513,10 +1625,19 @@ function applyDiscoveredChannel() {
   showNotice("Discord-Channel in das Kanal-Formular uebernommen.", "success");
 }
 
-async function stopActiveRun() {
-  const result = await api("/api/stop", { method: "POST" });
+async function stopActiveRun(botId) {
+  const activeRuns = getActiveRuns();
+  const stopAll = !botId && activeRuns.length > 1;
+  const result = await api("/api/stop", {
+    method: "POST",
+    body: JSON.stringify(stopAll ? { all: true } : { botId }),
+  });
   showNotice(
-    result?.stopped ? "Aktiver Stream wird gestoppt." : "Kein aktiver Stream.",
+    result?.stopped
+      ? result?.stoppedCount > 1
+        ? `${result.stoppedCount} Streams werden gestoppt.`
+        : "Aktiver Stream wird gestoppt."
+      : "Kein aktiver Stream.",
     result?.stopped ? "success" : "info",
   );
   await refresh();
@@ -1704,6 +1825,9 @@ function bindEvents() {
   els.queueList.addEventListener("click", (event) => {
     void handleListAction(event).catch(handleError);
   });
+  els.activeRunsList.addEventListener("click", (event) => {
+    void handleListAction(event).catch(handleError);
+  });
   els.eventRecurrenceKind.addEventListener("change", updateRecurrenceVisibility);
   els.eventStartAt.addEventListener("change", updateRecurrenceVisibility);
 }
@@ -1726,7 +1850,7 @@ async function init() {
   let pollTimer;
   function schedulePoll() {
     if (pollTimer) clearTimeout(pollTimer);
-    const interval = state.app?.runtime?.activeRun ? 3000 : 8000;
+    const interval = getActiveRuns().length ? 3000 : 8000;
     pollTimer = setTimeout(async () => {
       try {
         await refresh();
@@ -1738,7 +1862,7 @@ async function init() {
 
   // Live uptime counter for active streams
   setInterval(() => {
-    const activeRun = state.app?.runtime?.activeRun;
+    const activeRun = getPreferredActiveRun();
     if (activeRun && activeRun.status === "running") {
       const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
       els.streamUptime.textContent = formatUptime(uptimeMs);

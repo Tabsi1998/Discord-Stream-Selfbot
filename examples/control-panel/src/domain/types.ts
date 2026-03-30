@@ -160,9 +160,12 @@ export type RuntimeState = {
   availableVideoEncoders?: VideoEncoderMode[];
   preferredHardwareEncoder?: PreferredHardwareEncoder;
   selectedVideoEncoder?: VideoEncoderMode;
+  selectedVideoEncodersByBot?: Record<string, VideoEncoderMode | undefined>;
   ffmpegLogLevel?: string;
   telemetry?: StreamTelemetry;
+  telemetryByBot?: Record<string, StreamTelemetry | undefined>;
   activeRun?: ActiveRun;
+  activeRuns?: ActiveRun[];
   lastError?: string;
   lastStartedAt?: string;
   lastEndedAt?: string;
@@ -267,6 +270,7 @@ export type QueueItem = {
 export type QueueConfig = {
   active: boolean;
   loop: boolean;
+  botId?: string;
   channelId?: string;
   presetId?: string;
   currentIndex: number;

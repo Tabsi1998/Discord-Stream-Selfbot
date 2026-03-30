@@ -216,23 +216,42 @@ export function createServer(service: ControlPanelService) {
     }),
   );
 
-  app.post("/api/stop", (_req, res) => {
-    const stopped = service.stopActive();
-    res.json({ stopped });
+  app.post("/api/stop", (req, res) => {
+    const body = req.body && typeof req.body === "object"
+      ? req.body as { botId?: string; all?: boolean }
+      : {};
+
+    if (body.all) {
+      const stoppedCount = service.stopAllActive();
+      res.json({ stopped: stoppedCount > 0, stoppedCount });
+      return;
+    }
+
+    const stopped = service.stopActiveForBot("manual-stop", body.botId);
+    res.json({ stopped, stoppedCount: stopped ? 1 : 0 });
   });
 
-  app.get("/api/stream/health", (_req, res) => {
+  app.get("/api/stream/health", (req, res) => {
     const state = service.snapshot();
-    const activeRun = state.runtime.activeRun;
+    const botId =
+      typeof req.query.botId === "string" ? req.query.botId : undefined;
+    const activeRuns = state.runtime.activeRuns ?? [];
+    const activeRun = botId
+      ? activeRuns.find((run) => run.botId === botId)
+      : state.runtime.activeRun ?? activeRuns[0];
     if (!activeRun) {
-      res.json({ active: false });
+      res.json({ active: false, activeCount: activeRuns.length, activeRuns });
       return;
     }
     const startedAt = Date.parse(activeRun.startedAt);
     const uptimeMs = Date.now() - startedAt;
     res.json({
       active: true,
+      activeCount: activeRuns.length,
+      activeRuns,
       status: activeRun.status,
+      botId: activeRun.botId,
+      botName: activeRun.botName,
       channelName: activeRun.channelName,
       presetName: activeRun.presetName,
       uptimeMs,
