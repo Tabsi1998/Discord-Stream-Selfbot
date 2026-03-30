@@ -147,6 +147,34 @@ function createDefaultQueueConfig(): QueueConfig {
   };
 }
 
+function isFallbackSourceLike(value: unknown): value is Partial<FallbackSource> {
+  return !!value && typeof value === "object";
+}
+
+function normalizeLegacyFallbackUrls(
+  input: unknown,
+  sourceMode: "direct" | "yt-dlp",
+): FallbackSource[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.flatMap((entry) => {
+    if (typeof entry !== "string") {
+      return [];
+    }
+    const url = entry.trim();
+    return url
+      ? [
+          {
+            url,
+            sourceMode,
+          },
+        ]
+      : [];
+  });
+}
+
 type EventPlan = {
   recurrence: RecurrenceRule;
   events: ScheduledEvent[];
@@ -1974,19 +2002,15 @@ export class ControlPanelService {
         preset.sourceMode === "yt-dlp" || preset.sourceMode === "direct"
           ? preset.sourceMode
           : "direct";
-      const legacyFallbackUrls = Array.isArray(
-        (preset as { fallbackUrls?: unknown[] }).fallbackUrls,
-      )
-        ? (preset as { fallbackUrls?: unknown[] }).fallbackUrls
-        : [];
+      const legacyFallbackSources = normalizeLegacyFallbackUrls(
+        (preset as { fallbackUrls?: unknown }).fallbackUrls,
+        preset.sourceMode,
+      );
       if (Array.isArray(preset.fallbackSources)) {
         preset.fallbackSources = preset.fallbackSources
+          .filter(isFallbackSourceLike)
           .filter(
-            (source) =>
-              source &&
-              typeof source === "object" &&
-              typeof source.url === "string" &&
-              source.url.trim(),
+            (source) => typeof source.url === "string" && source.url.trim(),
           )
           .map((source) => ({
             url: source.url.trim(),
@@ -1996,14 +2020,7 @@ export class ControlPanelService {
                 : preset.sourceMode,
           }));
       } else {
-        preset.fallbackSources = legacyFallbackUrls
-          .filter(
-            (source) => typeof source === "string" && source.trim().length > 0,
-          )
-          .map((source) => ({
-            url: source.trim(),
-            sourceMode: preset.sourceMode,
-          }));
+        preset.fallbackSources = legacyFallbackSources;
       }
     }
 

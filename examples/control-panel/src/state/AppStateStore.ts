@@ -111,6 +111,27 @@ function normalizeFallbackSources(
   });
 }
 
+function normalizeLegacyFallbackUrls(input: unknown): FallbackSource[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input.flatMap((entry) => {
+    if (typeof entry !== "string") {
+      return [];
+    }
+    const url = entry.trim();
+    return url
+      ? [
+          {
+            url,
+            sourceMode: "direct" as const,
+          },
+        ]
+      : [];
+  });
+}
+
 function normalizeState(input: unknown): ControlPanelState {
   const fallback = createDefaultState();
   if (!input || typeof input !== "object") return fallback;
@@ -132,18 +153,16 @@ function normalizeState(input: unknown): ControlPanelState {
             typeof preset.sourceMode === "string"
               ? preset.sourceMode
               : "direct";
-          const legacyFallbackUrls = Array.isArray(
-            (preset as { fallbackUrls?: unknown[] }).fallbackUrls,
-          )
-            ? (preset as { fallbackUrls?: unknown[] }).fallbackUrls
-            : [];
+          const legacyFallbackSources = normalizeLegacyFallbackUrls(
+            (preset as { fallbackUrls?: unknown }).fallbackUrls,
+          ).map((entry) => ({
+            ...entry,
+            sourceMode,
+          }));
           const fallbackSources = normalizeFallbackSources(
             Array.isArray(preset.fallbackSources)
               ? preset.fallbackSources
-              : legacyFallbackUrls.map((url) => ({
-                  url,
-                  sourceMode,
-                })),
+              : legacyFallbackSources,
             sourceMode,
           );
           const qualityProfile = coerceQualityProfile(preset.qualityProfile);
