@@ -3,7 +3,7 @@ import express, {
   type Request,
   type Response,
 } from "express";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { appConfig } from "../config/appConfig.js";
@@ -91,6 +91,40 @@ function panelAuthMiddleware(req: Request, res: Response, next: NextFunction) {
 
 export function createServer(service: ControlPanelService) {
   const app = express();
+  const sseClients = new Map<string, Response>();
+  let pendingState = service.snapshot();
+  let broadcastTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const writeStateEvent = (res: Response) => {
+    res.write(`event: state\ndata: ${JSON.stringify(pendingState)}\n\n`);
+  };
+
+  const flushStateBroadcast = () => {
+    broadcastTimer = undefined;
+    if (!sseClients.size) {
+      return;
+    }
+
+    for (const [clientId, res] of sseClients) {
+      try {
+        writeStateEvent(res);
+      } catch {
+        sseClients.delete(clientId);
+      }
+    }
+  };
+
+  const scheduleStateBroadcast = () => {
+    if (broadcastTimer) {
+      return;
+    }
+    broadcastTimer = setTimeout(flushStateBroadcast, 300);
+  };
+
+  service.subscribeState((state) => {
+    pendingState = state;
+    scheduleStateBroadcast();
+  });
 
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -119,6 +153,32 @@ export function createServer(service: ControlPanelService) {
 
   app.get("/api/state", (_req, res) => {
     res.json(service.snapshot());
+  });
+
+  app.get("/api/live/state", (req, res) => {
+    const clientId = randomUUID();
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(": keep-alive\n\n");
+      } catch {}
+    }, 25_000);
+
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+    res.write("retry: 5000\n\n");
+
+    pendingState = service.snapshot();
+    sseClients.set(clientId, res);
+    writeStateEvent(res);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      sseClients.delete(clientId);
+      res.end();
+    });
   });
 
   app.get("/api/logs", (req, res) => {

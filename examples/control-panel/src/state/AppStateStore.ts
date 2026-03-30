@@ -159,6 +159,7 @@ function normalizeState(input: unknown): ControlPanelState {
 
 export class AppStateStore {
   private state: ControlPanelState;
+  private readonly listeners = new Set<(state: ControlPanelState) => void>();
 
   constructor(private readonly filePath: string) {
     this.filePath = resolve(filePath);
@@ -217,6 +218,7 @@ export class AppStateStore {
     updater(draft);
     this.state = normalizeState(draft);
     this.save();
+    this.emit();
     return this.snapshot();
   }
 
@@ -245,5 +247,23 @@ export class AppStateStore {
     });
 
     return entry;
+  }
+
+  public subscribe(listener: (state: ControlPanelState) => void) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emit() {
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) {
+      try {
+        listener(snapshot);
+      } catch {
+        // Never let a subscriber break state persistence.
+      }
+    }
   }
 }

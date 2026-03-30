@@ -78,3 +78,30 @@ test("AppStateStore migrates legacy activeRun state to activeRuns and default bo
     rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("AppStateStore notifies subscribers after updates", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "stream-bot-state-"));
+  const filePath = join(tempDir, "state.json");
+
+  try {
+    const store = new AppStateStore(filePath);
+    const events: string[] = [];
+    const unsubscribe = store.subscribe((state) => {
+      events.push(state.runtime.discordStatus);
+    });
+
+    store.setRuntime((runtime) => {
+      runtime.discordStatus = "ready";
+    });
+
+    unsubscribe();
+
+    store.setRuntime((runtime) => {
+      runtime.discordStatus = "error";
+    });
+
+    assert.deepEqual(events, ["ready"]);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});

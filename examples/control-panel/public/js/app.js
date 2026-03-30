@@ -1,6 +1,11 @@
 const state = {
   app: null,
   voiceChannels: [],
+  liveSource: null,
+  liveReconnectTimer: null,
+  pollTimer: null,
+  pollFallbackActive: false,
+  syncMode: "booting",
 };
 
 const QUALITY_PROFILES = {
@@ -118,6 +123,7 @@ const els = {
   botSummary: document.querySelector("#botSummary"),
   ffmpegInfo: document.querySelector("#ffmpegInfo"),
   commandInfo: document.querySelector("#commandInfo"),
+  liveSyncInfo: document.querySelector("#liveSyncInfo"),
   activeRunPrimary: document.querySelector("#activeRunPrimary"),
   activeRunSecondary: document.querySelector("#activeRunSecondary"),
   activeRunsList: document.querySelector("#activeRunsList"),
@@ -701,6 +707,31 @@ function getRunEncoder(run) {
   );
 }
 
+function getPollingIntervalMs() {
+  return getActiveRuns().length ? 3000 : 8000;
+}
+
+function renderLiveSyncInfo() {
+  if (!els.liveSyncInfo) return;
+
+  if (state.syncMode === "sse") {
+    els.liveSyncInfo.textContent = "Live-Updates: SSE verbunden";
+    return;
+  }
+
+  if (state.syncMode === "polling") {
+    els.liveSyncInfo.textContent = `Live-Updates: Polling-Fallback alle ${Math.round(getPollingIntervalMs() / 1000)}s`;
+    return;
+  }
+
+  if (state.syncMode === "reconnecting") {
+    els.liveSyncInfo.textContent = "Live-Updates: SSE wird neu verbunden";
+    return;
+  }
+
+  els.liveSyncInfo.textContent = "Live-Updates: Initialisiere";
+}
+
 function buildTelemetryChips(telemetry) {
   const telemetryChips = [];
   if (typeof telemetry?.fps === "number") {
@@ -890,6 +921,7 @@ function renderOverview() {
   } else {
     els.commandInfo.textContent = "Discord-Commands deaktiviert";
   }
+  renderLiveSyncInfo();
 
   if (!activeRun) {
     els.activeRunPrimary.textContent = "kein aktiver Stream";
@@ -1783,6 +1815,96 @@ async function stopActiveRun(botId) {
   await refresh();
 }
 
+function stopPollingFallback() {
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+  }
+  state.pollFallbackActive = false;
+}
+
+function schedulePollingFallback() {
+  if (!state.pollFallbackActive) {
+    return;
+  }
+  if (state.pollTimer) {
+    clearTimeout(state.pollTimer);
+  }
+  state.pollTimer = setTimeout(async () => {
+    try {
+      await refresh();
+    } catch {}
+    schedulePollingFallback();
+  }, getPollingIntervalMs());
+}
+
+function startPollingFallback() {
+  if (state.pollFallbackActive) {
+    return;
+  }
+  state.pollFallbackActive = true;
+  state.syncMode = "polling";
+  renderLiveSyncInfo();
+  schedulePollingFallback();
+}
+
+function stopLiveUpdates() {
+  stopPollingFallback();
+  if (state.liveReconnectTimer) {
+    clearTimeout(state.liveReconnectTimer);
+    state.liveReconnectTimer = null;
+  }
+  if (state.liveSource) {
+    state.liveSource.close();
+    state.liveSource = null;
+  }
+}
+
+function connectLiveUpdates() {
+  if (typeof EventSource === "undefined") {
+    startPollingFallback();
+    return;
+  }
+  if (state.liveSource) {
+    return;
+  }
+
+  const source = new EventSource("/api/live/state");
+  state.liveSource = source;
+  state.syncMode = "reconnecting";
+  renderLiveSyncInfo();
+
+  source.addEventListener("state", (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      state.app = payload;
+      renderAll();
+    } catch {}
+  });
+
+  source.onopen = () => {
+    state.syncMode = "sse";
+    stopPollingFallback();
+    renderLiveSyncInfo();
+  };
+
+  source.onerror = () => {
+    if (state.liveSource !== source) {
+      return;
+    }
+
+    source.close();
+    state.liveSource = null;
+    if (!state.liveReconnectTimer) {
+      state.liveReconnectTimer = setTimeout(() => {
+        state.liveReconnectTimer = null;
+        connectLiveUpdates();
+      }, 5000);
+    }
+    startPollingFallback();
+  };
+}
+
 function bindPresetQualityEvents() {
   [
     els.presetSourceMode,
@@ -1983,6 +2105,7 @@ function bindEvents() {
   });
   els.eventRecurrenceKind.addEventListener("change", updateRecurrenceVisibility);
   els.eventStartAt.addEventListener("change", updateRecurrenceVisibility);
+  window.addEventListener("beforeunload", stopLiveUpdates);
 }
 
 function handleError(error) {
@@ -1999,20 +2122,7 @@ async function init() {
   resetNotificationForm();
   initYouTubeAuth();
   await refresh();
-
-  // Auto-poll: faster when a stream is actively running
-  let pollTimer;
-  function schedulePoll() {
-    if (pollTimer) clearTimeout(pollTimer);
-    const interval = getActiveRuns().length ? 3000 : 8000;
-    pollTimer = setTimeout(async () => {
-      try {
-        await refresh();
-      } catch {}
-      schedulePoll();
-    }, interval);
-  }
-  schedulePoll();
+  connectLiveUpdates();
 
   // Live uptime counter for active streams
   setInterval(() => {
