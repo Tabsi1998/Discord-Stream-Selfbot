@@ -176,6 +176,21 @@ VOICE_STATUS_TEMPLATE=Now streaming: {{title}}
 
 Jeder Channel in der Web-UI ist genau einem Selfbot zugeordnet. Dadurch koennen mehrere Streams parallel laufen, ohne sich gegenseitig auf denselben Bot zu legen.
 
+## Commands und optionaler Control-Bot
+
+Text-Befehle laufen standardmaessig ueber den primaeren Selfbot und ueber Zusatz-Selfbots mit aktivierten Commands. Optional kannst du einen normalen Discord Bot dazuschalten:
+
+```bash
+COMMAND_PREFIX=$panel
+CONTROL_BOT_TOKEN=
+COMMAND_ALLOWED_AUTHOR_IDS=
+```
+
+Wichtig fuer den normalen Bot:
+- `Message Content Intent` im Discord Developer Portal aktivieren
+- denselben Bot auf deinen Server einladen
+- optional `COMMAND_ALLOWED_AUTHOR_IDS` setzen, wenn nicht nur dein Selfbot-Account steuern soll
+
 ---
 
 ## Hardware-Encoding in Docker

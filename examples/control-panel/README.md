@@ -170,6 +170,8 @@ Fuer den produktiven Betrieb: siehe [SELFHOSTING.md](../../SELFHOSTING.md)
 
 Standard-Prefix: `$panel`
 
+Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN` angenommen werden.
+
 | Befehl | Beschreibung |
 |--------|-------------|
 | `$panel help` | Alle Befehle |

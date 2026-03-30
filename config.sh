@@ -219,6 +219,7 @@ CUR_TZ=$(read_env "TZ")
 CUR_CMD=$(read_env "DISCORD_COMMANDS_ENABLED")
 CUR_PREFIX=$(read_env "COMMAND_PREFIX")
 CUR_IDS=$(read_env "COMMAND_ALLOWED_AUTHOR_IDS")
+CUR_CONTROL_BOT_TOKEN=$(read_env "CONTROL_BOT_TOKEN")
 CUR_YTDLP_BROWSER=$(read_env "YT_DLP_COOKIES_FROM_BROWSER")
 CUR_YTDLP_COOKIE_FILE=$(read_env "YT_DLP_COOKIES_FILE")
 CUR_YTDLP_PACKAGE=$(read_env "YT_DLP_PACKAGE")
@@ -240,7 +241,7 @@ echo -e "  ${BOLD}Aktuelle Konfiguration:${NC}" >&2
 echo -e "  ${DIM}─────────────────────────────────────────────${NC}" >&2
 echo -e "  ${DIM}1)${NC} Discord Token:     $(mask_secret "$CUR_TOKEN")" >&2
 echo -e "  ${DIM}2)${NC} Zeitzone:          $CUR_TZ" >&2
-echo -e "  ${DIM}3)${NC} Chat-Befehle:      $([ "$CUR_CMD" = "1" ] && echo "Aktiv ($CUR_PREFIX)" || echo "Aus")" >&2
+echo -e "  ${DIM}3)${NC} Chat-Befehle:      $([ "$CUR_CMD" = "1" ] && echo "Aktiv ($CUR_PREFIX) | Control-Bot $( [ -n "$CUR_CONTROL_BOT_TOKEN" ] && echo "an" || echo "aus")" || echo "Aus")" >&2
 echo -e "  ${DIM}4)${NC} Erlaubte User-IDs: ${CUR_IDS:-nur du selbst}" >&2
 echo -e "  ${DIM}5)${NC} yt-dlp Cookies:    ${CUR_YTDLP_BROWSER:-${CUR_YTDLP_COOKIE_FILE:-keine}}" >&2
 echo -e "  ${DIM}6)${NC} yt-dlp Paket:     ${CUR_YTDLP_PACKAGE:-yt-dlp[default]}" >&2
@@ -280,8 +281,10 @@ case "$CHOICE" in
     CMD_DEF="y"; [ "$CUR_CMD" = "0" ] && CMD_DEF="n"
     NEW_CMD=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEF")
     NEW_PREFIX=$(ask "Prefix" "$CUR_PREFIX")
+    NEW_CONTROL_BOT_TOKEN=$(ask_secret "Control-Bot Token (optional)" "$CUR_CONTROL_BOT_TOKEN")
     set_env_value "DISCORD_COMMANDS_ENABLED" "$NEW_CMD"
     set_env_value "COMMAND_PREFIX" "$NEW_PREFIX"
+    set_env_value "CONTROL_BOT_TOKEN" "$NEW_CONTROL_BOT_TOKEN"
     print_success "Chat-Befehle aktualisiert"
     ;;
   4)
@@ -392,6 +395,7 @@ case "$CHOICE" in
     CMD_DEF="y"; [ "$CUR_CMD" = "0" ] && CMD_DEF="n"
     NEW_CMD=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEF")
     NEW_PREFIX=$(ask "Prefix" "$CUR_PREFIX")
+    NEW_CONTROL_BOT_TOKEN=$(ask_secret "Control-Bot Token (optional)" "$CUR_CONTROL_BOT_TOKEN")
     NEW_IDS=$(ask "Erlaubte User-IDs" "$CUR_IDS")
     PANEL_DEF="n"; [ "$CUR_PANEL_AUTH" = "1" ] && PANEL_DEF="y"
     NEW_PANEL_AUTH=$(ask_yn "Web-Panel mit Login absichern?" "$PANEL_DEF")
@@ -416,6 +420,7 @@ case "$CHOICE" in
     set_env_value "TZ" "$NEW_TZ"
     set_env_value "DISCORD_COMMANDS_ENABLED" "$NEW_CMD"
     set_env_value "COMMAND_PREFIX" "$NEW_PREFIX"
+    set_env_value "CONTROL_BOT_TOKEN" "$NEW_CONTROL_BOT_TOKEN"
     set_env_value "COMMAND_ALLOWED_AUTHOR_IDS" "$NEW_IDS"
     set_env_value "PANEL_AUTH_ENABLED" "$NEW_PANEL_AUTH"
     set_env_value "PANEL_AUTH_USERNAME" "$NEW_PANEL_USER"

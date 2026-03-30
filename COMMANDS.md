@@ -1,6 +1,8 @@
 # Discord Chat-Befehle - Referenz
 
 > Alle Befehle beginnen mit dem konfigurierten Prefix. Standard: `$panel`
+>
+> Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot (`CONTROL_BOT_TOKEN`) angenommen werden.
 
 ---
 

@@ -253,6 +253,7 @@ export const appConfig = {
   commandEnabled: process.env.DISCORD_COMMANDS_ENABLED !== "0",
   commandPrefix: process.env.COMMAND_PREFIX?.trim() || "$panel",
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),
+  controlBotToken: normalizeOptionalEnv(process.env.CONTROL_BOT_TOKEN),
   schedulerPollMs: parsePositiveIntegerEnv(process.env.SCHEDULER_POLL_MS, 1000),
   startupTimeoutMs: parsePositiveIntegerEnv(
     process.env.STARTUP_TIMEOUT_MS,

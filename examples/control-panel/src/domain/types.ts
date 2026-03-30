@@ -32,6 +32,7 @@ export type EventStatus =
   | "failed";
 export type RunKind = "manual" | "event";
 export type DiscordStatus = "starting" | "ready" | "error";
+export type ControlBotStatus = "disabled" | "connecting" | "ready" | "error";
 export type LogLevel = "info" | "warn" | "error";
 export type QueueConflictPolicy = "queue-first" | "event-first";
 export const DEFAULT_SELFBOT_ID = "primary";
@@ -154,6 +155,10 @@ export type RuntimeState = {
   ytDlpAvailable?: boolean;
   commandPrefix?: string;
   commandAuthorIds?: string[];
+  controlBotStatus?: ControlBotStatus;
+  controlBotUserTag?: string;
+  controlBotUserId?: string;
+  controlBotEnabled?: boolean;
   panelAuthEnabled?: boolean;
   availableVideoEncoders?: VideoEncoderMode[];
   preferredHardwareEncoder?: PreferredHardwareEncoder;

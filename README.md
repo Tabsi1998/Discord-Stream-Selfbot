@@ -256,6 +256,7 @@ Jellyfin → FFmpeg → Discord
 ## Discord Chat-Befehle
 
 Alle Befehle starten mit dem konfigurierten Prefix (Standard: `$panel`).
+Sie funktionieren ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN`.
 
 Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
 
@@ -346,6 +347,7 @@ Discord-Stream-Selfbot/
 | `TZ` | Zeitzone | Europe/Vienna |
 | `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
 | `COMMAND_PREFIX` | Prefix fuer Chat-Befehle | $panel |
+| `CONTROL_BOT_TOKEN` | Optionaler normaler Discord Bot fuer dieselben Text-Befehle | leer |
 | `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur du selbst |
 | `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots | Primary Selfbot |
 | `SELFBOT_CONFIG_FILE` | TSV/JSON-Datei fuer zusaetzliche Selfbots | `/app/examples/control-panel/data/selfbot-profiles.tsv` |

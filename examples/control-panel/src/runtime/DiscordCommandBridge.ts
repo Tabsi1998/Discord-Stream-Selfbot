@@ -1,9 +1,46 @@
-import type { Message } from "discord.js-selfbot-v13";
+import {
+  Client as ControlBotClient,
+  GatewayIntentBits,
+  Partials,
+  type Message as ControlBotMessage,
+} from "discord.js";
+import type { Message as SelfbotMessage } from "discord.js-selfbot-v13";
 import { appConfig } from "../config/appConfig.js";
 import type { ScheduledEvent } from "../domain/types.js";
 import type { ControlPanelService } from "../services/ControlPanelService.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 import type { StreamRuntime } from "./StreamRuntime.js";
+
+type CommandMessageLike = {
+  content: string;
+  author: {
+    id: string;
+    bot?: boolean;
+  };
+  channel: {
+    send(content: string): Promise<unknown>;
+  };
+};
+
+function toCommandMessage(
+  message: SelfbotMessage | ControlBotMessage,
+): CommandMessageLike | undefined {
+  const channel = message.channel;
+  if (!("send" in channel) || typeof channel.send !== "function") {
+    return undefined;
+  }
+
+  return {
+    content: message.content,
+    author: {
+      id: message.author.id,
+      bot: "bot" in message.author ? !!message.author.bot : false,
+    },
+    channel: {
+      send: (content: string) => channel.send(content),
+    },
+  };
+}
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat("de-AT", {
@@ -34,6 +71,10 @@ function matchesQuery(value: string, query: string) {
 
 export class DiscordCommandBridge {
   private started = false;
+  private controlBotClient?: ControlBotClient;
+  private readonly selfbotListenerIds = appConfig.selfbotProfiles
+    .filter((profile) => profile.commandEnabled)
+    .map((profile) => profile.id);
 
   constructor(
     private readonly runtime: StreamRuntime,
@@ -44,13 +85,112 @@ export class DiscordCommandBridge {
   public start() {
     if (!appConfig.commandEnabled || this.started) return;
     this.started = true;
-    this.runtime.getClient().on("messageCreate", this.handleMessage);
+    for (const botId of this.selfbotListenerIds) {
+      this.runtime
+        .getClient(botId)
+        .on("messageCreate", this.handleSelfbotMessage);
+    }
+    if (appConfig.controlBotToken) {
+      this.startControlBot();
+    } else {
+      this.store.setRuntime((runtime) => {
+        runtime.controlBotStatus = "disabled";
+        runtime.controlBotEnabled = false;
+        runtime.controlBotUserTag = undefined;
+        runtime.controlBotUserId = undefined;
+      });
+    }
     this.store.appendLog("info", "Discord command bridge enabled", {
       prefix: appConfig.commandPrefix,
+      selfbotListeners: this.selfbotListenerIds.join(",") || "none",
+      controlBot: appConfig.controlBotToken ? "enabled" : "disabled",
     });
   }
 
-  private readonly handleMessage = async (message: Message) => {
+  private readonly handleSelfbotMessage = async (message: SelfbotMessage) => {
+    const commandMessage = toCommandMessage(message);
+    if (!commandMessage) return;
+    await this.handleMessage(commandMessage);
+  };
+
+  private readonly handleControlBotMessage = async (
+    message: ControlBotMessage,
+  ) => {
+    if (message.author.bot) return;
+    const commandMessage = toCommandMessage(message);
+    if (!commandMessage) return;
+    await this.handleMessage(commandMessage);
+  };
+
+  private async startControlBot() {
+    if (this.controlBotClient) {
+      return;
+    }
+    this.store.setRuntime((runtime) => {
+      runtime.controlBotEnabled = true;
+      runtime.controlBotStatus = "connecting";
+    });
+
+    const client = new ControlBotClient({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+      partials: [Partials.Channel],
+    });
+
+    client.on("ready", () => {
+      const user = client.user;
+      if (!user) {
+        return;
+      }
+      const userTag = user.tag;
+      const userId = user.id;
+      this.store.setRuntime((runtime) => {
+        runtime.controlBotEnabled = true;
+        runtime.controlBotStatus = "ready";
+        runtime.controlBotUserTag = userTag;
+        runtime.controlBotUserId = userId;
+      });
+      this.store.appendLog("info", "Discord control bot ready", {
+        userTag,
+        userId,
+      });
+    });
+
+    client.on("error", (error: Error) => {
+      this.store.setRuntime((runtime) => {
+        runtime.controlBotEnabled = true;
+        runtime.controlBotStatus = "error";
+      });
+      this.store.appendLog("error", "Discord control bot failed", {
+        error: error.message,
+      });
+    });
+
+    client.on("messageCreate", this.handleControlBotMessage);
+
+    try {
+      await client.login(appConfig.controlBotToken);
+      this.controlBotClient = client;
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Discord control bot login failed";
+      this.store.setRuntime((runtime) => {
+        runtime.controlBotEnabled = true;
+        runtime.controlBotStatus = "error";
+      });
+      this.store.appendLog("error", "Discord control bot login failed", {
+        error: message,
+      });
+    }
+  }
+
+  private readonly handleMessage = async (message: CommandMessageLike) => {
     if (!message.content.startsWith(appConfig.commandPrefix)) return;
     if (!this.isAllowedAuthor(message.author.id)) return;
 
@@ -237,10 +377,12 @@ export class DiscordCommandBridge {
   };
 
   private isAllowedAuthor(authorId: string) {
-    const clientUserId = this.runtime.getClient().user?.id;
     const allowed = new Set(appConfig.commandAllowedAuthorIds);
-    if (clientUserId) {
-      allowed.add(clientUserId);
+    for (const botId of this.selfbotListenerIds) {
+      const userId = this.runtime.getClient(botId).user?.id;
+      if (userId) {
+        allowed.add(userId);
+      }
     }
     return allowed.has(authorId);
   }
@@ -280,7 +422,7 @@ export class DiscordCommandBridge {
     throw new Error(`${typeName} not found: ${trimmed}`);
   }
 
-  private async sendHelp(message: Message) {
+  private async sendHelp(message: CommandMessageLike) {
     const prefix = appConfig.commandPrefix;
     await message.channel.send(
       [
@@ -308,7 +450,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendStatus(message: Message) {
+  private async sendStatus(message: CommandMessageLike) {
     const state = this.service.snapshot();
     const activeRuns = state.runtime.activeRuns ?? [];
     if (!activeRuns.length) {
@@ -333,7 +475,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendChannelList(message: Message) {
+  private async sendChannelList(message: CommandMessageLike) {
     const lines = this.service
       .snapshot()
       .channels.slice(0, 12)
@@ -343,7 +485,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendPresetList(message: Message) {
+  private async sendPresetList(message: CommandMessageLike) {
     const lines = this.service
       .snapshot()
       .presets.slice(0, 12)
@@ -353,7 +495,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendEventList(message: Message) {
+  private async sendEventList(message: CommandMessageLike) {
     const now = Date.now();
     const events = this.service
       .snapshot()
@@ -373,7 +515,10 @@ export class DiscordCommandBridge {
     return `${event.name} | ${event.id} | ${event.status} | ${formatDate(event.startAt)} -> ${formatDate(event.endAt)}`;
   }
 
-  private async startManualFromCommand(message: Message, rawArgs: string) {
+  private async startManualFromCommand(
+    message: CommandMessageLike,
+    rawArgs: string,
+  ) {
     const [channelQuery, presetQuery, stopAtRaw] = splitSegments(rawArgs);
     if (!channelQuery || !presetQuery) {
       throw new Error("Use: start <channel|id> | <preset|id> | [stopAt]");
@@ -404,7 +549,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendQueue(message: Message) {
+  private async sendQueue(message: CommandMessageLike) {
     const state = this.store.snapshot();
     const { queue, queueConfig } = state;
     if (!queue.length) {
@@ -432,7 +577,7 @@ export class DiscordCommandBridge {
     await message.channel.send([header, ...lines].join("\n"));
   }
 
-  private async sendSystemInfo(message: Message) {
+  private async sendSystemInfo(message: CommandMessageLike) {
     const state = this.store.snapshot();
     const uptime = process.uptime();
     const hours = Math.floor(uptime / 3600);
@@ -455,6 +600,11 @@ export class DiscordCommandBridge {
       [
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
+        `Control Bot: ${
+          state.runtime.controlBotEnabled
+            ? `${state.runtime.controlBotStatus ?? "connecting"}${state.runtime.controlBotUserTag ? ` (${state.runtime.controlBotUserTag})` : ""}`
+            : "aus"
+        }`,
         `yt-dlp: ${state.runtime.ytDlpAvailable ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})` : "nein"}`,
         `Panel Login: ${state.runtime.panelAuthEnabled ? "an" : "aus"}`,
         `Aktive Streams: ${activeRuns.length}`,
@@ -469,7 +619,7 @@ export class DiscordCommandBridge {
     );
   }
 
-  private async sendLogs(message: Message, count: number) {
+  private async sendLogs(message: CommandMessageLike, count: number) {
     const logs = this.store.snapshot().logs.slice(0, count);
     if (!logs.length) {
       await message.channel.send("Keine Logs vorhanden.");
@@ -525,7 +675,7 @@ export class DiscordCommandBridge {
     throw new Error(`Kein aktiver Stream passt zu "${trimmed}"`);
   }
 
-  private async restartActive(message: Message, query?: string) {
+  private async restartActive(message: CommandMessageLike, query?: string) {
     const run = this.resolveActiveRun(query);
     const stopAt = run.plannedStopAt;
     const state = this.store.snapshot();

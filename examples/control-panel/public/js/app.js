@@ -998,7 +998,11 @@ function renderOverview() {
     const ids = runtime.commandAuthorIds?.length
       ? runtime.commandAuthorIds.join(", ")
       : "nur Self-Account";
-    els.commandInfo.textContent = `Discord-Commands: ${runtime.commandPrefix} | erlaubt: ${ids}`;
+    const controlBot =
+      runtime.controlBotEnabled && runtime.controlBotStatus !== "disabled"
+        ? ` | Control-Bot: ${runtime.controlBotStatus}${runtime.controlBotUserTag ? ` (${runtime.controlBotUserTag})` : ""}`
+        : "";
+    els.commandInfo.textContent = `Discord-Commands: ${runtime.commandPrefix} | erlaubt: ${ids}${controlBot}`;
   } else {
     els.commandInfo.textContent = "Discord-Commands deaktiviert";
   }
