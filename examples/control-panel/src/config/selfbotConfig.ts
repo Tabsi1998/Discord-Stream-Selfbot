@@ -7,9 +7,19 @@ import type {
 } from "../domain/types.js";
 import { DEFAULT_SELFBOT_ID } from "../domain/types.js";
 
-type RawSelfbotProfile = Partial<ManagedSelfbotState> & {
-  enabled?: boolean;
+type RawSelfbotProfile = {
+  id?: string;
+  name?: string;
   token?: string;
+  enabled?: boolean | string;
+  commandEnabled?: boolean | string;
+  idlePresenceStatus?: string;
+  idleActivityType?: string;
+  idleActivityText?: string;
+  streamPresenceStatus?: string;
+  streamActivityType?: string;
+  streamActivityText?: string;
+  voiceStatusTemplate?: string;
 };
 
 export type SelfbotProfileConfig = Omit<
@@ -89,7 +99,13 @@ function createProfileConfig(
     voiceStatusTemplate?: string;
   },
 ): SelfbotProfileConfig | undefined {
-  if (input.enabled === false) {
+  const enabled =
+    typeof input.enabled === "boolean"
+      ? input.enabled
+      : typeof input.enabled === "string"
+        ? parseBooleanEnv(input.enabled, true)
+        : true;
+  if (!enabled) {
     return undefined;
   }
 
@@ -105,6 +121,8 @@ function createProfileConfig(
     commandEnabled:
       typeof input.commandEnabled === "boolean"
         ? input.commandEnabled
+        : typeof input.commandEnabled === "string"
+          ? parseBooleanEnv(input.commandEnabled, defaults.commandEnabled)
         : defaults.commandEnabled,
     idlePresenceStatus: parsePresenceStatus(
       input.idlePresenceStatus,
@@ -199,8 +217,8 @@ function loadAdditionalProfiles(configFile: string, primary: SelfbotProfileConfi
           idleActivityText,
           streamActivityText,
           voiceStatusTemplate,
-          enabled: enabled ? enabled !== "0" : true,
-          commandEnabled: commandEnabled === "1",
+          enabled,
+          commandEnabled,
         },
         `bot-${index + 1}`,
         { ...defaults, name: name?.trim() || `Selfbot ${index + 1}` },
