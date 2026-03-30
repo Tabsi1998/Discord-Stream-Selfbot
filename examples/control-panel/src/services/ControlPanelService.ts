@@ -1020,8 +1020,7 @@ export class ControlPanelService {
     assertNonEmpty(input.sourceUrl, "sourceUrl");
 
     const sourceMode =
-      input.sourceMode ??
-      (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
+      input.sourceMode ?? (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
     const sourceProfile = detectSourceProfile(sourceMode, input.sourceUrl);
     const hasHardwareEncoder = appConfig.availableHardwareEncoders.length > 0;
     const useSafeSoftwareProfile =
@@ -1282,10 +1281,7 @@ export class ControlPanelService {
       trigger: info.trigger,
     });
 
-    const stopped = this.runtime.stopActive(
-      "adaptive-restart",
-      info.run.botId,
-    );
+    const stopped = this.runtime.stopActive("adaptive-restart", info.run.botId);
     if (!stopped) {
       this.pendingAdaptiveRestarts.delete(info.run.botId);
       this.store.appendLog("warn", "Adaptive quality switch aborted", {

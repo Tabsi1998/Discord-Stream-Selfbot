@@ -579,10 +579,7 @@ test("ControlPanelService keeps an event running across adaptive quality restart
       adaptiveTargetPreset: preset,
     });
 
-    assert.equal(
-      context.runtime.stopCalls.at(-1)?.reason,
-      "adaptive-restart",
-    );
+    assert.equal(context.runtime.stopCalls.at(-1)?.reason, "adaptive-restart");
 
     context.runtime.emit("runEnded", {
       run: activeRun,
