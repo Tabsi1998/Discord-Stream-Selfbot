@@ -118,8 +118,13 @@ const els = {
   commandInfo: document.querySelector("#commandInfo"),
   activeRunPrimary: document.querySelector("#activeRunPrimary"),
   activeRunSecondary: document.querySelector("#activeRunSecondary"),
+  telemetryPrimary: document.querySelector("#telemetryPrimary"),
+  telemetrySecondary: document.querySelector("#telemetrySecondary"),
+  telemetryMetrics: document.querySelector("#telemetryMetrics"),
   scheduledSummary: document.querySelector("#scheduledSummary"),
   nextEventSummary: document.querySelector("#nextEventSummary"),
+  queuePrimary: document.querySelector("#queuePrimary"),
+  queueSecondary: document.querySelector("#queueSecondary"),
   channelForm: document.querySelector("#channelForm"),
   channelIdField: document.querySelector("#channelIdField"),
   channelName: document.querySelector("#channelName"),
@@ -157,6 +162,18 @@ const els = {
   manualChannelId: document.querySelector("#manualChannelId"),
   manualPresetId: document.querySelector("#manualPresetId"),
   manualStopAt: document.querySelector("#manualStopAt"),
+  queueAddForm: document.querySelector("#queueAddForm"),
+  queueUrl: document.querySelector("#queueUrl"),
+  queueName: document.querySelector("#queueName"),
+  queueSourceMode: document.querySelector("#queueSourceMode"),
+  queueChannelId: document.querySelector("#queueChannelId"),
+  queuePresetId: document.querySelector("#queuePresetId"),
+  queueLoopEnabled: document.querySelector("#queueLoopEnabled"),
+  queueStartButton: document.querySelector("#queueStartButton"),
+  queueSkipButton: document.querySelector("#queueSkipButton"),
+  queueStopButton: document.querySelector("#queueStopButton"),
+  queueClearButton: document.querySelector("#queueClearButton"),
+  queueList: document.querySelector("#queueList"),
   eventForm: document.querySelector("#eventForm"),
   eventIdField: document.querySelector("#eventIdField"),
   eventName: document.querySelector("#eventName"),
@@ -251,6 +268,21 @@ function formatUptime(ms) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatSecondsCompact(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0s";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function formatMetricNumber(value, digits = 1) {
+  if (!Number.isFinite(value)) return "n/a";
+  return Number(value).toFixed(digits);
 }
 
 function parsePositiveNumber(value, fallback) {
@@ -486,6 +518,32 @@ function recurrenceSummary(rule) {
     : `${cadence} (${days})`;
 }
 
+function queueStatusLabel(status) {
+  switch (status) {
+    case "pending":
+      return "Wartet";
+    case "playing":
+      return "Laeuft";
+    case "completed":
+      return "Fertig";
+    case "skipped":
+      return "Uebersprungen";
+    case "failed":
+      return "Fehler";
+    default:
+      return status;
+  }
+}
+
+function queueStatusClass(status) {
+  if (status === "playing") return "queue-pill queue-pill-playing";
+  if (status === "completed") return "queue-pill queue-pill-completed";
+  if (status === "failed" || status === "skipped") {
+    return "queue-pill queue-pill-failed";
+  }
+  return "queue-pill";
+}
+
 function eventStatusLabel(status) {
   switch (status) {
     case "scheduled":
@@ -601,6 +659,10 @@ function fillDiscoveredChannelSelect() {
 function renderOverview() {
   const runtime = state.app.runtime;
   const activeRun = runtime.activeRun;
+  const telemetry = runtime.telemetry;
+  const queue = state.app.queue;
+  const queueConfig = state.app.queueConfig;
+  const queueItem = queue[queueConfig.currentIndex];
   const scheduled = state.app.events.filter((event) => event.status === "scheduled");
   const nextEvent = [...scheduled].sort(
     (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
@@ -657,6 +719,87 @@ function renderOverview() {
   els.nextEventSummary.textContent = nextEvent
     ? `${nextEvent.name}: ${formatDateTime(nextEvent.startAt)}`
     : "kein naechstes Event";
+
+  els.telemetryPrimary.textContent = activeRun
+    ? `${(runtime.selectedVideoEncoder || "software").toUpperCase()} | FFmpeg ${runtime.ffmpegLogLevel || "warning"}`
+    : "keine aktive Session";
+  els.telemetrySecondary.textContent = telemetry?.updatedAt
+    ? `Letztes Update: ${formatDateTime(telemetry.updatedAt)}`
+    : activeRun
+      ? "warte auf FFmpeg-Progress"
+      : "keine Live-Metriken";
+
+  const telemetryChips = [];
+  if (typeof telemetry?.fps === "number") {
+    telemetryChips.push({
+      label: "FPS",
+      value: formatMetricNumber(telemetry.fps),
+      tone:
+        telemetry.fps < 20 ? "danger" : telemetry.fps < 28 ? "warning" : "success",
+    });
+  }
+  if (typeof telemetry?.speed === "number") {
+    telemetryChips.push({
+      label: "Speed",
+      value: `${formatMetricNumber(telemetry.speed, 2)}x`,
+      tone:
+        telemetry.speed < 0.95
+          ? "danger"
+          : telemetry.speed < 1
+            ? "warning"
+            : "success",
+    });
+  }
+  if (typeof telemetry?.bitrateKbps === "number") {
+    telemetryChips.push({
+      label: "Bitrate",
+      value: `${Math.round(telemetry.bitrateKbps)} kbps`,
+      tone: "muted",
+    });
+  }
+  if (typeof telemetry?.dropFrames === "number") {
+    telemetryChips.push({
+      label: "Drop",
+      value: String(telemetry.dropFrames),
+      tone: telemetry.dropFrames > 0 ? "danger" : "success",
+    });
+  }
+  if (typeof telemetry?.dupFrames === "number") {
+    telemetryChips.push({
+      label: "Dup",
+      value: String(telemetry.dupFrames),
+      tone: telemetry.dupFrames > 0 ? "warning" : "success",
+    });
+  }
+  if (typeof telemetry?.outTimeSeconds === "number") {
+    telemetryChips.push({
+      label: "Media",
+      value: formatSecondsCompact(telemetry.outTimeSeconds),
+      tone: "muted",
+    });
+  }
+
+  els.telemetryMetrics.innerHTML = telemetryChips.length
+    ? telemetryChips
+        .map(
+          (item) =>
+            `<span class="metric-chip ${item.tone ? `metric-chip-${item.tone}` : ""}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>`,
+        )
+        .join("")
+    : '<span class="metric-chip metric-chip-muted">keine Daten</span>';
+
+  if (!queue.length) {
+    els.queuePrimary.textContent = "keine Queue aktiv";
+    els.queueSecondary.textContent = "0 Items";
+  } else if (queueConfig.active && queueItem) {
+    els.queuePrimary.textContent = `${queueItem.name}`;
+    els.queueSecondary.textContent = `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}`;
+  } else {
+    els.queuePrimary.textContent = `${queue.length} Items bereit`;
+    els.queueSecondary.textContent = queueConfig.loop
+      ? "Loop aktiviert"
+      : "noch nicht gestartet";
+  }
 }
 
 function badgeClass(status) {
@@ -767,6 +910,40 @@ function renderEvents() {
     .join("");
 }
 
+function renderQueue() {
+  const items = state.app.queue;
+  const queueConfig = state.app.queueConfig;
+  if (!items.length) {
+    els.queueList.innerHTML = '<p class="muted">Die Queue ist leer.</p>';
+    return;
+  }
+
+  els.queueList.innerHTML = items
+    .map((item, index) => {
+      const isActive = queueConfig.active && queueConfig.currentIndex === index;
+      const activeClass = isActive ? " queue-item-active" : "";
+      const position = `${index + 1}/${items.length}`;
+      return `
+        <article class="item-card${activeClass}">
+          <div class="item-topline">
+            <div>
+              <h3 class="item-title">${escapeHtml(item.name)}</h3>
+              <p class="item-meta">${escapeHtml(item.sourceMode)} | ${position} | ${formatDateTime(item.addedAt)}</p>
+              <p class="item-meta">${escapeHtml(item.url)}</p>
+              <p class="item-meta"><span class="${queueStatusClass(item.status)}">${queueStatusLabel(item.status)}</span>${isActive ? " | aktuell" : ""}</p>
+            </div>
+          </div>
+          <div class="item-actions">
+            <button type="button" data-action="queue-up" data-id="${escapeHtml(item.id)}"${index === 0 ? " disabled" : ""}>Hoch</button>
+            <button type="button" data-action="queue-down" data-id="${escapeHtml(item.id)}"${index === items.length - 1 ? " disabled" : ""}>Runter</button>
+            <button type="button" data-action="queue-delete" data-id="${escapeHtml(item.id)}">Entfernen</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderLogs() {
   if (!state.app.logs.length) {
     els.logsList.innerHTML = '<p class="muted">Noch keine Logs.</p>';
@@ -795,8 +972,18 @@ function renderLogs() {
 function renderSelects() {
   fillSelect(els.manualChannelId, state.app.channels, "Kanal waehlen", channelLabel);
   fillSelect(els.eventChannelId, state.app.channels, "Kanal waehlen", channelLabel);
+  fillSelect(els.queueChannelId, state.app.channels, "Queue-Kanal waehlen", channelLabel);
   fillSelect(els.manualPresetId, state.app.presets, "Preset waehlen", presetLabel);
   fillSelect(els.eventPresetId, state.app.presets, "Preset waehlen", presetLabel);
+  fillSelect(els.queuePresetId, state.app.presets, "Basis-Preset waehlen", presetLabel);
+
+  if (state.app.queueConfig.channelId) {
+    els.queueChannelId.value = state.app.queueConfig.channelId;
+  }
+  if (state.app.queueConfig.presetId) {
+    els.queuePresetId.value = state.app.queueConfig.presetId;
+  }
+  els.queueLoopEnabled.checked = !!state.app.queueConfig.loop;
 }
 
 function renderAll() {
@@ -806,6 +993,7 @@ function renderAll() {
   renderChannels();
   renderPresets();
   renderEvents();
+  renderQueue();
   renderLogs();
 }
 
@@ -842,6 +1030,11 @@ function resetEventForm() {
   els.eventRecurrenceUntil.value = "";
   setSelectedWeekdays([]);
   updateRecurrenceVisibility();
+}
+
+function resetQueueForm() {
+  els.queueAddForm.reset();
+  els.queueSourceMode.value = "";
 }
 
 async function refresh(forceChannels = false) {
@@ -906,6 +1099,14 @@ function buildEventPayload() {
     endAt: fromLocalInputValue(els.eventEndAt.value),
     description: els.eventDescription.value.trim(),
     recurrence,
+  };
+}
+
+function buildQueuePayload() {
+  return {
+    url: els.queueUrl.value.trim(),
+    name: els.queueName.value.trim(),
+    sourceMode: els.queueSourceMode.value || undefined,
   };
 }
 
@@ -1051,6 +1252,62 @@ async function handleManualStart(event) {
   await refresh();
 }
 
+async function handleQueueAdd(event) {
+  event.preventDefault();
+  await api("/api/queue", {
+    method: "POST",
+    body: JSON.stringify(buildQueuePayload()),
+  });
+  resetQueueForm();
+  showNotice("Queue-Item hinzugefuegt.", "success");
+  await refresh();
+}
+
+async function startQueueFromPanel() {
+  await api("/api/queue/start", {
+    method: "POST",
+    body: JSON.stringify({
+      channelId: els.queueChannelId.value,
+      presetId: els.queuePresetId.value,
+    }),
+  });
+  showNotice("Queue wird gestartet.", "success");
+  await refresh();
+}
+
+async function skipQueueFromPanel() {
+  await api("/api/queue/skip", {
+    method: "POST",
+  });
+  showNotice("Queue springt zum naechsten Item.", "success");
+  await refresh();
+}
+
+async function stopQueueFromPanel() {
+  await api("/api/queue/stop", {
+    method: "POST",
+  });
+  showNotice("Queue gestoppt.", "success");
+  await refresh();
+}
+
+async function clearQueueFromPanel() {
+  await api("/api/queue/clear", {
+    method: "POST",
+  });
+  showNotice("Queue geleert.", "success");
+  await refresh();
+}
+
+async function updateQueueLoop(enabled) {
+  await api("/api/queue/loop", {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+  showNotice(enabled ? "Queue-Loop aktiviert." : "Queue-Loop deaktiviert.", "success");
+  await refresh();
+}
+
 async function handleListAction(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
@@ -1105,6 +1362,26 @@ async function handleListAction(event) {
   if (action === "cancel-event") {
     await api(`/api/events/${id}/cancel`, { method: "POST" });
     showNotice("Event wurde abgebrochen.", "success");
+    await refresh();
+    return;
+  }
+
+  if (action === "queue-delete") {
+    await api(`/api/queue/${id}`, { method: "DELETE" });
+    showNotice("Queue-Item entfernt.", "success");
+    await refresh();
+    return;
+  }
+
+  if (action === "queue-up" || action === "queue-down") {
+    const index = state.app.queue.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const newIndex = action === "queue-up" ? index - 1 : index + 1;
+    await api("/api/queue/reorder", {
+      method: "POST",
+      body: JSON.stringify({ id, newIndex }),
+    });
+    showNotice("Queue neu sortiert.", "success");
     await refresh();
   }
 }
@@ -1286,6 +1563,24 @@ function bindEvents() {
   els.manualStartForm.addEventListener("submit", (event) => {
     void handleManualStart(event).catch(handleError);
   });
+  els.queueAddForm.addEventListener("submit", (event) => {
+    void handleQueueAdd(event).catch(handleError);
+  });
+  els.queueStartButton.addEventListener("click", () => {
+    void startQueueFromPanel().catch(handleError);
+  });
+  els.queueSkipButton.addEventListener("click", () => {
+    void skipQueueFromPanel().catch(handleError);
+  });
+  els.queueStopButton.addEventListener("click", () => {
+    void stopQueueFromPanel().catch(handleError);
+  });
+  els.queueClearButton.addEventListener("click", () => {
+    void clearQueueFromPanel().catch(handleError);
+  });
+  els.queueLoopEnabled.addEventListener("change", (event) => {
+    void updateQueueLoop(event.target.checked).catch(handleError);
+  });
   els.channelResetButton.addEventListener("click", resetChannelForm);
   els.presetResetButton.addEventListener("click", resetPresetForm);
   els.eventResetButton.addEventListener("click", resetEventForm);
@@ -1296,6 +1591,9 @@ function bindEvents() {
     void handleListAction(event).catch(handleError);
   });
   els.eventsList.addEventListener("click", (event) => {
+    void handleListAction(event).catch(handleError);
+  });
+  els.queueList.addEventListener("click", (event) => {
     void handleListAction(event).catch(handleError);
   });
   els.eventRecurrenceKind.addEventListener("change", updateRecurrenceVisibility);
@@ -1312,6 +1610,7 @@ async function init() {
   resetChannelForm();
   resetPresetForm();
   resetEventForm();
+  resetQueueForm();
   initYouTubeAuth();
   await refresh();
 

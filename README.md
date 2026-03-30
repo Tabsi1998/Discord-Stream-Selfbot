@@ -26,6 +26,7 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 | Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
 | Queue | Mehrere URLs nacheinander abspielen, optional mit Loop |
 | Stream Health | Live Uptime-Anzeige und Status im Dashboard |
+| Live Telemetrie | FPS, Speed, Bitrate und Frame-Drops direkt im Panel |
 | URL-Test | Vor dem Streamen pruefen ob die Quelle erreichbar ist |
 | Qualitaetsprofile | 720p bis 4K, 30/60fps, Custom Encoder-Settings |
 | Buffer-Profile | Auto, Stabil, Ausgewogen, Minimale Latenz |

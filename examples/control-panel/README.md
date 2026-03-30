@@ -16,10 +16,12 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 - MPEG-TS / Dispatcharr / IPTV Auto-Erkennung
 - URL-Erreichbarkeitstest
 - Live Stream Health Monitoring mit Uptime-Counter
+- Live FFmpeg Telemetrie im Dashboard (FPS, Speed, Bitrate, Drops)
 - Adaptive Auto-Aktualisierung (schneller bei aktivem Stream)
 - Qualitaetsprofile: 720p/30 bis 4K/60, Custom
 - Buffer-Profile: Auto, Stabil, Ausgewogen, Minimale Latenz
 - Queue fuer mehrere Quellen mit Loop-Unterstuetzung
+- Queue-Steuerung direkt im Web-Panel (Add, Start, Skip, Reorder, Clear)
 - Eingebauter Login-Schutz fuer das Panel per `PANEL_AUTH_*`
 - Automatische Hardware-Encoder-Erkennung fuer NVENC / VAAPI
 - Discord Chat-Befehle (help, status, start, stop, queue, logs, etc.)

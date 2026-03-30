@@ -102,6 +102,17 @@ export type ActiveRun = {
   status: "starting" | "running" | "stopping";
 };
 
+export type StreamTelemetry = {
+  frame?: number;
+  fps?: number;
+  bitrateKbps?: number;
+  speed?: number;
+  dupFrames?: number;
+  dropFrames?: number;
+  outTimeSeconds?: number;
+  updatedAt?: string;
+};
+
 export type RuntimeState = {
   discordStatus: DiscordStatus;
   discordUserTag?: string;
@@ -118,6 +129,7 @@ export type RuntimeState = {
   preferredHardwareEncoder?: PreferredHardwareEncoder;
   selectedVideoEncoder?: VideoEncoderMode;
   ffmpegLogLevel?: string;
+  telemetry?: StreamTelemetry;
   activeRun?: ActiveRun;
   lastError?: string;
   lastStartedAt?: string;

@@ -21,6 +21,7 @@ import type {
   HardwareEncoder,
   PreferredHardwareEncoder,
   RunKind,
+  StreamTelemetry,
   StreamPreset,
   VideoEncoderMode,
   VoiceChannelOption,
@@ -73,6 +74,37 @@ type ResolvedVideoEncoder = {
   encoder: EncoderSettingsGetter;
   fallbackReason?: string;
 };
+
+function parseIntegerTelemetryValue(value: string) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseFloatTelemetryValue(value: string) {
+  const normalized = value.replace(/[^0-9.+-]/g, "");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseOutTimeSecondsFromCounter(value: string) {
+  const parsed = parseIntegerTelemetryValue(value);
+  if (typeof parsed !== "number") return undefined;
+  return parsed > 100_000
+    ? Math.max(0, Math.round(parsed / 1_000_000))
+    : Math.max(0, Math.round(parsed / 1_000));
+}
+
+function parseOutTimeSecondsFromClock(value: string) {
+  const match = value.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
+  if (!match) return undefined;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const seconds = Number.parseFloat(match[3]);
+  if (![hours, minutes, seconds].every(Number.isFinite)) {
+    return undefined;
+  }
+  return Math.max(0, Math.round(hours * 3600 + minutes * 60 + seconds));
+}
 
 export class StreamRuntime extends EventEmitter {
   private readonly client = new Client();
@@ -308,6 +340,9 @@ export class StreamRuntime extends EventEmitter {
 
       this.store.setRuntime((runtime) => {
         runtime.selectedVideoEncoder = resolvedEncoder.mode;
+        runtime.telemetry = {
+          updatedAt: new Date().toISOString(),
+        };
       });
 
       ({ command, output } = prepareStream(
@@ -323,13 +358,20 @@ export class StreamRuntime extends EventEmitter {
           encoder: resolvedEncoder.encoder,
           hardwareAcceleratedDecoding: options.preset.hardwareAcceleration,
           minimizeLatency: resolvedPreset.minimizeLatency,
-          customInputOptions: resolvedPreset.customInputOptions,
+          customInputOptions: [
+            "-progress",
+            "pipe:2",
+            "-stats_period",
+            "2",
+            ...resolvedPreset.customInputOptions,
+          ],
           bitrateBufferFactor: resolvedPreset.bitrateBufferFactor,
           videoCodec: Utils.normalizeVideoCodec(options.preset.videoCodec),
           logLevel: appConfig.ffmpegLogLevel,
         },
         controller.signal,
       ));
+      this.attachFfmpegTelemetry(session, command);
       waitForStartup = this.createStartupWatcher(command, controller.signal);
     } catch (error: unknown) {
       const message =
@@ -524,6 +566,7 @@ export class StreamRuntime extends EventEmitter {
       runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
       runtime.selectedVideoEncoder = undefined;
+      runtime.telemetry = undefined;
       if (reason === "aborted" && abortReason) {
         runtime.lastError = undefined;
       }
@@ -562,6 +605,7 @@ export class StreamRuntime extends EventEmitter {
       runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
       runtime.selectedVideoEncoder = undefined;
+      runtime.telemetry = undefined;
       runtime.lastError = error;
     });
     this.store.appendLog("error", "Stream failed", {
@@ -633,5 +677,67 @@ export class StreamRuntime extends EventEmitter {
       return preferred;
     }
     return available[0];
+  }
+
+  private attachFfmpegTelemetry(
+    session: ActiveSession,
+    command: ReturnType<typeof prepareStream>["command"],
+  ) {
+    const sample: StreamTelemetry = {};
+
+    command.on("stderr", (line: string) => {
+      if (this.activeSession !== session || session.closed) return;
+
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.includes("=")) return;
+
+      const separator = trimmed.indexOf("=");
+      if (separator < 0) return;
+
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim();
+
+      switch (key) {
+        case "frame":
+          sample.frame = parseIntegerTelemetryValue(value);
+          break;
+        case "fps":
+          sample.fps = parseFloatTelemetryValue(value);
+          break;
+        case "bitrate":
+          sample.bitrateKbps = parseFloatTelemetryValue(value);
+          break;
+        case "speed":
+          sample.speed = parseFloatTelemetryValue(value);
+          break;
+        case "dup_frames":
+          sample.dupFrames = parseIntegerTelemetryValue(value);
+          break;
+        case "drop_frames":
+          sample.dropFrames = parseIntegerTelemetryValue(value);
+          break;
+        case "out_time":
+          sample.outTimeSeconds = parseOutTimeSecondsFromClock(value);
+          break;
+        case "out_time_ms":
+        case "out_time_us":
+          sample.outTimeSeconds = parseOutTimeSecondsFromCounter(value);
+          break;
+        case "progress":
+          if (value === "continue" || value === "end") {
+            this.store.setRuntime((runtime) => {
+              if (this.activeSession !== session || !runtime.activeRun) return;
+              runtime.telemetry = {
+                ...runtime.telemetry,
+                ...sample,
+                updatedAt: new Date().toISOString(),
+              };
+            });
+          }
+          break;
+        default:
+          break;
+      }
+    });
   }
 }

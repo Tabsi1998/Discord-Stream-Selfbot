@@ -46,9 +46,22 @@
           </div>
         </article>
         <article class="overview-card">
+          <h2>Live Telemetrie</h2>
+          <p id="telemetryPrimary">keine aktive Session</p>
+          <p id="telemetrySecondary" class="muted">warte auf FFmpeg-Progress</p>
+          <div id="telemetryMetrics" class="metric-grid">
+            <span class="metric-chip metric-chip-muted">keine Daten</span>
+          </div>
+        </article>
+        <article class="overview-card">
           <h2>Geplante Events</h2>
           <p id="scheduledSummary">0 Events</p>
           <p id="nextEventSummary" class="muted">kein nächstes Event</p>
+        </article>
+        <article class="overview-card">
+          <h2>Queue</h2>
+          <p id="queuePrimary">keine Queue aktiv</p>
+          <p id="queueSecondary" class="muted">0 Items</p>
         </article>
       </section>
 
@@ -79,6 +92,65 @@
               </button>
             </div>
           </form>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Playlist</p>
+              <h2>Queue</h2>
+            </div>
+          </div>
+          <form id="queueAddForm" class="form-grid queue-add-grid">
+            <label class="full-width">
+              URL / Quelle
+              <input id="queueUrl" name="url" placeholder="https://example.com/live.m3u8" required />
+            </label>
+            <label>
+              Anzeigename
+              <input id="queueName" name="name" placeholder="optional" />
+            </label>
+            <label>
+              Quelltyp
+              <select id="queueSourceMode" name="sourceMode">
+                <option value="">Auto erkennen</option>
+                <option value="direct">Direkt</option>
+                <option value="yt-dlp">yt-dlp</option>
+              </select>
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Zur Queue</button>
+            </div>
+          </form>
+          <div class="queue-toolbar">
+            <label>
+              Queue Kanal
+              <select id="queueChannelId" name="queueChannelId"></select>
+            </label>
+            <label>
+              Basis-Preset
+              <select id="queuePresetId" name="queuePresetId"></select>
+            </label>
+            <label class="checkbox-field queue-loop-toggle">
+              <input id="queueLoopEnabled" type="checkbox" />
+              Queue loopen
+            </label>
+            <div class="form-actions queue-actions">
+              <button id="queueStartButton" class="primary-button" type="button">
+                Queue starten
+              </button>
+              <button id="queueSkipButton" class="ghost-button" type="button">
+                Skip
+              </button>
+              <button id="queueStopButton" class="ghost-button" type="button">
+                Stop
+              </button>
+              <button id="queueClearButton" class="danger-button" type="button">
+                Leeren
+              </button>
+            </div>
+          </div>
+          <div id="queueList" class="stack-list"></div>
         </section>
 
         <section class="panel">
@@ -298,7 +370,7 @@
             </label>
             <label class="checkbox-field">
               <input id="presetHardwareAcceleration" name="hardwareAcceleration" type="checkbox" />
-              Hardware-Decoding
+              Hardware-Beschleunigung
             </label>
             <label class="full-width">
               Beschreibung
