@@ -437,14 +437,10 @@ export class DiscordCommandBridge {
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to defer interaction";
-      this.store.appendLog(
-        "warn",
-        "Discord interaction setup failed",
-        {
-          command: interaction.commandName,
-          error: message,
-        },
-      );
+      this.store.appendLog("warn", "Discord interaction setup failed", {
+        command: interaction.commandName,
+        error: message,
+      });
       return;
     }
 
@@ -459,14 +455,10 @@ export class DiscordCommandBridge {
         error instanceof Error
           ? error.message
           : "Discord interaction command execution failed";
-      this.store.appendLog(
-        "warn",
-        "Discord interaction execution failed",
-        {
-          command: interaction.commandName,
-          error: message,
-        },
-      );
+      this.store.appendLog("warn", "Discord interaction execution failed", {
+        command: interaction.commandName,
+        error: message,
+      });
     }
   };
 
