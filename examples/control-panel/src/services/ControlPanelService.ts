@@ -26,6 +26,7 @@ import type {
   QueueConfig,
   QueueConflictPolicy,
   QueueItem,
+  QuickPlayQualityOption,
   RecurrenceRule,
   PresetInput,
   ScheduledEvent,
@@ -203,6 +204,23 @@ function buildAdHocPresetName(
   } catch {
     return "Quick Play";
   }
+}
+
+function resolveQuickPlayDesiredQuality(
+  inputQuality: QuickPlayQualityOption | undefined,
+): Exclude<QuickPlayQualityOption, "auto"> {
+  return inputQuality && inputQuality !== "auto" ? inputQuality : "1080p30";
+}
+
+function resolveQuickPlayStartQuality(
+  desiredQuality: Exclude<QuickPlayQualityOption, "auto">,
+  useSafeSoftwareProfile: boolean,
+) {
+  if (!useSafeSoftwareProfile) {
+    return desiredQuality;
+  }
+
+  return "720p30";
 }
 
 function createDefaultQueueConfig(): QueueConfig {
@@ -993,6 +1011,7 @@ export class ControlPanelService {
     sourceMode?: "direct" | "yt-dlp";
     stopAt?: string;
     name?: string;
+    quality?: QuickPlayQualityOption;
   }) {
     assertNonEmpty(input.channel.id, "channel.id");
     assertNonEmpty(input.channel.botId, "channel.botId");
@@ -1010,10 +1029,14 @@ export class ControlPanelService {
       (sourceProfile === "yt-dlp" ||
         sourceProfile === "hls" ||
         sourceProfile === "mpeg-ts");
-    const desiredQualityProfile = "1080p30";
-    const actualQualityProfile = useSafeSoftwareProfile
-      ? "720p30"
-      : desiredQualityProfile;
+    const requestedQuality = input.quality ?? "auto";
+    const desiredQualityProfile = resolveQuickPlayDesiredQuality(
+      requestedQuality,
+    );
+    const actualQualityProfile = resolveQuickPlayStartQuality(
+      desiredQualityProfile,
+      useSafeSoftwareProfile,
+    );
     const desiredPresetInput = {
       name:
         input.name?.trim() ||
@@ -1073,6 +1096,8 @@ export class ControlPanelService {
           botId: input.channel.botId,
           channel: input.channel.name,
           sourceProfile,
+          requestedQuality,
+          targetQuality: desiredQualityProfile,
           qualityProfile: actualQualityProfile,
         },
       );

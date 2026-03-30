@@ -189,9 +189,9 @@ Der normale Bot kann ausserdem guild-spezifische Slash-Commands registrieren. Di
 |--------|-------------|
 | `$panel help` | Alle Befehle |
 | `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
-| `$panel play <url> \| [zeit]` | URL direkt im aktuellen Voice-Channel starten |
+| `$panel play <url> \| [zeit] \| [qualitaet]` | URL direkt im aktuellen Voice-Channel starten |
 | `$panel status` | Stream-Status |
-| `$panel start <url>` | Schnellstart fuer eine URL |
+| `$panel start <url> \| [zeit] \| [qualitaet]` | Schnellstart fuer eine URL |
 | `$panel start <kanal> \| <preset> \| [zeit]` | Stream starten |
 | `$panel stop` | Einen oder mehrere Streams stoppen |
 | `$panel restart [bot\|kanal\|id]` | Gezielter Neustart eines aktiven Streams |

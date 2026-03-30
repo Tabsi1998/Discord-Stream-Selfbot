@@ -277,6 +277,7 @@ Wenn Commands nicht reagieren, pruefe zuerst:
 5. Fuer Slash-Commands ist der Ziel-Server in `CONTROL_BOT_COMMAND_GUILD_IDS` gesetzt oder wird ueber deine konfigurierten Kanaele erkannt
 
 Mit `play <url>` nutzt der Control-Bot nach Moeglichkeit automatisch deinen aktuellen Voice-Channel.
+Optional kannst du fuer Quick Play eine Zielqualitaet setzen, z. B. `play <url> | 1080p60` oder `play <url> | 2026-04-30 22:30 | 1440p30`.
 Mit Slash-Commands geht dasselbe als `/play`, `/start`, `/stop`, `/queue`, `/info` und `/whoami`.
 
 ### Kurzuebersicht
@@ -285,10 +286,10 @@ Mit Slash-Commands geht dasselbe als `/play`, `/start`, `/stop`, `/queue`, `/inf
 |--------|-----------|
 | `$panel help` | Alle Befehle anzeigen |
 | `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
-| `$panel play URL` | URL direkt im aktuellen Voice-Channel starten |
+| `$panel play URL \| [Zeit] \| [Qualitaet]` | URL direkt im aktuellen Voice-Channel starten |
 | `$panel status` | Aktuellen Stream-Status anzeigen |
 | `$panel start Kanal \| Preset` | Stream sofort starten |
-| `$panel start URL` | Schnellstart fuer eine URL |
+| `$panel start URL \| [Zeit] \| [Qualitaet]` | Schnellstart fuer eine URL |
 | `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
 | `$panel stop` | Einen oder mehrere aktive Streams stoppen |
 | `$panel restart [bot\|kanal\|id]` | Aktiven Stream gezielt neu starten |

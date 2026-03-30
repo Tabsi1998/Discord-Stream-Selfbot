@@ -8,6 +8,7 @@ import type {
   ActiveRun,
   ChannelInput,
   PresetInput,
+  QuickPlayQualityOption,
   VoiceChannelOption,
 } from "../src/domain/types.js";
 import type { StreamRuntime } from "../src/runtime/StreamRuntime.js";
@@ -22,6 +23,8 @@ class RuntimeStub extends EventEmitter {
     botId: string;
     channelId: string;
     presetId: string;
+    qualityProfile?: string;
+    adaptiveTargetQualityProfile?: string;
   }> = [];
 
   public getPrimaryBotId() {
@@ -51,13 +54,27 @@ class RuntimeStub extends EventEmitter {
     kind: "manual" | "event";
     eventId?: string;
     channel: { botId: string; id: string };
-    preset: { id: string };
+    preset: { id: string; qualityProfile?: string };
+    adaptiveTargetPreset?: { qualityProfile?: string };
     plannedStopAt?: string;
   }) {
     this.startCalls.push({
       botId: input.channel.botId,
       channelId: input.channel.id,
       presetId: input.preset.id,
+      qualityProfile:
+        "qualityProfile" in input.preset &&
+        typeof input.preset.qualityProfile === "string"
+          ? input.preset.qualityProfile
+          : undefined,
+      adaptiveTargetQualityProfile:
+        "adaptiveTargetPreset" in input &&
+        input.adaptiveTargetPreset &&
+        typeof input.adaptiveTargetPreset === "object" &&
+        "qualityProfile" in input.adaptiveTargetPreset &&
+        typeof input.adaptiveTargetPreset.qualityProfile === "string"
+          ? input.adaptiveTargetPreset.qualityProfile
+          : undefined,
     });
 
     const run: ActiveRun = {
@@ -333,6 +350,30 @@ test("ControlPanelService suppresses notifications when a rule is disabled", asy
     );
 
     assert.deepEqual(delivered, ["webhook:Failure", "dm:Failure"]);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService uses the requested quick play target quality", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("primary", "Quick Play Stage", "quick-play-quality"),
+    );
+
+    await context.service.startAdHocRun({
+      channel,
+      sourceUrl: "https://example.com/video.mp4",
+      quality: "1440p30" satisfies QuickPlayQualityOption,
+    });
+
+    assert.equal(context.runtime.startCalls[0]?.qualityProfile, "1440p30");
+    assert.equal(
+      context.runtime.startCalls[0]?.adaptiveTargetQualityProfile,
+      "1440p30",
+    );
   } finally {
     context.dispose();
   }

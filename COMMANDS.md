@@ -84,9 +84,9 @@ $panel help
 Befehle mit $panel
 $panel help
 $panel whoami
-$panel play <url> | [zeit]
+$panel play <url> | [zeit] | [qualitaet]
 $panel status
-$panel start <url>
+$panel start <url> | [zeit] | [qualitaet]
 $panel start <kanal|id> | <preset|id> | [zeit]
 $panel stop
 $panel restart [bot|kanal|id]
@@ -130,18 +130,23 @@ Trage diese User-ID in COMMAND_ALLOWED_AUTHOR_IDS ein, um den normalen Bot zu nu
 
 ---
 
-### `$panel play <url> | [stopAt]`
+### `$panel play <url> | [stopAt] | [quality]`
 
 Startet eine URL direkt im aktuellen Voice-Channel des Schreibers. Wenn der Voice-Channel bereits im Panel konfiguriert ist, wird diese Zuordnung verwendet. Andernfalls wird fuer den aktuellen Channel ein temporaerer Command-Kanal verwendet.
 
 ```text
 ?play https://www.youtube.com/watch?v=atRP5-nOfRY
 ?play https://example.com/live.m3u8 | 2026-04-30 22:30
+?play https://example.com/live.m3u8 | 1080p60
+?play https://example.com/live.m3u8 | 2026-04-30 22:30 | 1440p30
 ```
 
 Wenn genau ein gespeicherter Stream-Kanal existiert, funktioniert `play` auch ohne aktuellen Voice-Channel.
 
 `start <url>` ist derselbe Schnellstart als Alias.
+
+Unterstuetzte Quick-Play-Zielqualitaeten:
+`auto`, `720p30`, `720p60`, `1080p30`, `1080p60`, `1440p30`, `1440p60`
 
 ---
 

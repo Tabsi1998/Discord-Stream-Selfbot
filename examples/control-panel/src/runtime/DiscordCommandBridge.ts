@@ -8,7 +8,11 @@ import {
 } from "discord.js";
 import type { Message as SelfbotMessage } from "discord.js-selfbot-v13";
 import { appConfig } from "../config/appConfig.js";
-import type { ChannelDefinition, ScheduledEvent } from "../domain/types.js";
+import type {
+  ChannelDefinition,
+  QuickPlayQualityOption,
+  ScheduledEvent,
+} from "../domain/types.js";
 import type { ControlPanelService } from "../services/ControlPanelService.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 import type { StreamRuntime } from "./StreamRuntime.js";
@@ -65,6 +69,12 @@ const CONTROL_BOT_SLASH_COMMANDS = [
       option
         .setName("stop_at")
         .setDescription("Optionale Stoppzeit, z.B. 2026-04-30 22:30"),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("quality")
+        .setDescription("Optionale Zielqualitaet fuer Quick Play")
+        .addChoices(...QUICK_PLAY_QUALITY_CHOICES),
     ),
   new SlashCommandBuilder()
     .setName("start")
@@ -210,6 +220,26 @@ const CONTROL_BOT_SLASH_COMMANDS = [
 
 const DISCORD_MESSAGE_LIMIT = 1900;
 
+const QUICK_PLAY_QUALITY_CHOICES = [
+  { name: "Auto", value: "auto" },
+  { name: "720p / 30 FPS", value: "720p30" },
+  { name: "720p / 60 FPS", value: "720p60" },
+  { name: "1080p / 30 FPS", value: "1080p30" },
+  { name: "1080p / 60 FPS", value: "1080p60" },
+  { name: "1440p / 30 FPS", value: "1440p30" },
+  { name: "1440p / 60 FPS", value: "1440p60" },
+] as const;
+
+function isQuickPlayQualityOption(
+  value: string | undefined,
+): value is QuickPlayQualityOption {
+  const normalized = value?.trim().toLowerCase();
+  return (
+    !!normalized &&
+    QUICK_PLAY_QUALITY_CHOICES.some((entry) => entry.value === normalized)
+  );
+}
+
 function splitDiscordMessage(content: string, limit = DISCORD_MESSAGE_LIMIT) {
   const normalized = content.replaceAll("\r\n", "\n").trim();
   if (!normalized) {
@@ -336,6 +366,32 @@ function splitSegments(input: string) {
 
 function looksLikeUrl(value: string) {
   return /^https?:\/\//i.test(value.trim());
+}
+
+function parseQuickPlayArgs(rawArgs: string) {
+  const [url, ...rest] = splitSegments(rawArgs);
+  let stopAtRaw: string | undefined;
+  let quality: QuickPlayQualityOption | undefined;
+
+  for (const segment of rest) {
+    if (isQuickPlayQualityOption(segment)) {
+      if (quality) {
+        throw new Error("quality was provided more than once");
+      }
+      quality = segment.trim().toLowerCase() as QuickPlayQualityOption;
+      continue;
+    }
+    if (stopAtRaw) {
+      throw new Error("Use: play <url> | [stopAt] | [quality]");
+    }
+    stopAtRaw = segment;
+  }
+
+  return {
+    url,
+    stopAtRaw,
+    quality,
+  };
 }
 
 function normalizeValue(value: string) {
@@ -863,7 +919,15 @@ export class DiscordCommandBridge {
       case "play": {
         const url = interaction.options.getString("url", true);
         const stopAt = interaction.options.getString("stop_at");
-        return stopAt ? `play ${url} | ${stopAt}` : `play ${url}`;
+        const quality = interaction.options.getString("quality");
+        const segments = [url];
+        if (stopAt) {
+          segments.push(stopAt);
+        }
+        if (quality) {
+          segments.push(quality);
+        }
+        return `play ${segments.join(" | ")}`;
       }
       case "start": {
         const channel = interaction.options.getString("channel", true);
@@ -1161,9 +1225,9 @@ export class DiscordCommandBridge {
   }
 
   private async playFromCommand(message: CommandMessageLike, rawArgs: string) {
-    const [url, stopAtRaw] = splitSegments(rawArgs);
+    const { url, stopAtRaw, quality } = parseQuickPlayArgs(rawArgs);
     if (!url || !looksLikeUrl(url)) {
-      throw new Error("Use: play <url> | [stopAt]");
+      throw new Error("Use: play <url> | [stopAt] | [quality]");
     }
 
     const { channel, inferred } = this.resolveVoiceChannelForMessage(message);
@@ -1176,6 +1240,7 @@ export class DiscordCommandBridge {
       channel,
       sourceUrl: url,
       stopAt: stopAt?.toISOString(),
+      quality,
     });
 
     await message.channel.send(
@@ -1183,6 +1248,7 @@ export class DiscordCommandBridge {
         `Ad-hoc Stream startet: ${channel.name}`,
         `Bot: ${channel.botId}`,
         `Quelle: ${url}`,
+        `Zielqualitaet: ${quality ?? "auto"}`,
         inferred
           ? "Kanal wurde aus deinem aktuellen Voice-Channel erkannt."
           : "Kanal stammt aus deiner gespeicherten Konfiguration.",
@@ -1248,9 +1314,9 @@ export class DiscordCommandBridge {
           : []),
         `${prefix} help`,
         `${prefix} whoami`,
-        `${prefix} play <url> | [zeit]`,
+        `${prefix} play <url> | [zeit] | [qualitaet]`,
         `${prefix} status`,
-        `${prefix} start <url>`,
+        `${prefix} start <url> | [zeit] | [qualitaet]`,
         `${prefix} start <kanal|id> | <preset|id> | [zeit]`,
         `${prefix} stop`,
         `${prefix} restart [bot|kanal|id]`,
@@ -1341,11 +1407,12 @@ export class DiscordCommandBridge {
     message: CommandMessageLike,
     rawArgs: string,
   ) {
-    const [channelQuery, presetQuery, stopAtRaw] = splitSegments(rawArgs);
+    const segments = splitSegments(rawArgs);
+    const [channelQuery, presetQuery, stopAtRaw] = segments;
     if (channelQuery && looksLikeUrl(channelQuery)) {
       const quickPlayArgs =
-        presetQuery || stopAtRaw
-          ? `${channelQuery} | ${presetQuery || stopAtRaw}`
+        segments.length > 1
+          ? `${channelQuery} | ${segments.slice(1).join(" | ")}`
           : channelQuery;
       await this.playFromCommand(message, quickPlayArgs);
       return;

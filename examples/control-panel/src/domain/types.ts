@@ -25,6 +25,14 @@ export type QualityProfile =
   | "2160p30"
   | "2160p60"
   | "custom";
+export type QuickPlayQualityProfile =
+  | "720p30"
+  | "720p60"
+  | "1080p30"
+  | "1080p60"
+  | "1440p30"
+  | "1440p60";
+export type QuickPlayQualityOption = "auto" | QuickPlayQualityProfile;
 export type BufferProfile = "auto" | "stable" | "balanced" | "low-latency";
 export type RecurrenceKind = "once" | "daily" | "weekly";
 export type EventSeriesScope = "single" | "this-and-following" | "all";
