@@ -467,6 +467,8 @@ export function applyRuntimePerformanceGuardrails(
     preset.sourceMode,
     preset.sourceUrl,
   );
+  const requestedBitrateVideoKbps = preset.bitrateVideoKbps;
+  const requestedMaxBitrateVideoKbps = preset.maxBitrateVideoKbps;
   let width = preset.width;
   let height = preset.height;
   let fps = preset.fps;
@@ -520,7 +522,9 @@ export function applyRuntimePerformanceGuardrails(
       (sourceProfile === "yt-dlp" ||
         sourceProfile === "hls" ||
         sourceProfile === "mpeg-ts") &&
-      bitrateVideoKbps > 9000
+      (requestedBitrateVideoKbps > 9000 ||
+        requestedMaxBitrateVideoKbps > 10000 ||
+        bitrateVideoKbps > 9000)
     ) {
       bitrateVideoKbps = 9000;
       maxBitrateVideoKbps = Math.min(maxBitrateVideoKbps, 10000);

@@ -985,24 +985,32 @@ export class ControlPanelService {
 
     const sourceMode =
       input.sourceMode ?? (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
+    const sourceProfile = detectSourceProfile(sourceMode, input.sourceUrl);
+    const hasHardwareEncoder = appConfig.availableHardwareEncoders.length > 0;
+    const useSafeSoftwareProfile =
+      !hasHardwareEncoder &&
+      (sourceProfile === "yt-dlp" ||
+        sourceProfile === "hls" ||
+        sourceProfile === "mpeg-ts");
+    const qualityProfile = useSafeSoftwareProfile ? "720p30" : "1080p30";
     const normalizedPreset = normalizePresetInput({
       name:
         input.name?.trim() || buildAdHocPresetName(input.sourceUrl, sourceMode),
       sourceUrl: input.sourceUrl.trim(),
       sourceMode,
       fallbackSources: [],
-      qualityProfile: "1080p30",
+      qualityProfile,
       bufferProfile: sourceMode === "yt-dlp" ? "stable" : "auto",
       description: "Temporaeres Command-Preset",
       includeAudio: true,
-      width: 1920,
-      height: 1080,
+      width: qualityProfile === "720p30" ? 1280 : 1920,
+      height: qualityProfile === "720p30" ? 720 : 1080,
       fps: 30,
-      bitrateVideoKbps: 7000,
-      maxBitrateVideoKbps: 9500,
+      bitrateVideoKbps: qualityProfile === "720p30" ? 4500 : 7000,
+      maxBitrateVideoKbps: qualityProfile === "720p30" ? 6500 : 9500,
       bitrateAudioKbps: 160,
       videoCodec: "H264",
-      hardwareAcceleration: true,
+      hardwareAcceleration: hasHardwareEncoder,
       minimizeLatency: false,
     });
     const timestamp = nowIso();
@@ -1019,6 +1027,19 @@ export class ControlPanelService {
 
     if (plannedStopAt && Date.parse(plannedStopAt) <= Date.now()) {
       throw new Error("stopAt must be in the future");
+    }
+
+    if (useSafeSoftwareProfile) {
+      this.store.appendLog(
+        "info",
+        "Quick Play switched to safe software profile",
+        {
+          botId: input.channel.botId,
+          channel: input.channel.name,
+          sourceProfile,
+          qualityProfile,
+        },
+      );
     }
 
     return this.runtime

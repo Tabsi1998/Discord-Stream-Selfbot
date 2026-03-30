@@ -428,11 +428,46 @@ export class DiscordCommandBridge {
     const commandMessage = this.toInteractionCommandMessage(interaction);
     if (!commandMessage) return;
 
+    try {
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({
+          ephemeral: true,
+        });
+      }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to defer interaction";
+      this.store.appendLog(
+        "warn",
+        "Discord interaction setup failed",
+        {
+          command: interaction.commandName,
+          error: message,
+        },
+      );
+      return;
+    }
+
     const allowedAuthor = this.isAllowedAuthor(commandMessage.author.id);
     const body = this.buildSlashCommandBody(interaction);
     if (!body) return;
 
-    await this.executeCommand(commandMessage, body, "/", allowedAuthor);
+    try {
+      await this.executeCommand(commandMessage, body, "/", allowedAuthor);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Discord interaction command execution failed";
+      this.store.appendLog(
+        "warn",
+        "Discord interaction execution failed",
+        {
+          command: interaction.commandName,
+          error: message,
+        },
+      );
+    }
   };
 
   private async startControlBot() {
@@ -798,6 +833,13 @@ export class DiscordCommandBridge {
     let result: unknown;
 
     for (const [index, chunk] of chunks.entries()) {
+      if (index === 0 && interaction.deferred && !interaction.replied) {
+        result = await interaction.editReply({
+          content: chunk,
+        });
+        continue;
+      }
+
       if (index === 0 && !interaction.replied && !interaction.deferred) {
         result = await interaction.reply({
           content: chunk,
