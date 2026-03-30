@@ -78,6 +78,18 @@ function parseCsvList(value: string | undefined) {
     .filter(Boolean);
 }
 
+function parseCommandPrefixes(
+  primaryValue: string | undefined,
+  aliasesValue: string | undefined,
+) {
+  const combined = [
+    ...parseCsvList(primaryValue),
+    ...parseCsvList(aliasesValue),
+  ];
+  const unique = [...new Set(combined)];
+  return unique.length ? unique : ["$panel"];
+}
+
 function parsePositiveIntegerEnv(value: string | undefined, fallback: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -223,6 +235,10 @@ const availableHardwareEncoders = detectHardwareEncoders(
   vaapiDevice,
 );
 const ffmpegLogLevel = parseFfmpegLogLevel(process.env.FFMPEG_LOG_LEVEL);
+const commandPrefixes = parseCommandPrefixes(
+  process.env.COMMAND_PREFIX,
+  process.env.COMMAND_PREFIX_ALIASES,
+);
 
 if (ffmpegPath) process.env.FFMPEG_PATH = ffmpegPath;
 if (ffprobePath) process.env.FFPROBE_PATH = ffprobePath;
@@ -251,7 +267,8 @@ export const appConfig = {
     process.env.YT_DLP_FORMAT ??
     "bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best",
   commandEnabled: process.env.DISCORD_COMMANDS_ENABLED !== "0",
-  commandPrefix: process.env.COMMAND_PREFIX?.trim() || "$panel",
+  commandPrefix: commandPrefixes[0],
+  commandPrefixes,
   commandAllowedAuthorIds: parseCsvList(process.env.COMMAND_ALLOWED_AUTHOR_IDS),
   controlBotToken: normalizeOptionalEnv(process.env.CONTROL_BOT_TOKEN),
   schedulerPollMs: parsePositiveIntegerEnv(process.env.SCHEDULER_POLL_MS, 1000),

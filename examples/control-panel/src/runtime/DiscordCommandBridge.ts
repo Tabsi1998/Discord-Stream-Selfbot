@@ -22,6 +22,11 @@ type CommandMessageLike = {
   };
 };
 
+type CommandPrefixMatch = {
+  matchedPrefix: string;
+  body: string;
+};
+
 function toCommandMessage(
   message: SelfbotMessage | ControlBotMessage,
 ): CommandMessageLike | undefined {
@@ -72,9 +77,13 @@ function matchesQuery(value: string, query: string) {
 export class DiscordCommandBridge {
   private started = false;
   private controlBotClient?: ControlBotClient;
-  private readonly selfbotListenerIds = appConfig.selfbotProfiles
+  private readonly selfbotListeners = appConfig.selfbotProfiles
     .filter((profile) => profile.commandEnabled)
-    .map((profile) => profile.id);
+    .map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+    }));
+  private readonly rejectedCommandTimestamps = new Map<string, number>();
 
   constructor(
     private readonly runtime: StreamRuntime,
@@ -85,9 +94,9 @@ export class DiscordCommandBridge {
   public start() {
     if (!appConfig.commandEnabled || this.started) return;
     this.started = true;
-    for (const botId of this.selfbotListenerIds) {
+    for (const listener of this.selfbotListeners) {
       this.runtime
-        .getClient(botId)
+        .getClient(listener.id)
         .on("messageCreate", this.handleSelfbotMessage);
     }
     if (appConfig.controlBotToken) {
@@ -98,11 +107,14 @@ export class DiscordCommandBridge {
         runtime.controlBotEnabled = false;
         runtime.controlBotUserTag = undefined;
         runtime.controlBotUserId = undefined;
+        runtime.commandMentionPrefix = undefined;
       });
     }
     this.store.appendLog("info", "Discord command bridge enabled", {
-      prefix: appConfig.commandPrefix,
-      selfbotListeners: this.selfbotListenerIds.join(",") || "none",
+      prefixes: appConfig.commandPrefixes.join(","),
+      selfbotListeners:
+        this.selfbotListeners.map((listener) => listener.id).join(",") ||
+        "none",
       controlBot: appConfig.controlBotToken ? "enabled" : "disabled",
     });
   }
@@ -153,6 +165,7 @@ export class DiscordCommandBridge {
         runtime.controlBotStatus = "ready";
         runtime.controlBotUserTag = userTag;
         runtime.controlBotUserId = userId;
+        runtime.commandMentionPrefix = `<@${userId}>`;
       });
       this.store.appendLog("info", "Discord control bot ready", {
         userTag,
@@ -164,6 +177,7 @@ export class DiscordCommandBridge {
       this.store.setRuntime((runtime) => {
         runtime.controlBotEnabled = true;
         runtime.controlBotStatus = "error";
+        runtime.commandMentionPrefix = undefined;
       });
       this.store.appendLog("error", "Discord control bot failed", {
         error: error.message,
@@ -183,6 +197,7 @@ export class DiscordCommandBridge {
       this.store.setRuntime((runtime) => {
         runtime.controlBotEnabled = true;
         runtime.controlBotStatus = "error";
+        runtime.commandMentionPrefix = undefined;
       });
       this.store.appendLog("error", "Discord control bot login failed", {
         error: message,
@@ -191,11 +206,27 @@ export class DiscordCommandBridge {
   }
 
   private readonly handleMessage = async (message: CommandMessageLike) => {
-    if (!message.content.startsWith(appConfig.commandPrefix)) return;
-    if (!this.isAllowedAuthor(message.author.id)) return;
+    const match = this.extractCommandPrefix(message.content);
+    if (!match) return;
 
-    const body = message.content.slice(appConfig.commandPrefix.length).trim();
+    const { body, matchedPrefix } = match;
+    const allowedAuthor = this.isAllowedAuthor(message.author.id);
+
     try {
+      if (body === "whoami") {
+        await this.sendWhoAmI(message, matchedPrefix, allowedAuthor);
+        return;
+      }
+
+      if (!allowedAuthor) {
+        this.recordRejectedCommand(
+          message.author.id,
+          matchedPrefix,
+          "author-not-allowed",
+        );
+        return;
+      }
+
       if (!body) {
         await this.sendHelp(message);
         return;
@@ -363,7 +394,9 @@ export class DiscordCommandBridge {
         return;
       }
 
-      await message.channel.send("Unbekannter Befehl. Nutze 'help'.");
+      await message.channel.send(
+        `Unbekannter Befehl. Nutze '${appConfig.commandPrefix} help'.`,
+      );
     } catch (error: unknown) {
       const command = body || "help";
       const messageText =
@@ -376,10 +409,66 @@ export class DiscordCommandBridge {
     }
   };
 
+  private extractCommandPrefix(content: string): CommandPrefixMatch | undefined {
+    const prefixes = [
+      ...this.getMentionPrefixes().map((prefix) => ({
+        value: prefix,
+      })),
+      ...appConfig.commandPrefixes.map((prefix) => ({
+        value: prefix,
+      })),
+    ].sort((left, right) => right.value.length - left.value.length);
+
+    for (const prefix of prefixes) {
+      if (!content.startsWith(prefix.value)) {
+        continue;
+      }
+      return {
+        matchedPrefix: prefix.value,
+        body: content.slice(prefix.value.length).trim(),
+      };
+    }
+
+    return undefined;
+  }
+
+  private getMentionPrefixes() {
+    const userId = this.controlBotClient?.user?.id;
+    if (!userId) {
+      return [] as string[];
+    }
+    return [`<@${userId}>`, `<@!${userId}>`];
+  }
+
+  private recordRejectedCommand(
+    authorId: string,
+    matchedPrefix: string,
+    reason: string,
+  ) {
+    const key = `${authorId}:${matchedPrefix}:${reason}`;
+    const now = Date.now();
+    const previous = this.rejectedCommandTimestamps.get(key) ?? 0;
+    if (now - previous < 30000) {
+      return;
+    }
+    this.rejectedCommandTimestamps.set(key, now);
+    this.store.setRuntime((runtime) => {
+      runtime.lastRejectedCommandAt = new Date(now).toISOString();
+      runtime.lastRejectedCommandAuthorId = authorId;
+      runtime.lastRejectedCommandPrefix = matchedPrefix;
+      runtime.lastRejectedCommandReason = reason;
+    });
+    this.store.appendLog("warn", "Discord command rejected", {
+      authorId,
+      prefix: matchedPrefix,
+      reason,
+    });
+  }
+
   private isAllowedAuthor(authorId: string) {
     const allowed = new Set(appConfig.commandAllowedAuthorIds);
-    for (const botId of this.selfbotListenerIds) {
-      const userId = this.runtime.getClient(botId).user?.id;
+    for (const listener of this.selfbotListeners) {
+      const userId = this.runtime.getClient(listener.id).user?.id;
       if (userId) {
         allowed.add(userId);
       }
@@ -422,12 +511,45 @@ export class DiscordCommandBridge {
     throw new Error(`${typeName} not found: ${trimmed}`);
   }
 
+  private async sendWhoAmI(
+    message: CommandMessageLike,
+    matchedPrefix: string,
+    allowedAuthor: boolean,
+  ) {
+    const authMode = appConfig.commandAllowedAuthorIds.length
+      ? "allowlist"
+      : "selfbots-only";
+    const guide = allowedAuthor
+      ? "Du bist fuer Discord-Commands freigeschaltet."
+      : authMode === "allowlist"
+        ? "Trage diese User-ID in COMMAND_ALLOWED_AUTHOR_IDS ein, um den normalen Bot zu nutzen."
+        : "Aktuell sind nur Selfbot-Accounts freigeschaltet. Fuer einen normalen Bot fuege deine User-ID in COMMAND_ALLOWED_AUTHOR_IDS ein.";
+
+    await message.channel.send(
+      [
+        `Deine Discord-ID: ${message.author.id}`,
+        `Erlaubt: ${allowedAuthor ? "ja" : "nein"}`,
+        `Auth-Modus: ${authMode}`,
+        `Erkanntes Prefix: ${matchedPrefix}`,
+        `Primaeres Prefix: ${appConfig.commandPrefix}`,
+        guide,
+      ].join("\n"),
+    );
+  }
+
   private async sendHelp(message: CommandMessageLike) {
     const prefix = appConfig.commandPrefix;
+    const aliases = appConfig.commandPrefixes.filter(
+      (candidate) => candidate !== prefix,
+    );
+    const mentionPrefix = this.getMentionPrefixes()[0];
     await message.channel.send(
       [
         `Befehle mit ${prefix}`,
+        ...(aliases.length ? [`Aliase: ${aliases.join(", ")}`] : []),
+        ...(mentionPrefix ? [`Control-Bot Mention: ${mentionPrefix}`] : []),
         `${prefix} help`,
+        `${prefix} whoami`,
         `${prefix} status`,
         `${prefix} start <kanal|id> | <preset|id> | [zeit]`,
         `${prefix} stop`,
@@ -585,6 +707,23 @@ export class DiscordCommandBridge {
     const mem = process.memoryUsage();
     const rss = Math.round(mem.rss / 1024 / 1024);
     const heap = Math.round(mem.heapUsed / 1024 / 1024);
+    const commandPrefixes = state.runtime.commandPrefixes?.length
+      ? state.runtime.commandPrefixes.join(", ")
+      : state.runtime.commandPrefix ?? "aus";
+    const commandListeners =
+      state.runtime.commandListenerBotIds?.length
+        ? state.runtime.commandListenerBotIds
+            .map(
+              (botId) =>
+                state.runtime.bots?.find((bot) => bot.id === botId)?.name ??
+                botId,
+            )
+            .join(", ")
+        : "keine";
+    const authMode =
+      state.runtime.commandAuthMode === "allowlist"
+        ? `allowlist (${state.runtime.commandAuthorIds?.join(", ") || "leer"})`
+        : "selfbots-only";
 
     const activeRuns = state.runtime.activeRuns ?? [];
     const encoderSummary = activeRuns.length
@@ -595,17 +734,26 @@ export class DiscordCommandBridge {
           )
           .join(", ")
       : (state.runtime.selectedVideoEncoder ?? "idle");
+    const controlBotLabel = state.runtime.controlBotEnabled
+      ? `${state.runtime.controlBotStatus ?? "connecting"}${
+          state.runtime.controlBotUserTag
+            ? ` (${state.runtime.controlBotUserTag})`
+            : ""
+        }`
+      : "aus";
+    const ytDlpLabel = state.runtime.ytDlpAvailable
+      ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})`
+      : "nein";
 
     await message.channel.send(
       [
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
-        `Control Bot: ${
-          state.runtime.controlBotEnabled
-            ? `${state.runtime.controlBotStatus ?? "connecting"}${state.runtime.controlBotUserTag ? ` (${state.runtime.controlBotUserTag})` : ""}`
-            : "aus"
-        }`,
-        `yt-dlp: ${state.runtime.ytDlpAvailable ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})` : "nein"}`,
+        `Control Bot: ${controlBotLabel}`,
+        `Commands: ${commandPrefixes}`,
+        `Command Listener: ${commandListeners}`,
+        `Command Auth: ${authMode}`,
+        `yt-dlp: ${ytDlpLabel}`,
         `Panel Login: ${state.runtime.panelAuthEnabled ? "an" : "aus"}`,
         `Aktive Streams: ${activeRuns.length}`,
         `Encoder: ${encoderSummary} (bevorzugt: ${state.runtime.preferredHardwareEncoder ?? "auto"})`,

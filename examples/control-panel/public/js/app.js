@@ -135,6 +135,7 @@ const els = {
   botSummary: document.querySelector("#botSummary"),
   ffmpegInfo: document.querySelector("#ffmpegInfo"),
   commandInfo: document.querySelector("#commandInfo"),
+  commandDebugInfo: document.querySelector("#commandDebugInfo"),
   liveSyncInfo: document.querySelector("#liveSyncInfo"),
   activeRunPrimary: document.querySelector("#activeRunPrimary"),
   activeRunSecondary: document.querySelector("#activeRunSecondary"),
@@ -1158,16 +1159,40 @@ function renderOverview() {
   els.ffmpegInfo.textContent = ffmpegParts.join(" | ");
 
   if (runtime.commandPrefix) {
-    const ids = runtime.commandAuthorIds?.length
-      ? runtime.commandAuthorIds.join(", ")
-      : "nur Self-Account";
+    const prefixes = runtime.commandPrefixes?.length
+      ? runtime.commandPrefixes.join(", ")
+      : runtime.commandPrefix;
+    const listeners = runtime.commandListenerBotIds?.length
+      ? runtime.commandListenerBotIds
+          .map((botId) => findBot(botId)?.name || botId)
+          .join(", ")
+      : "keine";
     const controlBot =
       runtime.controlBotEnabled && runtime.controlBotStatus !== "disabled"
-        ? ` | Control-Bot: ${runtime.controlBotStatus}${runtime.controlBotUserTag ? ` (${runtime.controlBotUserTag})` : ""}`
+        ? ` | Control-Bot: ${runtime.controlBotStatus}${
+            runtime.controlBotUserTag
+              ? ` (${runtime.controlBotUserTag})`
+              : ""
+          }`
         : "";
-    els.commandInfo.textContent = `Discord-Commands: ${runtime.commandPrefix} | erlaubt: ${ids}${controlBot}`;
+    els.commandInfo.textContent =
+      `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}`;
+    const authInfo = runtime.commandAuthorIds?.length
+      ? `Erlaubte User-IDs: ${runtime.commandAuthorIds.join(", ")}`
+      : "Aktuell sind nur die Selfbot-Accounts freigeschaltet. Fuer den normalen Bot deine User-ID in COMMAND_ALLOWED_AUTHOR_IDS eintragen.";
+    const mentionInfo = runtime.commandMentionPrefix
+      ? ` | Mention: ${runtime.commandMentionPrefix}`
+      : "";
+    const rejectionInfo = runtime.lastRejectedCommandAt
+      ? ` | Letzte Ablehnung: ${formatDateTime(runtime.lastRejectedCommandAt)} | ${runtime.lastRejectedCommandAuthorId || "?"} | ${
+          runtime.lastRejectedCommandPrefix || "?"
+        }`
+      : "";
+    els.commandDebugInfo.textContent =
+      `${authInfo}${mentionInfo}${rejectionInfo}`;
   } else {
     els.commandInfo.textContent = "Discord-Commands deaktiviert";
+    els.commandDebugInfo.textContent = "";
   }
   renderLiveSyncInfo();
 

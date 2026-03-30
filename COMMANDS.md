@@ -2,6 +2,8 @@
 
 > Alle Befehle beginnen mit dem konfigurierten Prefix. Standard: `$panel`
 >
+> Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden. Beim normalen Control-Bot funktioniert zusaetzlich die Bot-Mention als Prefix.
+>
 > Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot (`CONTROL_BOT_TOKEN`) angenommen werden.
 
 ---
@@ -11,6 +13,7 @@
 | Befehl | Kurzbeschreibung |
 |--------|-----------------|
 | `help` | Alle Befehle anzeigen |
+| `whoami` | Eigene Discord-ID und Freigabe pruefen |
 | `status` | Aktuellen Stream-Status |
 | `start` | Stream manuell starten |
 | `stop` | Einen oder mehrere aktive Streams stoppen |
@@ -46,6 +49,7 @@ $panel help
 ```
 Befehle mit $panel
 $panel help
+$panel whoami
 $panel status
 $panel start <kanal|id> | <preset|id> | [zeit]
 $panel stop
@@ -65,6 +69,27 @@ $panel queue loop on
 $panel queue loop off
 $panel info
 $panel logs [n]
+```
+
+---
+
+### `$panel whoami`
+
+Zeigt deine Discord-ID, den aktuellen Freigabe-Status und das erkannte Prefix an. Das ist der schnellste Check, wenn Commands ueber den normalen Bot nicht reagieren.
+
+```
+$panel whoami
+? whoami
+```
+
+**Ausgabe:**
+```
+Deine Discord-ID: 123456789012345678
+Erlaubt: nein
+Auth-Modus: allowlist
+Erkanntes Prefix: ?
+Primaeres Prefix: $panel
+Trage diese User-ID in COMMAND_ALLOWED_AUTHOR_IDS ein, um den normalen Bot zu nutzen.
 ```
 
 ---
@@ -348,7 +373,7 @@ $panel logs 10
 
 ## Wer darf Befehle senden?
 
-Standardmaessig darf nur der Account selbst (der eingeloggte Self-Token) Befehle senden.
+Standardmaessig duerfen nur die eingeloggten Selfbot-Accounts Befehle senden.
 
 Zusaetzliche User-IDs koennen in der Konfiguration hinterlegt werden:
 
@@ -367,12 +392,19 @@ COMMAND_ALLOWED_AUTHOR_IDS=123456789,987654321
 
 ## Prefix aendern
 
-Standard-Prefix ist `$panel`. Du kannst es aendern:
+Standard-Prefix ist `$panel`. Du kannst es aendern oder weitere Aliase setzen:
 
 ```bash
 ./config.sh
 # → Option 3: Chat-Befehle
 # → Neuer Prefix: z.B. !stream
+# → Weitere Prefixe: z.B. ?,!panel
+```
+
+Wenn du den normalen Bot verwendest und nichts reagiert, starte mit:
+
+```text
+$panel whoami
 ```
 
 Dann werden Befehle mit `!stream start ...` etc. verwendet.

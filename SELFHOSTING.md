@@ -182,6 +182,7 @@ Text-Befehle laufen standardmaessig ueber den primaeren Selfbot und ueber Zusatz
 
 ```bash
 COMMAND_PREFIX=$panel
+COMMAND_PREFIX_ALIASES=?,!panel
 CONTROL_BOT_TOKEN=
 COMMAND_ALLOWED_AUTHOR_IDS=
 ```
@@ -189,7 +190,8 @@ COMMAND_ALLOWED_AUTHOR_IDS=
 Wichtig fuer den normalen Bot:
 - `Message Content Intent` im Discord Developer Portal aktivieren
 - denselben Bot auf deinen Server einladen
-- optional `COMMAND_ALLOWED_AUTHOR_IDS` setzen, wenn nicht nur dein Selfbot-Account steuern soll
+- wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer bleibt, duerfen nur Selfbot-Accounts Commands ausfuehren
+- fuer einen normalen User-Account deshalb die eigene Discord-ID per `whoami` ermitteln und in `COMMAND_ALLOWED_AUTHOR_IDS` eintragen
 
 ---
 

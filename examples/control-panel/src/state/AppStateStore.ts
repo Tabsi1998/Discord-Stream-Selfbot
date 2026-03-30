@@ -35,7 +35,10 @@ function defaultRuntime(): RuntimeState {
     telemetryByBot: {},
     selectedVideoEncodersByBot: {},
     ytDlpAvailable: false,
+    commandPrefixes: [],
     commandAuthorIds: [],
+    commandListenerBotIds: [],
+    commandAuthMode: "selfbots-only",
   };
 }
 

@@ -260,15 +260,25 @@ Jellyfin → FFmpeg → Discord
 ## Discord Chat-Befehle
 
 Alle Befehle starten mit dem konfigurierten Prefix (Standard: `$panel`).
+Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden.
 Sie funktionieren ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN`.
+Beim normalen Bot funktioniert nach dem Login auch die Bot-Mention als Prefix.
 
 Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
+
+Wenn Commands nicht reagieren, pruefe zuerst:
+
+1. `DISCORD_COMMANDS_ENABLED=1`
+2. `COMMAND_PREFIX` oder `COMMAND_PREFIX_ALIASES` passt zu deiner Nachricht
+3. Beim normalen Bot steht deine User-ID in `COMMAND_ALLOWED_AUTHOR_IDS`
+4. Beim normalen Bot ist das `Message Content Intent` aktiviert
 
 ### Kurzuebersicht
 
 | Befehl | Was es tut |
 |--------|-----------|
 | `$panel help` | Alle Befehle anzeigen |
+| `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
 | `$panel status` | Aktuellen Stream-Status anzeigen |
 | `$panel start Kanal \| Preset` | Stream sofort starten |
 | `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
@@ -350,9 +360,10 @@ Discord-Stream-Selfbot/
 | `HOST_PORT` | Web Panel Port | 3099 |
 | `TZ` | Zeitzone | Europe/Vienna |
 | `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
-| `COMMAND_PREFIX` | Prefix fuer Chat-Befehle | $panel |
+| `COMMAND_PREFIX` | Primaeres Prefix fuer Chat-Befehle | $panel |
+| `COMMAND_PREFIX_ALIASES` | Weitere Prefixe, komma-getrennt | leer |
 | `CONTROL_BOT_TOKEN` | Optionaler normaler Discord Bot fuer dieselben Text-Befehle | leer |
-| `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur du selbst |
+| `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur Selfbot-Accounts |
 | `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots | Primary Selfbot |
 | `SELFBOT_CONFIG_FILE` | TSV/JSON-Datei fuer zusaetzliche Selfbots | `/app/examples/control-panel/data/selfbot-profiles.tsv` |
 | `IDLE_ACTIVITY_TEXT` | Idle-Status Text | THE LION SQUAD - eSPORTS |

@@ -214,7 +214,23 @@ export class StreamRuntime extends EventEmitter {
       runtime.commandPrefix = appConfig.commandEnabled
         ? appConfig.commandPrefix
         : undefined;
+      runtime.commandPrefixes = appConfig.commandEnabled
+        ? appConfig.commandPrefixes
+        : [];
       runtime.commandAuthorIds = appConfig.commandAllowedAuthorIds;
+      runtime.commandListenerBotIds = appConfig.commandEnabled
+        ? appConfig.selfbotProfiles
+            .filter((profile) => profile.commandEnabled)
+            .map((profile) => profile.id)
+        : [];
+      runtime.commandAuthMode = appConfig.commandAllowedAuthorIds.length
+        ? "allowlist"
+        : "selfbots-only";
+      runtime.commandMentionPrefix = undefined;
+      runtime.lastRejectedCommandAt = undefined;
+      runtime.lastRejectedCommandAuthorId = undefined;
+      runtime.lastRejectedCommandPrefix = undefined;
+      runtime.lastRejectedCommandReason = undefined;
       runtime.controlBotEnabled =
         appConfig.commandEnabled && !!appConfig.controlBotToken;
       runtime.controlBotStatus =

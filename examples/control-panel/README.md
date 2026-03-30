@@ -179,11 +179,14 @@ Fuer den produktiven Betrieb: siehe [SELFHOSTING.md](../../SELFHOSTING.md)
 
 Standard-Prefix: `$panel`
 
+Weitere Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden. Beim normalen Control-Bot funktioniert zusaetzlich die Bot-Mention als Prefix.
+
 Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN` angenommen werden.
 
 | Befehl | Beschreibung |
 |--------|-------------|
 | `$panel help` | Alle Befehle |
+| `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
 | `$panel status` | Stream-Status |
 | `$panel start <kanal> \| <preset> \| [zeit]` | Stream starten |
 | `$panel stop` | Einen oder mehrere Streams stoppen |
@@ -195,3 +198,5 @@ Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Se
 | `$panel event cancel <id>` | Event abbrechen |
 
 Vollstaendige Referenz: [COMMANDS.md](../../COMMANDS.md)
+
+Wenn der normale Bot nicht reagiert, pruefe vor allem `COMMAND_ALLOWED_AUTHOR_IDS` und das `Message Content Intent`.

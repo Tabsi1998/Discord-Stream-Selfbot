@@ -159,7 +159,15 @@ export type RuntimeState = {
   ytDlpVersion?: string;
   ytDlpAvailable?: boolean;
   commandPrefix?: string;
+  commandPrefixes?: string[];
   commandAuthorIds?: string[];
+  commandListenerBotIds?: string[];
+  commandAuthMode?: "selfbots-only" | "allowlist";
+  commandMentionPrefix?: string;
+  lastRejectedCommandAt?: string;
+  lastRejectedCommandAuthorId?: string;
+  lastRejectedCommandPrefix?: string;
+  lastRejectedCommandReason?: string;
   controlBotStatus?: ControlBotStatus;
   controlBotUserTag?: string;
   controlBotUserId?: string;

@@ -259,7 +259,7 @@ print_success "Token gespeichert"
 
 echo "" >&2
 print_info "Erlaubte Discord User-IDs fuer Chat-Befehle"
-print_info "  Komma-getrennt, leer = nur du selbst"
+print_info "  Komma-getrennt, leer = nur Selfbot-Accounts"
 CONF_ALLOWED_IDS=$(ask "Erlaubte User-IDs" "$(get_or_default COMMAND_ALLOWED_AUTHOR_IDS "")")
 
 # ── [3/4] Allgemeine Einstellungen ────────────────────────────
@@ -274,6 +274,7 @@ echo "" >&2
 print_info "Discord Chat-Befehle erlauben Steuerung per Nachricht"
 print_info "  z.B. \$panel start, \$panel stop, \$panel status"
 print_info "  Optional kann ein normaler Discord Bot dieselben Befehle annehmen"
+print_info "  Weitere Prefixe wie ? oder !panel gehen ueber COMMAND_PREFIX_ALIASES"
 echo "" >&2
 
 CURRENT_CMD=$(read_env "DISCORD_COMMANDS_ENABLED")
@@ -282,6 +283,7 @@ CMD_DEFAULT="y"
 
 CONF_COMMANDS_ENABLED=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEFAULT")
 CONF_PREFIX=$(ask "Befehl-Prefix" "$(get_or_default COMMAND_PREFIX "$DEFAULT_COMMAND_PREFIX")")
+CONF_PREFIX_ALIASES=$(ask "Weitere Prefixe (komma-getrennt, optional)" "$(get_or_default COMMAND_PREFIX_ALIASES "")")
 CONF_CONTROL_BOT_TOKEN=$(ask_secret "Control-Bot Token (optional)" "$(get_or_default CONTROL_BOT_TOKEN "")")
 echo "" >&2
 print_info "Optional: Login-Schutz fuer das Web Panel per HTTP Basic Auth"
@@ -317,10 +319,10 @@ echo "" >&2
 echo -e "  ${BOLD}Deine Konfiguration:${NC}" >&2
 echo "" >&2
 echo -e "  ${DIM}Discord Token:${NC}     $(mask_secret "$CONF_TOKEN")" >&2
-echo -e "  ${DIM}Erlaubte IDs:${NC}      ${CONF_ALLOWED_IDS:-nur du selbst}" >&2
+echo -e "  ${DIM}Erlaubte IDs:${NC}      ${CONF_ALLOWED_IDS:-nur Selfbot-Accounts}" >&2
 echo -e "  ${DIM}Web Panel Port:${NC}    $FIXED_HOST_PORT (fest)" >&2
 echo -e "  ${DIM}Zeitzone:${NC}          $CONF_TZ" >&2
-echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$CONF_COMMANDS_ENABLED" = "1" ] && echo "Aktiv ($CONF_PREFIX)" || echo "Aus")" >&2
+echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$CONF_COMMANDS_ENABLED" = "1" ] && echo "Aktiv (${CONF_PREFIX}${CONF_PREFIX_ALIASES:+ + ${CONF_PREFIX_ALIASES}})" || echo "Aus")" >&2
 echo -e "  ${DIM}Control-Bot:${NC}       $([ -n "$CONF_CONTROL_BOT_TOKEN" ] && echo "$(mask_secret "$CONF_CONTROL_BOT_TOKEN")" || echo "nicht gesetzt")" >&2
 echo -e "  ${DIM}Panel Login:${NC}       $([ "$CONF_PANEL_AUTH_ENABLED" = "1" ] && echo "Aktiv (${CONF_PANEL_AUTH_USERNAME})" || echo "Aus")" >&2
 echo -e "  ${DIM}yt-dlp Cookies:${NC}    ${CONF_YT_DLP_COOKIES_BROWSER:-${CONF_YT_DLP_COOKIES_FILE:-keine}}" >&2
@@ -374,6 +376,7 @@ SELFBOT_CONFIG_FILE=$CONF_SELFBOT_CONFIG_FILE
 PRIMARY_SELFBOT_NAME=$CONF_PRIMARY_SELFBOT_NAME
 DISCORD_COMMANDS_ENABLED=$CONF_COMMANDS_ENABLED
 COMMAND_PREFIX=$CONF_PREFIX
+COMMAND_PREFIX_ALIASES=$CONF_PREFIX_ALIASES
 CONTROL_BOT_TOKEN=$CONF_CONTROL_BOT_TOKEN
 COMMAND_ALLOWED_AUTHOR_IDS=$CONF_ALLOWED_IDS
 IDLE_PRESENCE_STATUS=$CONF_IDLE_PRESENCE_STATUS
