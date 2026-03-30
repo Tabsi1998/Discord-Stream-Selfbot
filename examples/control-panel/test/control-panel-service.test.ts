@@ -49,6 +49,7 @@ class RuntimeStub extends EventEmitter {
 
   public async startRun(input: {
     kind: "manual" | "event";
+    eventId?: string;
     channel: { botId: string; id: string };
     preset: { id: string };
     plannedStopAt?: string;
@@ -61,6 +62,7 @@ class RuntimeStub extends EventEmitter {
 
     const run: ActiveRun = {
       kind: input.kind,
+      eventId: input.eventId,
       botId: input.channel.botId,
       botName: input.channel.botId === "bot-2" ? "Backup Bot" : "Primary Bot",
       channelId: input.channel.id,
@@ -271,6 +273,139 @@ test("ControlPanelService persists notification settings and includes them in ex
       "https://discord.com/api/webhooks/123/example",
     );
     assert.equal(exported.data.notificationSettings.dmEnabled, true);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService can edit a single series occurrence without rewriting the full series", () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("primary", "Series Stage", "series"),
+    );
+    const preset = context.service.createPreset(
+      createPresetInput("Series Preset", "https://example.com/series.m3u8"),
+    );
+
+    const created = context.service.createEvent({
+      name: "Weekly Show",
+      channelId: channel.id,
+      presetId: preset.id,
+      startAt: "2026-04-10T18:00:00.000Z",
+      endAt: "2026-04-10T20:00:00.000Z",
+      description: "",
+      recurrence: {
+        kind: "weekly",
+        interval: 1,
+        daysOfWeek: [5],
+        until: "2026-04-24T18:00:00.000Z",
+      },
+    });
+
+    assert.equal(created.events.length, 3);
+    const target = created.events[1];
+    assert.ok(target);
+
+    const result = context.service.updateEvent(
+      target.id,
+      {
+        name: "Special Show",
+        channelId: channel.id,
+        presetId: preset.id,
+        startAt: "2026-04-17T19:00:00.000Z",
+        endAt: "2026-04-17T21:00:00.000Z",
+        description: "Special",
+        recurrence: {
+          kind: "weekly",
+          interval: 1,
+          daysOfWeek: [5],
+          until: "2026-04-24T18:00:00.000Z",
+        },
+      },
+      "single",
+    );
+
+    assert.equal(result.scope, "single");
+    assert.equal(result.updatedCount, 1);
+
+    const snapshot = context.service.snapshot();
+    assert.equal(snapshot.events.length, 3);
+    const detached = snapshot.events.find(
+      (event) => event.name === "Special Show",
+    );
+    assert.ok(detached);
+    assert.equal(detached?.seriesId, undefined);
+    assert.equal(detached?.recurrence.kind, "once");
+
+    const remainingSeries = snapshot.events.filter(
+      (event) => event.seriesId === created.seriesId,
+    );
+    assert.equal(remainingSeries.length, 2);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService pauses and resumes the queue around an event when event-first is enabled", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("bot-2", "Queue Stage", "queue-event"),
+    );
+    const preset = context.service.createPreset(
+      createPresetInput("Queue Preset", "https://example.com/base.m3u8"),
+    );
+
+    context.service.updateQueueConfig({ conflictPolicy: "event-first" });
+    context.service.addToQueue(
+      "https://example.com/queue-one.m3u8",
+      "Queue One",
+    );
+    await context.service.startQueue(channel.id, preset.id);
+
+    const created = context.service.createEvent({
+      name: "Priority Event",
+      channelId: channel.id,
+      presetId: preset.id,
+      startAt: "2026-04-10T18:00:00.000Z",
+      endAt: "2026-04-10T18:30:00.000Z",
+      description: "",
+      recurrence: { kind: "once" },
+    });
+    const createdEvent = created.events[0];
+    assert.ok(createdEvent);
+
+    await context.service.startScheduledEvent(createdEvent.id);
+
+    let snapshot = context.service.snapshot();
+    assert.equal(snapshot.queueConfig.pausedByEvent, true);
+    assert.equal(snapshot.queue[0]?.status, "pending");
+    assert.equal(
+      context.runtime.stopCalls.at(-1)?.reason,
+      "queue-preempted-for-event",
+    );
+    assert.equal(context.runtime.startCalls.at(-1)?.presetId, preset.id);
+
+    const activeRun = context.runtime.getActiveRun("bot-2");
+    assert.ok(activeRun);
+    context.runtime.stopActive("scheduled-end", "bot-2");
+    context.runtime.emit("runEnded", {
+      run: activeRun,
+      reason: "completed",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 1700));
+
+    snapshot = context.service.snapshot();
+    assert.equal(snapshot.queueConfig.pausedByEvent, false);
+    assert.equal(context.runtime.startCalls.length, 3);
+    assert.equal(
+      context.runtime.startCalls.at(-1)?.presetId,
+      `queue-${snapshot.queue[0]?.id}`,
+    );
   } finally {
     context.dispose();
   }

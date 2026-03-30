@@ -2,10 +2,12 @@ import type {
   BufferProfile,
   ChannelInput,
   EventInput,
+  EventSeriesScope,
   ManualRunInput,
   NotificationSettingsInput,
   PresetInput,
   QualityProfile,
+  QueueConflictPolicy,
   RecurrenceInput,
   SourceMode,
   StreamMode,
@@ -39,6 +41,15 @@ const BUFFER_PROFILES = [
 ] as const satisfies readonly BufferProfile[];
 const VIDEO_CODECS = ["H264", "H265"] as const satisfies readonly VideoCodec[];
 const RECURRENCE_KINDS = ["once", "daily", "weekly"] as const;
+const EVENT_SERIES_SCOPES = [
+  "single",
+  "this-and-following",
+  "all",
+] as const satisfies readonly EventSeriesScope[];
+const QUEUE_CONFLICT_POLICIES = [
+  "queue-first",
+  "event-first",
+] as const satisfies readonly QueueConflictPolicy[];
 
 export class HttpError extends Error {
   constructor(
@@ -282,6 +293,29 @@ export function parseEventInput(value: unknown): EventInput {
   };
 }
 
+export function parseEventUpdateInput(value: unknown) {
+  const body = ensureObject(value, "Event update payload");
+  const scope =
+    readOptionalEnum(body.scope, "scope", EVENT_SERIES_SCOPES) ??
+    "this-and-following";
+  return {
+    input: parseEventInput(body),
+    scope,
+  };
+}
+
+export function parseEventDeleteInput(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return { scope: "single" as const };
+  }
+
+  const body = ensureObject(value, "Event delete payload");
+  return {
+    scope:
+      readOptionalEnum(body.scope, "scope", EVENT_SERIES_SCOPES) ?? "single",
+  };
+}
+
 export function parseManualRunInput(value: unknown): ManualRunInput {
   const body = ensureObject(value, "Manual run payload");
   return {
@@ -322,6 +356,28 @@ export function parseQueueLoopInput(value: unknown) {
   const body = ensureObject(value, "Queue loop payload");
   return {
     enabled: readBoolean(body.enabled, "enabled"),
+  };
+}
+
+export function parseQueueConfigInput(value: unknown) {
+  const body = ensureObject(value, "Queue config payload");
+  const loop = readOptionalBoolean(body.loop, "loop");
+  const conflictPolicy = readOptionalEnum(
+    body.conflictPolicy,
+    "conflictPolicy",
+    QUEUE_CONFLICT_POLICIES,
+  );
+
+  if (loop === undefined && !conflictPolicy) {
+    throw new HttpError(
+      400,
+      "Queue config payload must include loop or conflictPolicy",
+    );
+  }
+
+  return {
+    loop,
+    conflictPolicy,
   };
 }
 

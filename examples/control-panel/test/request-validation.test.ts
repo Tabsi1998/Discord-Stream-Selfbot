@@ -4,8 +4,11 @@ import {
   HttpError,
   getStatusCodeForError,
   parseChannelInput,
+  parseEventDeleteInput,
   parseEventInput,
+  parseEventUpdateInput,
   parsePresetInput,
+  parseQueueConfigInput,
 } from "../src/server/requestValidation.js";
 
 test("parseChannelInput validates and trims channel payloads", () => {
@@ -76,6 +79,37 @@ test("parseEventInput validates recurrence blocks", () => {
     daysOfWeek: [1, 3, 5],
     until: "2026-06-10T18:00:00.000Z",
   });
+});
+
+test("event mutation parsers accept explicit series scopes", () => {
+  const update = parseEventUpdateInput({
+    name: "Weekly Event",
+    channelId: "channel-1",
+    presetId: "preset-1",
+    startAt: "2026-04-10T18:00:00.000Z",
+    endAt: "2026-04-10T20:00:00.000Z",
+    scope: "all",
+  });
+  const deletion = parseEventDeleteInput({ scope: "single" });
+
+  assert.equal(update.scope, "all");
+  assert.equal(update.input.name, "Weekly Event");
+  assert.equal(deletion.scope, "single");
+});
+
+test("parseQueueConfigInput requires a supported setting", () => {
+  assert.deepEqual(parseQueueConfigInput({ conflictPolicy: "event-first" }), {
+    loop: undefined,
+    conflictPolicy: "event-first",
+  });
+
+  assert.throws(
+    () => parseQueueConfigInput({}),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.status === 400 &&
+      /must include loop or conflictPolicy/i.test(error.message),
+  );
 });
 
 test("getStatusCodeForError maps validation and conflict style errors", () => {

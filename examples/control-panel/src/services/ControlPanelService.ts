@@ -11,10 +11,13 @@ import type {
   ControlPanelExportPayload,
   ControlPanelState,
   EventInput,
+  EventSeriesScope,
   EventStatus,
   ManualRunInput,
   NotificationSettings,
   NotificationSettingsInput,
+  QueueConfig,
+  QueueConflictPolicy,
   QueueItem,
   RecurrenceRule,
   PresetInput,
@@ -89,6 +92,15 @@ function sortEvents(events: ScheduledEvent[]) {
   events.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
 }
 
+function createDefaultQueueConfig(): QueueConfig {
+  return {
+    active: false,
+    loop: false,
+    currentIndex: 0,
+    conflictPolicy: "queue-first",
+  };
+}
+
 type EventPlan = {
   recurrence: RecurrenceRule;
   events: ScheduledEvent[];
@@ -98,6 +110,7 @@ type EventPlan = {
 type EventMutationResult = {
   updatedCount: number;
   events: ScheduledEvent[];
+  scope: EventSeriesScope;
 };
 
 export class ControlPanelService {
@@ -207,6 +220,9 @@ export class ControlPanelService {
         queueConfig: {
           ...snapshot.queueConfig,
           active: false,
+          pausedByEvent: false,
+          pausedEventId: undefined,
+          pausedAt: undefined,
         },
         notificationSettings: this.getNotificationSettings(),
       },
@@ -284,6 +300,9 @@ export class ControlPanelService {
 
       if (draft.queueConfig.active) {
         draft.queueConfig.active = false;
+        draft.queueConfig.pausedByEvent = false;
+        draft.queueConfig.pausedEventId = undefined;
+        draft.queueConfig.pausedAt = undefined;
         for (const item of draft.queue) {
           if (item.status === "playing") {
             item.status = "pending";
@@ -542,7 +561,11 @@ export class ControlPanelService {
     };
   }
 
-  public updateEvent(id: string, input: EventInput): EventMutationResult {
+  public updateEvent(
+    id: string,
+    input: EventInput,
+    scope: EventSeriesScope = "this-and-following",
+  ): EventMutationResult {
     const timestamp = nowIso();
     let updated: EventMutationResult | undefined;
     let oldDiscordEventIds: string[] = [];
@@ -561,15 +584,29 @@ export class ControlPanelService {
       const channel = draft.channels.find((c) => c.id === input.channelId);
       guildId = channel?.guildId;
       botId = channel?.botId ?? botId;
+      const effectiveScope = this.resolveEventSeriesScope(target, scope);
+      const occurrenceOffset =
+        effectiveScope === "this-and-following" ? target.occurrenceIndex : 1;
+      const plannedInput =
+        effectiveScope === "single" && target.seriesId
+          ? {
+              ...input,
+              recurrence: { kind: "once" as const },
+            }
+          : input;
 
       const replacement = this.planEvents(
-        input,
+        plannedInput,
         timestamp,
-        target.seriesId,
-        target.occurrenceIndex,
+        effectiveScope === "single" ? undefined : target.seriesId,
+        occurrenceOffset,
       ).events;
 
-      const replaceIds = this.collectReplaceIds(draft.events, target);
+      const replaceIds = this.collectReplaceIds(
+        draft.events,
+        target,
+        effectiveScope,
+      );
 
       // Collect old Discord event IDs for cleanup
       oldDiscordEventIds = draft.events
@@ -587,6 +624,7 @@ export class ControlPanelService {
       updated = {
         updatedCount: replacement.length,
         events: replacement,
+        scope: effectiveScope,
       };
     });
 
@@ -603,7 +641,7 @@ export class ControlPanelService {
     return updated!;
   }
 
-  public deleteEvent(id: string) {
+  public deleteEvent(id: string, scope: EventSeriesScope = "single") {
     let discordEventIds: string[] = [];
     let guildId: string | undefined;
     let botId = this.runtime.getPrimaryBotId();
@@ -613,7 +651,11 @@ export class ControlPanelService {
         throw new Error("Cannot delete a running event");
       }
 
-      const replaceIds = this.collectReplaceIds(draft.events, event);
+      const replaceIds = this.collectReplaceIds(
+        draft.events,
+        event,
+        this.resolveEventSeriesScope(event, scope),
+      );
       discordEventIds = draft.events
         .filter((e) => replaceIds.has(e.id) && e.discordEventId)
         .map((e) => e.discordEventId!);
@@ -677,6 +719,25 @@ export class ControlPanelService {
 
     const channel = this.requireChannelFromSnapshot(state, event.channelId);
     const preset = this.requirePresetFromSnapshot(state, event.presetId);
+    const queueOwnsBot =
+      state.queueConfig.active &&
+      state.queueConfig.botId === channel.botId &&
+      !state.queueConfig.pausedByEvent;
+    const canPreemptQueue =
+      queueOwnsBot && state.queueConfig.conflictPolicy === "event-first";
+    const preemptedQueue = canPreemptQueue
+      ? this.preemptQueueForScheduledEvent(channel.botId, id)
+      : false;
+
+    if (queueOwnsBot && !canPreemptQueue) {
+      throw new Error("Queue currently reserves this selfbot");
+    }
+    if (this.hasActiveRun(channel.botId)) {
+      if (preemptedQueue) {
+        throw new Error("Queue run is stopping for scheduled event");
+      }
+      throw new Error("Selected selfbot is already streaming");
+    }
 
     this.store.update((draft) => {
       const current = this.requireEventFromDraft(draft, id);
@@ -707,6 +768,9 @@ export class ControlPanelService {
       const message =
         error instanceof Error ? error.message : "Failed to start event";
       this.failEvent(id, message);
+      if (preemptedQueue) {
+        this.resumeQueueAfterScheduledEvent(channel.botId, id);
+      }
       throw error;
     }
   }
@@ -749,7 +813,7 @@ export class ControlPanelService {
   public stopActiveForBot(reason = "manual-stop", botId?: string) {
     const run = this.runtime.getActiveRun(botId);
     const stopped = this.runtime.stopActive(reason, botId);
-    if (stopped && run) {
+    if (stopped && run && reason !== "queue-preempted-for-event") {
       this.sendNotification(
         `Stream gestoppt: ${run.channelName}`,
         run.botId,
@@ -817,11 +881,14 @@ export class ControlPanelService {
         ).catch(() => {});
       }
     }
+
+    this.resumeQueueAfterScheduledEvent(info.run.botId, info.run.eventId);
   }
 
   private onRunFailed(info: RunFailedInfo) {
     if (info.run.kind !== "event" || !info.run.eventId) return;
     this.failEvent(info.run.eventId, info.error);
+    this.resumeQueueAfterScheduledEvent(info.run.botId, info.run.eventId);
   }
 
   private failEvent(id: string, error: string) {
@@ -906,8 +973,23 @@ export class ControlPanelService {
     };
   }
 
-  private collectReplaceIds(events: ScheduledEvent[], target: ScheduledEvent) {
+  private resolveEventSeriesScope(
+    target: ScheduledEvent,
+    scope: EventSeriesScope,
+  ): EventSeriesScope {
     if (!target.seriesId) {
+      return "single";
+    }
+    return scope;
+  }
+
+  private collectReplaceIds(
+    events: ScheduledEvent[],
+    target: ScheduledEvent,
+    scope: EventSeriesScope,
+  ) {
+    const effectiveScope = this.resolveEventSeriesScope(target, scope);
+    if (effectiveScope === "single") {
       return new Set([target.id]);
     }
 
@@ -920,6 +1002,10 @@ export class ControlPanelService {
       throw new Error(
         "Cannot edit or delete a series while one occurrence is running",
       );
+    }
+
+    if (effectiveScope === "all") {
+      return new Set(related.map((event) => event.id));
     }
 
     return new Set(
@@ -1240,9 +1326,9 @@ export class ControlPanelService {
     this.store.update((draft) => {
       draft.queue = [];
       draft.queueConfig = {
-        active: false,
+        ...createDefaultQueueConfig(),
         loop: draft.queueConfig.loop,
-        currentIndex: 0,
+        conflictPolicy: draft.queueConfig.conflictPolicy,
       };
     });
     this.store.appendLog("info", "Queue geleert");
@@ -1252,6 +1338,23 @@ export class ControlPanelService {
     this.store.update((draft) => {
       draft.queueConfig.loop = enabled;
     });
+  }
+
+  public updateQueueConfig(input: {
+    loop?: boolean;
+    conflictPolicy?: QueueConflictPolicy;
+  }) {
+    let updated: QueueConfig | undefined;
+    this.store.update((draft) => {
+      if (input.loop !== undefined) {
+        draft.queueConfig.loop = input.loop;
+      }
+      if (input.conflictPolicy) {
+        draft.queueConfig.conflictPolicy = input.conflictPolicy;
+      }
+      updated = { ...draft.queueConfig };
+    });
+    return updated!;
   }
 
   public async startQueue(channelId: string, presetId: string) {
@@ -1271,6 +1374,9 @@ export class ControlPanelService {
       draft.queueConfig.channelId = channelId;
       draft.queueConfig.presetId = presetId;
       draft.queueConfig.currentIndex = 0;
+      draft.queueConfig.pausedByEvent = false;
+      draft.queueConfig.pausedEventId = undefined;
+      draft.queueConfig.pausedAt = undefined;
       for (const item of draft.queue) {
         item.status = "pending";
       }
@@ -1291,6 +1397,9 @@ export class ControlPanelService {
   public async skipQueueItem() {
     const state = this.store.snapshot();
     if (!state.queueConfig.active) throw new Error("Queue is not active");
+    if (state.queueConfig.pausedByEvent) {
+      throw new Error("Queue is paused by a scheduled event");
+    }
     const queueBotId = state.queueConfig.botId;
 
     this.store.update((draft) => {
@@ -1308,11 +1417,15 @@ export class ControlPanelService {
   }
 
   public stopQueue() {
-    const queueBotId = this.store.snapshot().queueConfig.botId;
+    const queueState = this.store.snapshot().queueConfig;
+    const queueBotId = queueState.botId;
     this.store.update((draft) => {
       draft.queueConfig.active = false;
+      draft.queueConfig.pausedByEvent = false;
+      draft.queueConfig.pausedEventId = undefined;
+      draft.queueConfig.pausedAt = undefined;
     });
-    if (this.runtime.getActiveRun(queueBotId)) {
+    if (!queueState.pausedByEvent && this.runtime.getActiveRun(queueBotId)) {
       this.stopActiveForBot("manual-stop", queueBotId);
     }
     this.store.appendLog("info", "Queue gestoppt");
@@ -1328,11 +1441,85 @@ export class ControlPanelService {
     });
   }
 
+  public preemptQueueForScheduledEvent(botId: string, eventId: string) {
+    const state = this.store.snapshot();
+    if (
+      !state.queueConfig.active ||
+      state.queueConfig.botId !== botId ||
+      state.queueConfig.pausedByEvent
+    ) {
+      return false;
+    }
+
+    this.store.update((draft) => {
+      if (!draft.queueConfig.active || draft.queueConfig.botId !== botId) {
+        return;
+      }
+      draft.queueConfig.pausedByEvent = true;
+      draft.queueConfig.pausedEventId = eventId;
+      draft.queueConfig.pausedAt = nowIso();
+      const currentItem = draft.queue[draft.queueConfig.currentIndex];
+      if (currentItem?.status === "playing") {
+        currentItem.status = "pending";
+      }
+    });
+
+    this.store.appendLog("info", "Queue pausiert fuer geplantes Event", {
+      botId,
+      eventId,
+    });
+
+    if (this.runtime.getActiveRun(botId)) {
+      this.stopActiveForBot("queue-preempted-for-event", botId);
+    }
+
+    return true;
+  }
+
+  public resumeQueueAfterScheduledEvent(botId?: string, eventId?: string) {
+    const state = this.store.snapshot();
+    if (
+      !botId ||
+      !state.queueConfig.active ||
+      !state.queueConfig.pausedByEvent ||
+      state.queueConfig.botId !== botId
+    ) {
+      return false;
+    }
+    if (
+      eventId &&
+      state.queueConfig.pausedEventId &&
+      state.queueConfig.pausedEventId !== eventId
+    ) {
+      return false;
+    }
+
+    this.store.update((draft) => {
+      if (
+        !draft.queueConfig.active ||
+        !draft.queueConfig.pausedByEvent ||
+        draft.queueConfig.botId !== botId
+      ) {
+        return;
+      }
+      draft.queueConfig.pausedByEvent = false;
+      draft.queueConfig.pausedEventId = undefined;
+      draft.queueConfig.pausedAt = undefined;
+    });
+
+    this.store.appendLog("info", "Queue wird nach Event fortgesetzt", {
+      botId,
+    });
+    setTimeout(() => this.playCurrentQueueItem().catch(() => {}), 1500);
+    return true;
+  }
+
   private async playCurrentQueueItem() {
     const state = this.store.snapshot();
     const { queueConfig, queue } = state;
     if (
       !queueConfig.active ||
+      queueConfig.pausedByEvent ||
       !queueConfig.botId ||
       !queueConfig.channelId ||
       !queueConfig.presetId
@@ -1430,6 +1617,7 @@ export class ControlPanelService {
     const state = this.store.snapshot();
     if (!state.queueConfig.active || !state.queueConfig.botId) return;
     if (info.run.botId !== state.queueConfig.botId) return;
+    if (state.queueConfig.pausedByEvent) return;
 
     this.store.update((draft) => {
       const item = draft.queue[draft.queueConfig.currentIndex];
@@ -1445,6 +1633,7 @@ export class ControlPanelService {
     const state = this.store.snapshot();
     if (!state.queueConfig.active || !state.queueConfig.botId) return;
     if (info.run.botId !== state.queueConfig.botId) return;
+    if (state.queueConfig.pausedByEvent) return;
 
     this.store.update((draft) => {
       const item = draft.queue[draft.queueConfig.currentIndex];
@@ -1573,7 +1762,7 @@ export class ControlPanelService {
         queueConfig:
           raw.queueConfig && typeof raw.queueConfig === "object"
             ? (raw.queueConfig as ControlPanelExportPayload["data"]["queueConfig"])
-            : { active: false, loop: false, currentIndex: 0 },
+            : createDefaultQueueConfig(),
         notificationSettings:
           raw.notificationSettings &&
           typeof raw.notificationSettings === "object"
@@ -1598,7 +1787,7 @@ export class ControlPanelService {
       queueConfig:
         input.queueConfig && typeof input.queueConfig === "object"
           ? structuredClone(input.queueConfig)
-          : { active: false, loop: false, currentIndex: 0 },
+          : createDefaultQueueConfig(),
       notificationSettings: this.resolveNotificationSettings(
         input.notificationSettings,
         this.resolveNotificationSettings(),
@@ -1695,6 +1884,14 @@ export class ControlPanelService {
         status: item.status === "playing" ? "pending" : item.status,
       };
     });
+
+    working.queueConfig = {
+      ...createDefaultQueueConfig(),
+      ...working.queueConfig,
+      pausedByEvent: false,
+      pausedEventId: undefined,
+      pausedAt: undefined,
+    };
 
     if (
       working.queueConfig.channelId &&

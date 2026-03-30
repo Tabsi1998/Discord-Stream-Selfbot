@@ -23,6 +23,7 @@ export type QualityProfile =
   | "custom";
 export type BufferProfile = "auto" | "stable" | "balanced" | "low-latency";
 export type RecurrenceKind = "once" | "daily" | "weekly";
+export type EventSeriesScope = "single" | "this-and-following" | "all";
 export type EventStatus =
   | "scheduled"
   | "running"
@@ -32,6 +33,7 @@ export type EventStatus =
 export type RunKind = "manual" | "event";
 export type DiscordStatus = "starting" | "ready" | "error";
 export type LogLevel = "info" | "warn" | "error";
+export type QueueConflictPolicy = "queue-first" | "event-first";
 export const DEFAULT_SELFBOT_ID = "primary";
 
 export type ManagedSelfbotState = {
@@ -297,4 +299,8 @@ export type QueueConfig = {
   channelId?: string;
   presetId?: string;
   currentIndex: number;
+  conflictPolicy: QueueConflictPolicy;
+  pausedByEvent?: boolean;
+  pausedEventId?: string;
+  pausedAt?: string;
 };

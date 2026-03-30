@@ -14,6 +14,7 @@ function createBaseState(): ControlPanelState {
       active: false,
       loop: false,
       currentIndex: 0,
+      conflictPolicy: "queue-first",
     },
     notificationSettings: {
       webhookUrl: "",
@@ -71,6 +72,17 @@ test("Scheduler stops each expired active run independently per bot", async () =
       stopCalls.push({ reason, botId });
       return true;
     },
+    preemptQueueForScheduledEvent() {
+      throw new Error(
+        "preemptQueueForScheduledEvent should not be called when a stop is due",
+      );
+    },
+    resumeQueueAfterScheduledEvent() {
+      throw new Error(
+        "resumeQueueAfterScheduledEvent should not be called when a stop is due",
+      );
+    },
+    appendLog() {},
     async startScheduledEvent() {
       throw new Error(
         "startScheduledEvent should not be called when a stop is due",
@@ -217,6 +229,7 @@ test("Scheduler starts due events for free bots while skipping queue and already
     loop: false,
     botId: "bot-queue",
     currentIndex: 0,
+    conflictPolicy: "queue-first",
   };
 
   const startedEvents: string[] = [];
@@ -229,6 +242,13 @@ test("Scheduler starts due events for free bots while skipping queue and already
     stopActiveForBot() {
       return false;
     },
+    preemptQueueForScheduledEvent() {
+      throw new Error(
+        "preemptQueueForScheduledEvent should not be called for queue-first",
+      );
+    },
+    resumeQueueAfterScheduledEvent() {},
+    appendLog() {},
     async startScheduledEvent(id: string) {
       startedEvents.push(id);
     },
@@ -245,4 +265,93 @@ test("Scheduler starts due events for free bots while skipping queue and already
   }
 
   assert.deepEqual(startedEvents, ["event-c-1", "event-d"]);
+});
+
+test("Scheduler preempts queue-first conflicts only when event-first is configured", async () => {
+  const state = createBaseState();
+  state.channels = [
+    {
+      id: "channel-queue",
+      botId: "bot-queue",
+      name: "Queue Channel",
+      guildId: "guild-1",
+      channelId: "voice-1",
+      streamMode: "go-live",
+      description: "",
+      createdAt: "2026-03-30T09:00:00.000Z",
+      updatedAt: "2026-03-30T09:00:00.000Z",
+    },
+  ];
+  state.events = [
+    {
+      id: "event-queue",
+      name: "Queue Conflict",
+      channelId: "channel-queue",
+      presetId: "preset-1",
+      startAt: "2026-03-30T09:59:00.000Z",
+      endAt: "2026-03-30T10:30:00.000Z",
+      status: "scheduled",
+      description: "",
+      recurrence: { kind: "once", interval: 1, daysOfWeek: [] },
+      occurrenceIndex: 1,
+      createdAt: "2026-03-30T09:00:00.000Z",
+      updatedAt: "2026-03-30T09:00:00.000Z",
+    },
+  ];
+  state.runtime.primaryBotId = "primary";
+  state.runtime.activeRuns = [
+    {
+      kind: "manual",
+      botId: "bot-queue",
+      botName: "Queue Bot",
+      channelId: "channel-queue",
+      presetId: "preset-queue",
+      channelName: "Queue Channel",
+      presetName: "Queue Preset",
+      startedAt: "2026-03-30T09:50:00.000Z",
+      status: "running",
+    },
+  ];
+  state.queueConfig = {
+    active: true,
+    loop: false,
+    botId: "bot-queue",
+    currentIndex: 0,
+    conflictPolicy: "event-first",
+  };
+
+  const preempted: string[] = [];
+  const startedEvents: string[] = [];
+  const service = {
+    reconcileStateOnStartup() {},
+    markMissedEvents() {},
+    snapshot() {
+      return state;
+    },
+    stopActiveForBot() {
+      return false;
+    },
+    preemptQueueForScheduledEvent(botId: string, eventId: string) {
+      preempted.push(`${botId}:${eventId}`);
+      return true;
+    },
+    resumeQueueAfterScheduledEvent() {},
+    appendLog() {},
+    async startScheduledEvent(id: string) {
+      startedEvents.push(id);
+    },
+  } as unknown as ControlPanelService;
+
+  const scheduler = new Scheduler(service, 1000);
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-03-30T10:00:00.000Z");
+
+  try {
+    await (scheduler as unknown as { tick: () => Promise<void> }).tick();
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.deepEqual(preempted, ["bot-queue:event-queue"]);
+  assert.deepEqual(startedEvents, []);
 });

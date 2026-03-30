@@ -193,6 +193,7 @@ const els = {
   queueChannelId: document.querySelector("#queueChannelId"),
   queuePresetId: document.querySelector("#queuePresetId"),
   queueLoopEnabled: document.querySelector("#queueLoopEnabled"),
+  queueConflictPolicy: document.querySelector("#queueConflictPolicy"),
   queueStartButton: document.querySelector("#queueStartButton"),
   queueSkipButton: document.querySelector("#queueSkipButton"),
   queueStopButton: document.querySelector("#queueStopButton"),
@@ -209,7 +210,11 @@ const els = {
   eventRecurrenceInterval: document.querySelector("#eventRecurrenceInterval"),
   eventRecurrenceUntil: document.querySelector("#eventRecurrenceUntil"),
   eventWeekdaysField: document.querySelector("#eventWeekdaysField"),
+  eventSeriesScopeField: document.querySelector("#eventSeriesScopeField"),
+  eventSeriesScope: document.querySelector("#eventSeriesScope"),
+  eventSeriesScopeHint: document.querySelector("#eventSeriesScopeHint"),
   eventDescription: document.querySelector("#eventDescription"),
+  eventDeleteButton: document.querySelector("#eventDeleteButton"),
   eventResetButton: document.querySelector("#eventResetButton"),
   eventsList: document.querySelector("#eventsList"),
   logsList: document.querySelector("#logsList"),
@@ -651,6 +656,35 @@ function eventStatusLabel(status) {
   }
 }
 
+function queueConflictPolicyLabel(policy) {
+  return policy === "event-first" ? "Event zuerst" : "Queue zuerst";
+}
+
+function eventScopeLabel(scope) {
+  switch (scope) {
+    case "single":
+      return "nur dieses Event";
+    case "all":
+      return "ganze Serie";
+    default:
+      return "dieses und folgende";
+  }
+}
+
+function getEditingEvent() {
+  const id = els.eventIdField.value;
+  if (!id || !state.app) return null;
+  return state.app.events.find((entry) => entry.id === id) || null;
+}
+
+function currentEventScope() {
+  const item = getEditingEvent();
+  if (!item?.seriesId) {
+    return "single";
+  }
+  return els.eventSeriesScope.value || "this-and-following";
+}
+
 function getSelectedWeekdays() {
   return els.eventWeekdayInputs
     .filter((input) => input.checked)
@@ -1045,15 +1079,18 @@ function renderOverview() {
 
   if (!queue.length) {
     els.queuePrimary.textContent = "keine Queue aktiv";
-    els.queueSecondary.textContent = "0 Items";
+    els.queueSecondary.textContent = `0 Items | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
   } else if (queueConfig.active && queueItem) {
     els.queuePrimary.textContent = `${queueItem.name}`;
-    els.queueSecondary.textContent = `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}${queueBotName ? ` | Bot ${queueBotName}` : ""}`;
+    els.queueSecondary.textContent =
+      `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}${queueBotName ? ` | Bot ${queueBotName}` : ""}` +
+      `${queueConfig.pausedByEvent ? " | pausiert fuer Event" : ""}` +
+      ` | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
   } else {
     els.queuePrimary.textContent = `${queue.length} Items bereit`;
-    els.queueSecondary.textContent = queueConfig.loop
-      ? "Loop aktiviert"
-      : "noch nicht gestartet";
+    els.queueSecondary.textContent = `${
+      queueConfig.loop ? "Loop aktiviert" : "noch nicht gestartet"
+    } | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
   }
 }
 
@@ -1182,6 +1219,7 @@ function renderEvents() {
         ? `<span class="discord-badge" title="Discord Event: ${escapeHtml(item.discordEventId)}">Discord</span>`
         : "";
       const statusClass = `event-status event-status-${item.status}`;
+      const deleteLabel = item.seriesId ? "Loeschen einzeln" : "Loeschen";
       return `
         <article class="item-card">
           <div class="item-topline">
@@ -1198,7 +1236,7 @@ function renderEvents() {
             <button type="button" data-action="start-event" data-id="${escapeHtml(item.id)}">Start</button>
             <button type="button" data-action="cancel-event" data-id="${escapeHtml(item.id)}">Abbrechen</button>
             <button type="button" data-action="edit-event" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
-            <button type="button" data-action="delete-event" data-id="${escapeHtml(item.id)}">Loeschen</button>
+            <button type="button" data-action="delete-event" data-id="${escapeHtml(item.id)}">${deleteLabel}</button>
           </div>
         </article>
       `;
@@ -1349,12 +1387,42 @@ function renderSelects() {
     els.queuePresetId.value = state.app.queueConfig.presetId;
   }
   els.queueLoopEnabled.checked = !!state.app.queueConfig.loop;
+  els.queueConflictPolicy.value =
+    state.app.queueConfig.conflictPolicy || "queue-first";
+}
+
+function renderEventEditorState() {
+  const item = getEditingEvent();
+  const editing = !!item;
+  const isSeries = !!item?.seriesId;
+  els.eventDeleteButton.classList.toggle("hidden", !editing);
+  els.eventSeriesScopeField.classList.toggle("hidden", !isSeries);
+
+  if (!editing) {
+    els.eventSeriesScope.value = "single";
+    els.eventSeriesScopeHint.textContent = "Nur fuer bestehende Serien-Events.";
+    return;
+  }
+
+  if (!isSeries) {
+    els.eventSeriesScope.value = "single";
+    els.eventSeriesScopeHint.textContent =
+      "Dieses Event ist kein Serientermin.";
+    return;
+  }
+
+  if (!els.eventSeriesScope.value) {
+    els.eventSeriesScope.value = "this-and-following";
+  }
+  els.eventSeriesScopeHint.textContent =
+    "Nur dieses Event trennt den Termin aus der Serie. Ganze Serie baut die Reihe ab dem neuen Startzeitpunkt neu auf.";
 }
 
 function renderAll() {
   renderOverview();
   renderSelfbots();
   renderSelects();
+  renderEventEditorState();
   fillDiscoveredChannelSelect();
   renderChannels();
   renderPresets();
@@ -1396,8 +1464,10 @@ function resetEventForm() {
   els.eventRecurrenceKind.value = "once";
   els.eventRecurrenceInterval.value = "1";
   els.eventRecurrenceUntil.value = "";
+  els.eventSeriesScope.value = "single";
   setSelectedWeekdays([]);
   updateRecurrenceVisibility();
+  renderEventEditorState();
 }
 
 function resetQueueForm() {
@@ -1553,8 +1623,10 @@ function editEvent(id) {
   els.eventRecurrenceKind.value = item.recurrence?.kind || "once";
   els.eventRecurrenceInterval.value = String(item.recurrence?.interval || 1);
   els.eventRecurrenceUntil.value = toLocalInputValue(item.recurrence?.until);
+  els.eventSeriesScope.value = item.seriesId ? "this-and-following" : "single";
   setSelectedWeekdays(item.recurrence?.daysOfWeek || []);
   updateRecurrenceVisibility();
+  renderEventEditorState();
   els.eventName.focus();
 }
 
@@ -1605,14 +1677,15 @@ async function handleEventSubmit(event) {
   const payload = buildEventPayload();
   const id = els.eventIdField.value;
   if (id) {
+    const scope = currentEventScope();
     const result = await api(`/api/events/${id}`, {
       method: "PUT",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, scope }),
     });
     const count = result?.updatedCount || 1;
     showNotice(
       count > 1
-        ? `${count} Events in der Serie aktualisiert.`
+        ? `${count} Events (${eventScopeLabel(scope)}) aktualisiert.`
         : "Event aktualisiert.",
       "success",
     );
@@ -1627,6 +1700,37 @@ async function handleEventSubmit(event) {
       "success",
     );
   }
+  resetEventForm();
+  await refresh();
+}
+
+async function deleteEventFromForm() {
+  const item = getEditingEvent();
+  if (!item) {
+    showNotice("Bitte zuerst ein bestehendes Event auswaehlen.", "warn");
+    return;
+  }
+
+  const scope = currentEventScope();
+  const confirmed = window.confirm(
+    item.seriesId
+      ? `Soll ${eventScopeLabel(scope)} geloescht werden?`
+      : "Soll dieses Event geloescht werden?",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  await api(`/api/events/${item.id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ scope }),
+  });
+  showNotice(
+    item.seriesId
+      ? `Event (${eventScopeLabel(scope)}) geloescht.`
+      : "Event geloescht.",
+    "success",
+  );
   resetEventForm();
   await refresh();
 }
@@ -1759,12 +1863,24 @@ async function clearQueueFromPanel() {
 }
 
 async function updateQueueLoop(enabled) {
-  await api("/api/queue/loop", {
-    method: "POST",
-    body: JSON.stringify({ enabled }),
+  await api("/api/queue/config", {
+    method: "PUT",
+    body: JSON.stringify({ loop: enabled }),
   });
   showNotice(
     enabled ? "Queue-Loop aktiviert." : "Queue-Loop deaktiviert.",
+    "success",
+  );
+  await refresh();
+}
+
+async function updateQueueConflictPolicy(conflictPolicy) {
+  await api("/api/queue/config", {
+    method: "PUT",
+    body: JSON.stringify({ conflictPolicy }),
+  });
+  showNotice(
+    `Queue-Regel gespeichert: ${queueConflictPolicyLabel(conflictPolicy)}.`,
     "success",
   );
   await refresh();
@@ -1816,8 +1932,16 @@ async function handleListAction(event) {
   }
 
   if (action === "delete-event") {
-    await api(`/api/events/${id}`, { method: "DELETE" });
-    showNotice("Event geloescht.", "success");
+    const item = state.app.events.find((entry) => entry.id === id);
+    const scope = item?.seriesId ? "single" : undefined;
+    await api(`/api/events/${id}`, {
+      method: "DELETE",
+      body: scope ? JSON.stringify({ scope }) : undefined,
+    });
+    showNotice(
+      item?.seriesId ? "Einzelnes Serien-Event geloescht." : "Event geloescht.",
+      "success",
+    );
     await refresh();
     return;
   }
@@ -2153,6 +2277,9 @@ function bindEvents() {
   els.eventForm.addEventListener("submit", (event) => {
     void handleEventSubmit(event).catch(handleError);
   });
+  els.eventDeleteButton.addEventListener("click", () => {
+    void deleteEventFromForm().catch(handleError);
+  });
   els.manualStartForm.addEventListener("submit", (event) => {
     void handleManualStart(event).catch(handleError);
   });
@@ -2186,6 +2313,9 @@ function bindEvents() {
   });
   els.queueLoopEnabled.addEventListener("change", (event) => {
     void updateQueueLoop(event.target.checked).catch(handleError);
+  });
+  els.queueConflictPolicy.addEventListener("change", (event) => {
+    void updateQueueConflictPolicy(event.target.value).catch(handleError);
   });
   els.channelResetButton.addEventListener("click", resetChannelForm);
   els.presetResetButton.addEventListener("click", resetPresetForm);

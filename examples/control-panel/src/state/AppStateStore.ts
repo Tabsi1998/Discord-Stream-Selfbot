@@ -38,7 +38,12 @@ function defaultRuntime(): RuntimeState {
 }
 
 function defaultQueueConfig(): QueueConfig {
-  return { active: false, loop: false, currentIndex: 0 };
+  return {
+    active: false,
+    loop: false,
+    currentIndex: 0,
+    conflictPolicy: "queue-first",
+  };
 }
 
 function defaultNotificationSettings(): NotificationSettings {

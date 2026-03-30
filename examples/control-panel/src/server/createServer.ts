@@ -22,6 +22,9 @@ import {
   parseChannelInput,
   parseConfigImportInput,
   parseCookieUploadInput,
+  parseEventDeleteInput,
+  parseEventInput,
+  parseEventUpdateInput,
   parseLogsQuery,
   parseManualRunInput,
   parseNotificationSettingsInput,
@@ -30,12 +33,12 @@ import {
   parsePresetInput,
   parsePresetTestUrlInput,
   parseQueueAddInput,
+  parseQueueConfigInput,
   parseQueueLoopInput,
   parseQueueReorderInput,
   parseQueueStartInput,
   parseStopInput,
   parseVoiceChannelsQuery,
-  parseEventInput,
 } from "./requestValidation.js";
 
 type AsyncRoute = (
@@ -273,16 +276,15 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/events/:id", (req, res) => {
+    const { input, scope } = parseEventUpdateInput(req.body);
     res.json(
-      service.updateEvent(
-        getRouteParam(req.params.id, "id"),
-        parseEventInput(req.body),
-      ),
+      service.updateEvent(getRouteParam(req.params.id, "id"), input, scope),
     );
   });
 
   app.delete("/api/events/:id", (req, res) => {
-    service.deleteEvent(getRouteParam(req.params.id, "id"));
+    const { scope } = parseEventDeleteInput(req.body);
+    service.deleteEvent(getRouteParam(req.params.id, "id"), scope);
     res.status(204).send();
   });
 
@@ -402,6 +404,10 @@ export function createServer(service: ControlPanelService) {
     const { enabled } = parseQueueLoopInput(req.body);
     service.setQueueLoop(enabled);
     res.json({ ok: true, loop: enabled });
+  });
+
+  app.put("/api/queue/config", (req, res) => {
+    res.json(service.updateQueueConfig(parseQueueConfigInput(req.body)));
   });
 
   app.post(

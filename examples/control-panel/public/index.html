@@ -138,6 +138,13 @@
               <input id="queueLoopEnabled" type="checkbox" />
               Queue loopen
             </label>
+            <label>
+              Konfliktregel
+              <select id="queueConflictPolicy" name="queueConflictPolicy">
+                <option value="queue-first">Queue zuerst</option>
+                <option value="event-first">Event zuerst</option>
+              </select>
+            </label>
             <div class="form-actions queue-actions">
               <button id="queueStartButton" class="primary-button" type="button">
                 Queue starten
@@ -464,12 +471,33 @@
                 <label class="checkbox-field compact-checkbox"><input type="checkbox" data-weekday="0" />So</label>
               </div>
             </div>
+            <div id="eventSeriesScopeField" class="weekday-field full-width hidden">
+              <span>Bearbeitungsbereich</span>
+              <label>
+                Serien-Scope
+                <select id="eventSeriesScope" name="scope">
+                  <option value="single">Nur dieses Event</option>
+                  <option value="this-and-following">Dieses und folgende</option>
+                  <option value="all">Ganze Serie neu aufbauen</option>
+                </select>
+              </label>
+              <p id="eventSeriesScopeHint" class="muted">
+                Nur fuer bestehende Serien-Events.
+              </p>
+            </div>
             <label class="full-width">
               Beschreibung
               <input id="eventDescription" name="description" />
             </label>
             <div class="form-actions">
               <button class="primary-button" type="submit">Event speichern</button>
+              <button
+                id="eventDeleteButton"
+                class="danger-button hidden"
+                type="button"
+              >
+                Event loeschen
+              </button>
               <button id="eventResetButton" class="ghost-button" type="button">
                 Zurücksetzen
               </button>

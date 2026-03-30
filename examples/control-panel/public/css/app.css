@@ -360,6 +360,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   flex-wrap: wrap;
 }
 
+.weekday-field .muted {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
 .compact-checkbox {
   min-height: auto;
   padding: 6px 10px;

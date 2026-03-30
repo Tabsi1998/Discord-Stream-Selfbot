@@ -51,8 +51,34 @@ export class Scheduler {
 
       if (stoppedAny) return;
 
+      if (
+        state.queueConfig.active &&
+        state.queueConfig.pausedByEvent &&
+        state.queueConfig.botId &&
+        state.queueConfig.pausedEventId
+      ) {
+        const pausedEvent = state.events.find(
+          (event) => event.id === state.queueConfig.pausedEventId,
+        );
+        if (
+          !pausedEvent ||
+          (pausedEvent.status !== "scheduled" &&
+            pausedEvent.status !== "running")
+        ) {
+          this.service.resumeQueueAfterScheduledEvent(
+            state.queueConfig.botId,
+            state.queueConfig.pausedEventId,
+          );
+        }
+      }
+
       const busyBotIds = new Set(activeRuns.map((run) => run.botId));
-      if (state.queueConfig.active && state.queueConfig.botId) {
+      if (
+        state.queueConfig.active &&
+        state.queueConfig.botId &&
+        state.queueConfig.conflictPolicy === "queue-first" &&
+        !state.queueConfig.pausedByEvent
+      ) {
         busyBotIds.add(state.queueConfig.botId);
       }
 
@@ -70,9 +96,38 @@ export class Scheduler {
           (entry) => entry.id === dueEvent.channelId,
         );
         const botId = channel?.botId ?? state.runtime.primaryBotId;
-        if (!botId || busyBotIds.has(botId)) continue;
-        await this.service.startScheduledEvent(dueEvent.id);
-        busyBotIds.add(botId);
+        const queueCanBePreempted =
+          state.queueConfig.active &&
+          state.queueConfig.botId === botId &&
+          state.queueConfig.conflictPolicy === "event-first" &&
+          !state.queueConfig.pausedByEvent;
+        if (!botId) {
+          continue;
+        }
+        if (queueCanBePreempted && busyBotIds.has(botId)) {
+          this.service.preemptQueueForScheduledEvent(botId, dueEvent.id);
+          continue;
+        }
+        if (busyBotIds.has(botId)) {
+          continue;
+        }
+
+        try {
+          await this.service.startScheduledEvent(dueEvent.id);
+          busyBotIds.add(botId);
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : "Failed to start event";
+          this.service.appendLog(
+            "error",
+            "Scheduler konnte Event nicht starten",
+            {
+              eventId: dueEvent.id,
+              botId,
+              error: message.slice(0, 160),
+            },
+          );
+        }
       }
     } catch (error) {
       const message =
