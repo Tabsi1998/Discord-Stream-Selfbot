@@ -496,6 +496,138 @@ test("ControlPanelService pauses and resumes the queue around an event when even
   }
 });
 
+test("ControlPanelService keeps an event running across adaptive quality restarts", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("primary", "Adaptive Event Stage", "adaptive-event"),
+    );
+    const preset = context.service.createPreset(
+      createPresetInput("Adaptive Preset", "https://example.com/event.m3u8"),
+    );
+    const created = context.service.createEvent({
+      name: "Adaptive Event",
+      channelId: channel.id,
+      presetId: preset.id,
+      startAt: "2026-04-10T18:00:00.000Z",
+      endAt: "2026-04-10T19:00:00.000Z",
+      description: "",
+      recurrence: { kind: "once" },
+    });
+    const event = created.events[0];
+    assert.ok(event);
+
+    await context.service.startScheduledEvent(event.id);
+    const activeRun = context.runtime.getActiveRun("primary");
+    assert.ok(activeRun);
+
+    context.runtime.emit("adaptiveRestartRequested", {
+      reason: "lag",
+      trigger: "speed=0.92",
+      run: activeRun,
+      currentPreset: preset,
+      nextPreset: {
+        ...preset,
+        qualityProfile: "720p30",
+        width: 1280,
+        height: 720,
+        bitrateVideoKbps: 4500,
+        maxBitrateVideoKbps: 6500,
+      },
+      adaptiveTargetPreset: preset,
+    });
+
+    assert.equal(
+      context.runtime.stopCalls.at(-1)?.reason,
+      "adaptive-restart",
+    );
+
+    context.runtime.emit("runEnded", {
+      run: activeRun,
+      reason: "aborted",
+      abortReason: "adaptive-restart",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const snapshot = context.service.snapshot();
+    assert.equal(
+      snapshot.events.find((entry) => entry.id === event.id)?.status,
+      "running",
+    );
+    assert.equal(context.runtime.startCalls.length, 2);
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService retries the same queue item after an adaptive restart", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("primary", "Adaptive Queue Stage", "adaptive-queue"),
+    );
+    const preset = context.service.createPreset(
+      createPresetInput(
+        "Adaptive Queue Preset",
+        "https://example.com/base.m3u8",
+      ),
+    );
+
+    context.service.addToQueue(
+      "https://example.com/adaptive-queue-one.m3u8",
+      "Adaptive Queue One",
+    );
+    await context.service.startQueue(channel.id, preset.id);
+    const activeRun = context.runtime.getActiveRun("primary");
+    assert.ok(activeRun);
+
+    context.runtime.emit("adaptiveRestartRequested", {
+      reason: "lag",
+      trigger: "fps=27.4",
+      run: activeRun,
+      currentPreset: {
+        ...preset,
+        id: `queue-${context.service.snapshot().queue[0]?.id}`,
+        name: "Queue: Adaptive Queue One",
+        sourceUrl: "https://example.com/adaptive-queue-one.m3u8",
+      },
+      nextPreset: {
+        ...preset,
+        id: `queue-${context.service.snapshot().queue[0]?.id}`,
+        name: "Queue: Adaptive Queue One",
+        sourceUrl: "https://example.com/adaptive-queue-one.m3u8",
+        qualityProfile: "custom",
+        width: 854,
+        height: 480,
+        fps: 30,
+        bitrateVideoKbps: 2500,
+        maxBitrateVideoKbps: 3600,
+      },
+      adaptiveTargetPreset: {
+        ...preset,
+        id: `queue-${context.service.snapshot().queue[0]?.id}`,
+        name: "Queue: Adaptive Queue One",
+        sourceUrl: "https://example.com/adaptive-queue-one.m3u8",
+      },
+    });
+
+    context.runtime.emit("runEnded", {
+      run: activeRun,
+      reason: "aborted",
+      abortReason: "adaptive-restart",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const snapshot = context.service.snapshot();
+    assert.equal(snapshot.queue[0]?.status, "playing");
+    assert.equal(context.runtime.startCalls.length, 2);
+  } finally {
+    context.dispose();
+  }
+});
+
 test("ControlPanelService import normalizes stale running state and replaces persisted data", () => {
   const context = createServiceContext();
 

@@ -50,6 +50,15 @@ type PresetLike = Pick<
   | "minimizeLatency"
 >;
 
+type AdaptiveProfileStepId = QualityProfile | "480p30";
+
+type AdaptiveProfileStep = {
+  id: AdaptiveProfileStepId;
+  width: number;
+  height: number;
+  fps: number;
+};
+
 const QUALITY_PROFILES: Record<QualityProfile, QualityProfileConfig> = {
   "720p30": {
     id: "720p30",
@@ -172,6 +181,63 @@ const BUFFER_STRATEGIES: Record<BufferStrategyId, BufferStrategy> = {
   },
 };
 
+const ADAPTIVE_PROFILE_STEPS: readonly AdaptiveProfileStep[] = [
+  {
+    id: "480p30",
+    width: 854,
+    height: 480,
+    fps: 30,
+  },
+  {
+    id: "720p30",
+    width: 1280,
+    height: 720,
+    fps: 30,
+  },
+  {
+    id: "720p60",
+    width: 1280,
+    height: 720,
+    fps: 60,
+  },
+  {
+    id: "1080p30",
+    width: 1920,
+    height: 1080,
+    fps: 30,
+  },
+  {
+    id: "1080p60",
+    width: 1920,
+    height: 1080,
+    fps: 60,
+  },
+  {
+    id: "1440p30",
+    width: 2560,
+    height: 1440,
+    fps: 30,
+  },
+  {
+    id: "1440p60",
+    width: 2560,
+    height: 1440,
+    fps: 60,
+  },
+  {
+    id: "2160p30",
+    width: 3840,
+    height: 2160,
+    fps: 30,
+  },
+  {
+    id: "2160p60",
+    width: 3840,
+    height: 2160,
+    fps: 60,
+  },
+] as const;
+
 export function coerceQualityProfile(value: unknown): QualityProfile {
   return typeof value === "string" && value in QUALITY_PROFILES
     ? (value as QualityProfile)
@@ -225,6 +291,17 @@ export function detectSourceProfile(
     return "file";
   }
   return "generic";
+}
+
+export function describePresetQuality(
+  preset: Pick<
+    StreamPreset | PresetInput,
+    "qualityProfile" | "width" | "height" | "fps"
+  >,
+) {
+  return preset.qualityProfile === "custom"
+    ? `${preset.width}x${preset.height} @ ${preset.fps} FPS`
+    : preset.qualityProfile;
 }
 
 export function getRecommendedBitrates(
@@ -552,5 +629,292 @@ export function applyRuntimePerformanceGuardrails(
     maxBitrateVideoKbps: Math.max(maxBitrateVideoKbps, bitrateVideoKbps),
     bitrateAudioKbps,
     warnings,
+  };
+}
+
+function resolveAdaptiveStepId(
+  preset: Pick<
+    StreamPreset | PresetInput,
+    "qualityProfile" | "width" | "height" | "fps"
+  >,
+): AdaptiveProfileStepId {
+  if (preset.qualityProfile !== "custom") {
+    return preset.qualityProfile;
+  }
+
+  if (preset.height <= 480 && preset.fps <= 30) {
+    return "480p30";
+  }
+  if (preset.height <= 720 && preset.fps <= 30) {
+    return "720p30";
+  }
+  if (preset.height <= 720) {
+    return "720p60";
+  }
+  if (preset.height <= 1080 && preset.fps <= 30) {
+    return "1080p30";
+  }
+  if (preset.height <= 1080) {
+    return "1080p60";
+  }
+  if (preset.height <= 1440 && preset.fps <= 30) {
+    return "1440p30";
+  }
+  if (preset.height <= 1440) {
+    return "1440p60";
+  }
+  if (preset.fps <= 30) {
+    return "2160p30";
+  }
+  return "2160p60";
+}
+
+function resolveAdaptiveStepIndex(
+  preset: Pick<
+    StreamPreset | PresetInput,
+    "qualityProfile" | "width" | "height" | "fps"
+  >,
+) {
+  const stepId = resolveAdaptiveStepId(preset);
+  return ADAPTIVE_PROFILE_STEPS.findIndex((step) => step.id === stepId);
+}
+
+function getAdaptiveDowngradeStepId(
+  stepId: AdaptiveProfileStepId,
+): AdaptiveProfileStepId | undefined {
+  switch (stepId) {
+    case "720p30":
+      return "480p30";
+    case "720p60":
+      return "720p30";
+    case "1080p30":
+      return "720p30";
+    case "1080p60":
+      return "1080p30";
+    case "1440p30":
+      return "1080p30";
+    case "1440p60":
+      return "1440p30";
+    case "2160p30":
+      return "1440p30";
+    case "2160p60":
+      return "2160p30";
+    default:
+      return undefined;
+  }
+}
+
+function normalizeAdaptivePreset(
+  basePreset: StreamPreset,
+  override:
+    | { kind: "exact-target"; preset: StreamPreset }
+    | { kind: "step"; step: AdaptiveProfileStep },
+) {
+  if (override.kind === "exact-target") {
+    const normalized = normalizePresetInput({
+      name: override.preset.name,
+      sourceUrl: override.preset.sourceUrl,
+      sourceMode: override.preset.sourceMode,
+      fallbackSources: override.preset.fallbackSources,
+      qualityProfile: override.preset.qualityProfile,
+      bufferProfile: override.preset.bufferProfile,
+      description: override.preset.description,
+      includeAudio: override.preset.includeAudio,
+      width: override.preset.width,
+      height: override.preset.height,
+      fps: override.preset.fps,
+      bitrateVideoKbps: override.preset.bitrateVideoKbps,
+      maxBitrateVideoKbps: override.preset.maxBitrateVideoKbps,
+      bitrateAudioKbps: override.preset.bitrateAudioKbps,
+      videoCodec: override.preset.videoCodec,
+      hardwareAcceleration: override.preset.hardwareAcceleration,
+      minimizeLatency: override.preset.minimizeLatency,
+    });
+
+    return {
+      ...basePreset,
+      ...normalized,
+      fallbackSources: normalized.fallbackSources,
+      description: normalized.description?.trim() ?? "",
+    } satisfies StreamPreset;
+  }
+
+  if (override.step.id === "480p30") {
+    const recommended = getRecommendedBitrates(
+      "custom",
+      override.step.width,
+      override.step.height,
+      override.step.fps,
+      basePreset.videoCodec,
+      basePreset.sourceMode,
+      basePreset.sourceUrl,
+    );
+    const normalized = normalizePresetInput({
+      name: basePreset.name,
+      sourceUrl: basePreset.sourceUrl,
+      sourceMode: basePreset.sourceMode,
+      fallbackSources: basePreset.fallbackSources,
+      qualityProfile: "custom",
+      bufferProfile: basePreset.bufferProfile,
+      description: basePreset.description,
+      includeAudio: basePreset.includeAudio,
+      width: override.step.width,
+      height: override.step.height,
+      fps: override.step.fps,
+      bitrateVideoKbps: recommended.bitrateVideoKbps,
+      maxBitrateVideoKbps: recommended.maxBitrateVideoKbps,
+      bitrateAudioKbps: recommended.bitrateAudioKbps,
+      videoCodec: basePreset.videoCodec,
+      hardwareAcceleration: basePreset.hardwareAcceleration,
+      minimizeLatency: basePreset.minimizeLatency,
+    });
+
+    return {
+      ...basePreset,
+      ...normalized,
+      fallbackSources: normalized.fallbackSources,
+      description: normalized.description?.trim() ?? "",
+    } satisfies StreamPreset;
+  }
+
+  const normalized = normalizePresetInput({
+    name: basePreset.name,
+    sourceUrl: basePreset.sourceUrl,
+    sourceMode: basePreset.sourceMode,
+    fallbackSources: basePreset.fallbackSources,
+    qualityProfile: override.step.id,
+    bufferProfile: basePreset.bufferProfile,
+    description: basePreset.description,
+    includeAudio: basePreset.includeAudio,
+    width: override.step.width,
+    height: override.step.height,
+    fps: override.step.fps,
+    bitrateVideoKbps: basePreset.bitrateVideoKbps,
+    maxBitrateVideoKbps: basePreset.maxBitrateVideoKbps,
+    bitrateAudioKbps: basePreset.bitrateAudioKbps,
+    videoCodec: basePreset.videoCodec,
+    hardwareAcceleration: basePreset.hardwareAcceleration,
+    minimizeLatency: basePreset.minimizeLatency,
+  });
+
+  return {
+    ...basePreset,
+    ...normalized,
+    fallbackSources: normalized.fallbackSources,
+    description: normalized.description?.trim() ?? "",
+  } satisfies StreamPreset;
+}
+
+export function buildAdaptiveDowngradePreset(currentPreset: StreamPreset) {
+  const currentStepId = resolveAdaptiveStepId(currentPreset);
+  const nextStepId = getAdaptiveDowngradeStepId(currentStepId);
+  if (!nextStepId) {
+    return undefined;
+  }
+
+  const nextStep = ADAPTIVE_PROFILE_STEPS.find(
+    (step) => step.id === nextStepId,
+  );
+  if (!nextStep) {
+    return undefined;
+  }
+  const nextPreset = normalizeAdaptivePreset(currentPreset, {
+    kind: "step",
+    step: nextStep,
+  });
+
+  return {
+    preset: nextPreset,
+    from: describePresetQuality(currentPreset),
+    to: describePresetQuality(nextPreset),
+  };
+}
+
+export function buildAdaptiveUpgradePreset(
+  currentPreset: StreamPreset,
+  targetPreset: StreamPreset,
+) {
+  const currentIndex = resolveAdaptiveStepIndex(currentPreset);
+  const targetIndex = resolveAdaptiveStepIndex(targetPreset);
+
+  if (
+    currentIndex >= targetIndex &&
+    currentPreset.qualityProfile === targetPreset.qualityProfile &&
+    currentPreset.width === targetPreset.width &&
+    currentPreset.height === targetPreset.height &&
+    currentPreset.fps === targetPreset.fps &&
+    currentPreset.bitrateVideoKbps === targetPreset.bitrateVideoKbps &&
+    currentPreset.maxBitrateVideoKbps === targetPreset.maxBitrateVideoKbps &&
+    currentPreset.bitrateAudioKbps === targetPreset.bitrateAudioKbps
+  ) {
+    return undefined;
+  }
+
+  let nextPreset: StreamPreset;
+  if (currentPreset.height < targetPreset.height) {
+    if (currentPreset.height < 720 && targetPreset.height >= 720) {
+      nextPreset =
+        targetPreset.height <= 720
+          ? normalizeAdaptivePreset(currentPreset, {
+              kind: "exact-target",
+              preset: targetPreset,
+            })
+          : normalizeAdaptivePreset(currentPreset, {
+              kind: "step",
+              step: ADAPTIVE_PROFILE_STEPS[1],
+            });
+    } else if (currentPreset.height < 1080 && targetPreset.height >= 1080) {
+      nextPreset =
+        targetPreset.height <= 1080 && targetPreset.fps <= 30
+          ? normalizeAdaptivePreset(currentPreset, {
+              kind: "exact-target",
+              preset: targetPreset,
+            })
+          : normalizeAdaptivePreset(currentPreset, {
+              kind: "step",
+              step: ADAPTIVE_PROFILE_STEPS[3],
+            });
+    } else if (currentPreset.height < 1440 && targetPreset.height >= 1440) {
+      nextPreset =
+        targetPreset.height <= 1440 && targetPreset.fps <= 30
+          ? normalizeAdaptivePreset(currentPreset, {
+              kind: "exact-target",
+              preset: targetPreset,
+            })
+          : normalizeAdaptivePreset(currentPreset, {
+              kind: "step",
+              step: ADAPTIVE_PROFILE_STEPS[5],
+            });
+    } else {
+      nextPreset =
+        currentIndex + 1 >= targetIndex
+          ? normalizeAdaptivePreset(currentPreset, {
+              kind: "exact-target",
+              preset: targetPreset,
+            })
+          : normalizeAdaptivePreset(currentPreset, {
+              kind: "step",
+              step: ADAPTIVE_PROFILE_STEPS[currentIndex + 1],
+            });
+    }
+  } else if (
+    currentPreset.height === targetPreset.height &&
+    currentPreset.fps < targetPreset.fps
+  ) {
+    nextPreset = normalizeAdaptivePreset(currentPreset, {
+      kind: "exact-target",
+      preset: targetPreset,
+    });
+  } else {
+    nextPreset = normalizeAdaptivePreset(currentPreset, {
+      kind: "exact-target",
+      preset: targetPreset,
+    });
+  }
+
+  return {
+    preset: nextPreset,
+    from: describePresetQuality(currentPreset),
+    to: describePresetQuality(nextPreset),
   };
 }

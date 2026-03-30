@@ -16,6 +16,8 @@ import {
 } from "../config/selfbotConfig.js";
 import {
   applyRuntimePerformanceGuardrails,
+  buildAdaptiveDowngradePreset,
+  buildAdaptiveUpgradePreset,
   resolveRuntimePresetConfig,
 } from "../domain/presetProfiles.js";
 import type {
@@ -45,6 +47,7 @@ type StartRunOptions = {
   eventId?: string;
   channel: ChannelDefinition;
   preset: StreamPreset;
+  adaptiveTargetPreset?: StreamPreset;
   plannedStopAt?: string;
 };
 
@@ -67,6 +70,15 @@ export type PerformanceWarningInfo = {
   dropFrames?: number;
 };
 
+export type AdaptiveRestartRequestInfo = {
+  reason: "lag" | "recovery";
+  trigger: string;
+  run: ActiveRun;
+  currentPreset: StreamPreset;
+  nextPreset: StreamPreset;
+  adaptiveTargetPreset: StreamPreset;
+};
+
 type ManagedBot = {
   profile: SelfbotProfileConfig;
   client: Client;
@@ -83,14 +95,19 @@ type ActiveSession = {
   run: ActiveRun;
   channel: ChannelDefinition;
   preset: StreamPreset;
+  adaptiveTargetPreset: StreamPreset;
   selectedEncoderMode: VideoEncoderMode;
   effectiveWidth: number;
   effectiveHeight: number;
   effectiveFps: number;
   lagTelemetrySamples: number;
   lowFpsTelemetrySamples: number;
+  stableTelemetrySamples: number;
+  dropTelemetrySamples: number;
+  lastObservedDropFrames: number;
   lagWarningIssued: boolean;
   dropWarningIssued: boolean;
+  adaptiveTransitionPending: boolean;
   controller: AbortController;
   stopReason?: string;
   closed: boolean;
@@ -427,14 +444,19 @@ export class StreamRuntime extends EventEmitter {
       run,
       channel: options.channel,
       preset: options.preset,
+      adaptiveTargetPreset: options.adaptiveTargetPreset ?? options.preset,
       selectedEncoderMode: resolvedEncoder.mode,
       effectiveWidth: guardedPreset.width,
       effectiveHeight: guardedPreset.height,
       effectiveFps: guardedPreset.fps,
       lagTelemetrySamples: 0,
       lowFpsTelemetrySamples: 0,
+      stableTelemetrySamples: 0,
+      dropTelemetrySamples: 0,
+      lastObservedDropFrames: 0,
       lagWarningIssued: false,
       dropWarningIssued: false,
+      adaptiveTransitionPending: false,
       controller,
       closed: false,
     };
@@ -1157,17 +1179,74 @@ export class StreamRuntime extends EventEmitter {
     return available[0];
   }
 
+  private requestAdaptiveRestart(
+    session: ActiveSession,
+    reason: "lag" | "recovery",
+    trigger: string,
+  ) {
+    if (
+      session.closed ||
+      session.adaptiveTransitionPending ||
+      this.activeSessions.get(session.botId) !== session ||
+      session.run.status !== "running"
+    ) {
+      return;
+    }
+
+    const transition =
+      reason === "lag"
+        ? buildAdaptiveDowngradePreset(session.preset)
+        : buildAdaptiveUpgradePreset(
+            session.preset,
+            session.adaptiveTargetPreset,
+          );
+
+    if (!transition) {
+      return;
+    }
+
+    session.adaptiveTransitionPending = true;
+    session.stableTelemetrySamples = 0;
+    session.lagTelemetrySamples = 0;
+    session.lowFpsTelemetrySamples = 0;
+    session.dropTelemetrySamples = 0;
+
+    this.emit("adaptiveRestartRequested", {
+      reason,
+      trigger,
+      run: session.run,
+      currentPreset: session.preset,
+      nextPreset: transition.preset,
+      adaptiveTargetPreset: session.adaptiveTargetPreset,
+    } satisfies AdaptiveRestartRequestInfo);
+  }
+
   private evaluatePerformance(
     session: ActiveSession,
     telemetry: StreamTelemetry,
   ) {
-    if (this.activeSessions.get(session.botId) !== session || session.closed)
+    if (
+      this.activeSessions.get(session.botId) !== session ||
+      session.closed ||
+      session.run.status !== "running"
+    )
       return;
 
     const speed = telemetry.speed;
     const fps = telemetry.fps;
     const dropFrames = telemetry.dropFrames ?? 0;
     const targetFps = session.effectiveFps;
+    const newDropFrames = Math.max(
+      0,
+      dropFrames - session.lastObservedDropFrames,
+    );
+    session.lastObservedDropFrames = dropFrames;
+    const streamAgeSeconds =
+      telemetry.outTimeSeconds ??
+      Math.max(
+        0,
+        Math.round((Date.now() - Date.parse(session.run.startedAt)) / 1000),
+      );
 
     if (typeof speed === "number" && speed < 0.95) {
       session.lagTelemetrySamples += 1;
@@ -1183,6 +1262,23 @@ export class StreamRuntime extends EventEmitter {
       session.lowFpsTelemetrySamples += 1;
     } else {
       session.lowFpsTelemetrySamples = 0;
+    }
+
+    if (newDropFrames >= 4) {
+      session.dropTelemetrySamples += 1;
+    } else {
+      session.dropTelemetrySamples = 0;
+    }
+
+    const stableSpeed = typeof speed !== "number" || speed >= 1.04;
+    const stableFps =
+      typeof fps !== "number" ||
+      targetFps <= 0 ||
+      fps >= Math.max(targetFps * 0.98, targetFps - 1);
+    if (stableSpeed && stableFps && newDropFrames === 0) {
+      session.stableTelemetrySamples += 1;
+    } else {
+      session.stableTelemetrySamples = 0;
     }
 
     if (
@@ -1228,6 +1324,43 @@ export class StreamRuntime extends EventEmitter {
         dropFrames,
       } satisfies PerformanceWarningInfo);
     }
+
+    if (session.adaptiveTransitionPending || streamAgeSeconds < 20) {
+      return;
+    }
+
+    if (
+      session.lagTelemetrySamples >= 5 ||
+      session.lowFpsTelemetrySamples >= 5 ||
+      session.dropTelemetrySamples >= 2
+    ) {
+      const triggerParts = [
+        typeof speed === "number" ? `speed=${speed.toFixed(2)}` : undefined,
+        typeof fps === "number" ? `fps=${fps.toFixed(1)}` : undefined,
+        newDropFrames > 0 ? `newDrops=${newDropFrames}` : undefined,
+      ].filter(Boolean);
+      this.requestAdaptiveRestart(
+        session,
+        "lag",
+        triggerParts.join(" | ") || "encoder under realtime target",
+      );
+      return;
+    }
+
+    if (streamAgeSeconds < 90 || session.stableTelemetrySamples < 24) {
+      return;
+    }
+
+    const recoveryParts = [
+      typeof speed === "number" ? `speed=${speed.toFixed(2)}` : undefined,
+      typeof fps === "number" ? `fps=${fps.toFixed(1)}` : undefined,
+      `stableSamples=${session.stableTelemetrySamples}`,
+    ].filter(Boolean);
+    this.requestAdaptiveRestart(
+      session,
+      "recovery",
+      recoveryParts.join(" | ") || "stream remained stable",
+    );
   }
 
   private attachFfmpegTelemetry(

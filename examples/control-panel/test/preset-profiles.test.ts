@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyRuntimePerformanceGuardrails,
+  buildAdaptiveDowngradePreset,
+  buildAdaptiveUpgradePreset,
   detectSourceProfile,
   getRecommendedBitrates,
   resolveRuntimePresetConfig,
@@ -94,4 +96,74 @@ test("applyRuntimePerformanceGuardrails caps aggressive software bitrates on rem
   assert.ok(
     result.warnings.some((warning) => /safer software bitrates/i.test(warning)),
   );
+});
+
+test("buildAdaptiveDowngradePreset steps down to a lighter profile", () => {
+  const result = buildAdaptiveDowngradePreset({
+    id: "preset-1",
+    name: "Main Feed",
+    sourceUrl: "https://example.com/live.m3u8",
+    sourceMode: "direct",
+    fallbackSources: [],
+    qualityProfile: "1080p30",
+    bufferProfile: "stable",
+    description: "",
+    includeAudio: true,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    bitrateVideoKbps: 7000,
+    maxBitrateVideoKbps: 9500,
+    bitrateAudioKbps: 160,
+    videoCodec: "H264",
+    hardwareAcceleration: false,
+    minimizeLatency: false,
+    createdAt: "2026-03-30T10:00:00.000Z",
+    updatedAt: "2026-03-30T10:00:00.000Z",
+  });
+
+  assert.ok(result);
+  assert.equal(result?.preset.qualityProfile, "720p30");
+  assert.equal(result?.preset.width, 1280);
+  assert.equal(result?.preset.height, 720);
+});
+
+test("buildAdaptiveUpgradePreset returns to the original target profile", () => {
+  const currentPreset = {
+    id: "preset-1",
+    name: "Main Feed",
+    sourceUrl: "https://example.com/live.m3u8",
+    sourceMode: "direct" as const,
+    fallbackSources: [],
+    qualityProfile: "720p30" as const,
+    bufferProfile: "stable" as const,
+    description: "",
+    includeAudio: true,
+    width: 1280,
+    height: 720,
+    fps: 30,
+    bitrateVideoKbps: 4500,
+    maxBitrateVideoKbps: 6500,
+    bitrateAudioKbps: 160,
+    videoCodec: "H264" as const,
+    hardwareAcceleration: false,
+    minimizeLatency: false,
+    createdAt: "2026-03-30T10:00:00.000Z",
+    updatedAt: "2026-03-30T10:00:00.000Z",
+  };
+  const targetPreset = {
+    ...currentPreset,
+    qualityProfile: "1080p30" as const,
+    width: 1920,
+    height: 1080,
+    bitrateVideoKbps: 7000,
+    maxBitrateVideoKbps: 9500,
+  };
+
+  const result = buildAdaptiveUpgradePreset(currentPreset, targetPreset);
+
+  assert.ok(result);
+  assert.equal(result?.preset.qualityProfile, "1080p30");
+  assert.equal(result?.preset.width, 1920);
+  assert.equal(result?.preset.height, 1080);
 });

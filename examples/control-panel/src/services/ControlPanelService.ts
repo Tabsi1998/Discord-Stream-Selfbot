@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { appConfig } from "../config/appConfig.js";
 import {
+  describePresetQuality,
   detectSourceProfile,
   normalizePresetInput,
 } from "../domain/presetProfiles.js";
@@ -32,10 +33,11 @@ import type {
 } from "../domain/types.js";
 import { isYouTubeUrl } from "../runtime/SourceResolver.js";
 import type {
+  AdaptiveRestartRequestInfo,
   PerformanceWarningInfo,
-  StreamRuntime,
   RunEndedInfo,
   RunFailedInfo,
+  StreamRuntime,
 } from "../runtime/StreamRuntime.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 
@@ -254,8 +256,17 @@ type EventMutationResult = {
   scope: EventSeriesScope;
 };
 
+type PendingAdaptiveRestart = {
+  info: AdaptiveRestartRequestInfo;
+  channel: ChannelDefinition;
+};
+
 export class ControlPanelService {
   private queueAdvancing = false;
+  private readonly pendingAdaptiveRestarts = new Map<
+    string,
+    PendingAdaptiveRestart
+  >();
 
   constructor(
     private readonly store: AppStateStore,
@@ -272,6 +283,12 @@ export class ControlPanelService {
     this.runtime.on("performanceWarning", (info: PerformanceWarningInfo) => {
       this.onPerformanceWarning(info);
     });
+    this.runtime.on(
+      "adaptiveRestartRequested",
+      (info: AdaptiveRestartRequestInfo) => {
+        void this.onAdaptiveRestartRequested(info);
+      },
+    );
   }
 
   public snapshot(): ControlPanelState {
@@ -984,7 +1001,8 @@ export class ControlPanelService {
     assertNonEmpty(input.sourceUrl, "sourceUrl");
 
     const sourceMode =
-      input.sourceMode ?? (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
+      input.sourceMode ??
+      (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
     const sourceProfile = detectSourceProfile(sourceMode, input.sourceUrl);
     const hasHardwareEncoder = appConfig.availableHardwareEncoders.length > 0;
     const useSafeSoftwareProfile =
@@ -992,26 +1010,39 @@ export class ControlPanelService {
       (sourceProfile === "yt-dlp" ||
         sourceProfile === "hls" ||
         sourceProfile === "mpeg-ts");
-    const qualityProfile = useSafeSoftwareProfile ? "720p30" : "1080p30";
-    const normalizedPreset = normalizePresetInput({
+    const desiredQualityProfile = "1080p30";
+    const actualQualityProfile = useSafeSoftwareProfile
+      ? "720p30"
+      : desiredQualityProfile;
+    const desiredPresetInput = {
       name:
-        input.name?.trim() || buildAdHocPresetName(input.sourceUrl, sourceMode),
+        input.name?.trim() ||
+        buildAdHocPresetName(input.sourceUrl, sourceMode),
       sourceUrl: input.sourceUrl.trim(),
       sourceMode,
       fallbackSources: [],
-      qualityProfile,
+      qualityProfile: desiredQualityProfile,
       bufferProfile: sourceMode === "yt-dlp" ? "stable" : "auto",
       description: "Temporaeres Command-Preset",
       includeAudio: true,
-      width: qualityProfile === "720p30" ? 1280 : 1920,
-      height: qualityProfile === "720p30" ? 720 : 1080,
+      width: 1920,
+      height: 1080,
       fps: 30,
-      bitrateVideoKbps: qualityProfile === "720p30" ? 4500 : 7000,
-      maxBitrateVideoKbps: qualityProfile === "720p30" ? 6500 : 9500,
+      bitrateVideoKbps: 7000,
+      maxBitrateVideoKbps: 9500,
       bitrateAudioKbps: 160,
       videoCodec: "H264",
       hardwareAcceleration: hasHardwareEncoder,
       minimizeLatency: false,
+    } satisfies PresetInput;
+    const normalizedTargetPreset = normalizePresetInput(desiredPresetInput);
+    const normalizedPreset = normalizePresetInput({
+      ...desiredPresetInput,
+      qualityProfile: actualQualityProfile,
+      width: actualQualityProfile === "720p30" ? 1280 : 1920,
+      height: actualQualityProfile === "720p30" ? 720 : 1080,
+      bitrateVideoKbps: actualQualityProfile === "720p30" ? 4500 : 7000,
+      maxBitrateVideoKbps: actualQualityProfile === "720p30" ? 6500 : 9500,
     });
     const timestamp = nowIso();
     const preset: StreamPreset = {
@@ -1020,6 +1051,11 @@ export class ControlPanelService {
       description: normalizedPreset.description?.trim() ?? "",
       createdAt: timestamp,
       updatedAt: timestamp,
+    };
+    const adaptiveTargetPreset: StreamPreset = {
+      ...preset,
+      ...normalizedTargetPreset,
+      description: normalizedTargetPreset.description?.trim() ?? "",
     };
     const plannedStopAt = input.stopAt
       ? asDate(input.stopAt, "stopAt").toISOString()
@@ -1037,7 +1073,7 @@ export class ControlPanelService {
           botId: input.channel.botId,
           channel: input.channel.name,
           sourceProfile,
-          qualityProfile,
+          qualityProfile: actualQualityProfile,
         },
       );
     }
@@ -1047,6 +1083,7 @@ export class ControlPanelService {
         kind: "manual",
         channel: input.channel,
         preset,
+        adaptiveTargetPreset,
         plannedStopAt,
       })
       .then((result) => {
@@ -1097,6 +1134,11 @@ export class ControlPanelService {
   }
 
   private onRunEnded(info: RunEndedInfo) {
+    if (info.abortReason === "adaptive-restart") {
+      void this.resumeAdaptiveRestart(info.run.botId);
+      return;
+    }
+    this.pendingAdaptiveRestarts.delete(info.run.botId);
     if (info.run.kind !== "event" || !info.run.eventId) return;
 
     let shouldMarkCompleted = false;
@@ -1152,6 +1194,7 @@ export class ControlPanelService {
   }
 
   private onRunFailed(info: RunFailedInfo) {
+    this.pendingAdaptiveRestarts.delete(info.run.botId);
     if (info.run.kind !== "event" || !info.run.eventId) {
       this.sendNotification(
         `Stream fehlgeschlagen: ${info.run.channelName} | ${info.error}`,
@@ -1179,6 +1222,129 @@ export class ControlPanelService {
       "performanceWarnings",
       info.run.botId,
     ).catch(() => {});
+  }
+
+  private async onAdaptiveRestartRequested(info: AdaptiveRestartRequestInfo) {
+    if (this.pendingAdaptiveRestarts.has(info.run.botId)) {
+      return;
+    }
+
+    const state = this.store.snapshot();
+    const channel = state.channels.find(
+      (entry) => entry.id === info.run.channelId,
+    );
+    if (!channel) {
+      this.store.appendLog("warn", "Adaptive quality switch skipped", {
+        botId: info.run.botId,
+        reason: "channel-not-found",
+        channelId: info.run.channelId,
+      });
+      return;
+    }
+
+    this.pendingAdaptiveRestarts.set(info.run.botId, {
+      info,
+      channel,
+    });
+    this.store.appendLog("info", "Adaptive quality switch requested", {
+      botId: info.run.botId,
+      botName: info.run.botName,
+      channel: info.run.channelName,
+      preset: info.run.presetName,
+      direction: info.reason === "lag" ? "downgrade" : "recovery",
+      from: describePresetQuality(info.currentPreset),
+      to: describePresetQuality(info.nextPreset),
+      trigger: info.trigger,
+    });
+
+    const stopped = this.runtime.stopActive(
+      "adaptive-restart",
+      info.run.botId,
+    );
+    if (!stopped) {
+      this.pendingAdaptiveRestarts.delete(info.run.botId);
+      this.store.appendLog("warn", "Adaptive quality switch aborted", {
+        botId: info.run.botId,
+        reason: "run-not-stoppable",
+      });
+    }
+  }
+
+  private async resumeAdaptiveRestart(botId: string) {
+    const pending = this.pendingAdaptiveRestarts.get(botId);
+    if (!pending) {
+      return;
+    }
+    this.pendingAdaptiveRestarts.delete(botId);
+
+    try {
+      await this.runtime.startRun({
+        kind: pending.info.run.kind,
+        eventId: pending.info.run.eventId,
+        channel: pending.channel,
+        preset: pending.info.nextPreset,
+        adaptiveTargetPreset: pending.info.adaptiveTargetPreset,
+        plannedStopAt: pending.info.run.plannedStopAt,
+      });
+
+      this.store.appendLog("info", "Adaptive quality switch applied", {
+        botId,
+        botName: pending.info.run.botName,
+        channel: pending.info.run.channelName,
+        preset: pending.info.run.presetName,
+        direction: pending.info.reason === "lag" ? "downgrade" : "recovery",
+        from: describePresetQuality(pending.info.currentPreset),
+        to: describePresetQuality(pending.info.nextPreset),
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Adaptive quality switch failed";
+      this.store.appendLog("error", "Adaptive quality switch failed", {
+        botId,
+        botName: pending.info.run.botName,
+        channel: pending.info.run.channelName,
+        preset: pending.info.run.presetName,
+        error: message,
+      });
+
+      if (pending.info.run.kind === "event" && pending.info.run.eventId) {
+        this.failEvent(pending.info.run.eventId, message);
+        this.sendNotification(
+          `Event fehlgeschlagen: ${pending.info.run.channelName} | ${message}`,
+          "failures",
+          botId,
+        ).catch(() => {});
+        this.resumeQueueAfterScheduledEvent(
+          pending.info.run.botId,
+          pending.info.run.eventId,
+        );
+        return;
+      }
+
+      if (
+        this.store.snapshot().queueConfig.active &&
+        this.store.snapshot().queueConfig.botId === botId
+      ) {
+        this.onQueueRunFailed({
+          run: pending.info.run,
+          error: message,
+        });
+        this.sendNotification(
+          `Queue-Item fehlgeschlagen: ${pending.info.run.channelName} | ${message}`,
+          "failures",
+          botId,
+        ).catch(() => {});
+        return;
+      }
+
+      this.sendNotification(
+        `Stream fehlgeschlagen: ${pending.info.run.channelName} | ${message}`,
+        "failures",
+        botId,
+      ).catch(() => {});
+    }
   }
 
   private failEvent(id: string, error: string) {
@@ -1930,6 +2096,7 @@ export class ControlPanelService {
   }
 
   private onQueueRunEnded(info: RunEndedInfo) {
+    if (info.abortReason === "adaptive-restart") return;
     const state = this.store.snapshot();
     if (!state.queueConfig.active || !state.queueConfig.botId) return;
     if (info.run.botId !== state.queueConfig.botId) return;
