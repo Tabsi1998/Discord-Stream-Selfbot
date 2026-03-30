@@ -77,6 +77,7 @@ function matchesQuery(value: string, query: string) {
 export class DiscordCommandBridge {
   private started = false;
   private controlBotClient?: ControlBotClient;
+  private readonly controlBotExclusiveMode = !!appConfig.controlBotToken;
   private readonly selfbotListeners = appConfig.selfbotProfiles
     .filter((profile) => profile.commandEnabled)
     .map((profile) => ({
@@ -94,10 +95,12 @@ export class DiscordCommandBridge {
   public start() {
     if (!appConfig.commandEnabled || this.started) return;
     this.started = true;
-    for (const listener of this.selfbotListeners) {
-      this.runtime
-        .getClient(listener.id)
-        .on("messageCreate", this.handleSelfbotMessage);
+    if (!this.controlBotExclusiveMode) {
+      for (const listener of this.selfbotListeners) {
+        this.runtime
+          .getClient(listener.id)
+          .on("messageCreate", this.handleSelfbotMessage);
+      }
     }
     if (appConfig.controlBotToken) {
       this.startControlBot();
@@ -113,13 +116,19 @@ export class DiscordCommandBridge {
     this.store.appendLog("info", "Discord command bridge enabled", {
       prefixes: appConfig.commandPrefixes.join(","),
       selfbotListeners:
-        this.selfbotListeners.map((listener) => listener.id).join(",") ||
-        "none",
+        !this.controlBotExclusiveMode
+          ? this.selfbotListeners.map((listener) => listener.id).join(",") ||
+            "none"
+          : "disabled (control-bot-only)",
+      mode: this.controlBotExclusiveMode ? "control-bot-only" : "selfbot+bot",
       controlBot: appConfig.controlBotToken ? "enabled" : "disabled",
     });
   }
 
   private readonly handleSelfbotMessage = async (message: SelfbotMessage) => {
+    if (this.controlBotExclusiveMode) {
+      return;
+    }
     const commandMessage = toCommandMessage(message);
     if (!commandMessage) return;
     await this.handleMessage(commandMessage);

@@ -190,6 +190,7 @@ COMMAND_ALLOWED_AUTHOR_IDS=
 Wichtig fuer den normalen Bot:
 - `Message Content Intent` im Discord Developer Portal aktivieren
 - denselben Bot auf deinen Server einladen
+- sobald `CONTROL_BOT_TOKEN` gesetzt ist, antworten die Selfbots nicht mehr auf Chat-Commands; nur der normale Bot schreibt zurueck
 - wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer bleibt, duerfen nur Selfbot-Accounts Commands ausfuehren
 - fuer einen normalen User-Account deshalb die eigene Discord-ID per `whoami` ermitteln und in `COMMAND_ALLOWED_AUTHOR_IDS` eintragen
 

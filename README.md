@@ -263,6 +263,7 @@ Alle Befehle starten mit dem konfigurierten Prefix (Standard: `$panel`).
 Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden.
 Sie funktionieren ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN`.
 Beim normalen Bot funktioniert nach dem Login auch die Bot-Mention als Prefix.
+Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
 
 Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
 

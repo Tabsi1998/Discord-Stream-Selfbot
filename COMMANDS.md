@@ -5,6 +5,8 @@
 > Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden. Beim normalen Control-Bot funktioniert zusaetzlich die Bot-Mention als Prefix.
 >
 > Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot (`CONTROL_BOT_TOKEN`) angenommen werden.
+>
+> Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
 
 ---
 

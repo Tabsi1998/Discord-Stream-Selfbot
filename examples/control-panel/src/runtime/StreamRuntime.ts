@@ -219,9 +219,11 @@ export class StreamRuntime extends EventEmitter {
         : [];
       runtime.commandAuthorIds = appConfig.commandAllowedAuthorIds;
       runtime.commandListenerBotIds = appConfig.commandEnabled
-        ? appConfig.selfbotProfiles
-            .filter((profile) => profile.commandEnabled)
-            .map((profile) => profile.id)
+        ? appConfig.controlBotToken
+          ? []
+          : appConfig.selfbotProfiles
+              .filter((profile) => profile.commandEnabled)
+              .map((profile) => profile.id)
         : [];
       runtime.commandAuthMode = appConfig.commandAllowedAuthorIds.length
         ? "allowlist"
