@@ -5,22 +5,37 @@ import express, {
 } from "express";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { appConfig } from "../config/appConfig.js";
 import { ControlPanelService } from "../services/ControlPanelService.js";
+import {
+  getRouteParam,
+  getStatusCodeForError,
+  parseBootstrapQuery,
+  parseChannelInput,
+  parseConfigImportInput,
+  parseCookieUploadInput,
+  parseLogsQuery,
+  parseManualRunInput,
+  parseNotificationSettingsInput,
+  parseNotificationTestInput,
+  parseOptionalBotQuery,
+  parsePresetInput,
+  parsePresetTestUrlInput,
+  parseQueueAddInput,
+  parseQueueLoopInput,
+  parseQueueReorderInput,
+  parseQueueStartInput,
+  parseStopInput,
+  parseVoiceChannelsQuery,
+  parseEventInput,
+} from "./requestValidation.js";
 
 type AsyncRoute = (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => Promise<void>;
-
-function getRouteParam(value: string | string[] | undefined, name: string) {
-  if (typeof value === "string" && value.length > 0) {
-    return value;
-  }
-  throw new Error(`Missing route parameter: ${name}`);
-}
 
 function asyncRoute(handler: AsyncRoute) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -141,9 +156,9 @@ export function createServer(service: ControlPanelService) {
   app.get(
     "/api/bootstrap",
     asyncRoute(async (req, res) => {
-      const botId =
-        typeof req.query.botId === "string" ? req.query.botId : undefined;
-      const forceRefresh = req.query.refresh === "1";
+      const { botId, forceRefresh } = parseBootstrapQuery(
+        req.query as Record<string, unknown>,
+      );
       res.json({
         state: service.snapshot(),
         voiceChannels: await service.listVoiceChannels(forceRefresh, botId),
@@ -182,13 +197,7 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.get("/api/logs", (req, res) => {
-    const limitRaw =
-      typeof req.query.limit === "string"
-        ? Number.parseInt(req.query.limit, 10)
-        : Number.NaN;
-    const limit = Number.isInteger(limitRaw)
-      ? Math.min(Math.max(limitRaw, 1), 200)
-      : 50;
+    const limit = parseLogsQuery(req.query as Record<string, unknown>);
     res.json({ items: service.snapshot().logs.slice(0, limit) });
   });
 
@@ -199,23 +208,26 @@ export function createServer(service: ControlPanelService) {
   app.get(
     "/api/voice-channels",
     asyncRoute(async (req, res) => {
-      const forceRefresh = req.query.refresh === "1";
-      const botId =
-        typeof req.query.botId === "string" ? req.query.botId : undefined;
+      const { botId, forceRefresh } = parseVoiceChannelsQuery(
+        req.query as Record<string, unknown>,
+      );
       res.json(await service.listVoiceChannels(forceRefresh, botId));
     }),
   );
 
   app.post("/api/channels", (req, res) => {
-    res.status(201).json(service.createChannel(req.body));
+    res.status(201).json(service.createChannel(parseChannelInput(req.body)));
   });
 
   app.put("/api/channels/:id", (req, res) => {
-    res.json(service.updateChannel(req.params.id, req.body));
+    res.json(service.updateChannel(
+      getRouteParam(req.params.id, "id"),
+      parseChannelInput(req.body),
+    ));
   });
 
   app.delete("/api/channels/:id", (req, res) => {
-    service.deleteChannel(req.params.id);
+    service.deleteChannel(getRouteParam(req.params.id, "id"));
     res.status(204).send();
   });
 
@@ -224,15 +236,18 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.post("/api/presets", (req, res) => {
-    res.status(201).json(service.createPreset(req.body));
+    res.status(201).json(service.createPreset(parsePresetInput(req.body)));
   });
 
   app.put("/api/presets/:id", (req, res) => {
-    res.json(service.updatePreset(req.params.id, req.body));
+    res.json(service.updatePreset(
+      getRouteParam(req.params.id, "id"),
+      parsePresetInput(req.body),
+    ));
   });
 
   app.delete("/api/presets/:id", (req, res) => {
-    service.deletePreset(req.params.id);
+    service.deletePreset(getRouteParam(req.params.id, "id"));
     res.status(204).send();
   });
 
@@ -241,15 +256,18 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.post("/api/events", (req, res) => {
-    res.status(201).json(service.createEvent(req.body));
+    res.status(201).json(service.createEvent(parseEventInput(req.body)));
   });
 
   app.put("/api/events/:id", (req, res) => {
-    res.json(service.updateEvent(req.params.id, req.body));
+    res.json(service.updateEvent(
+      getRouteParam(req.params.id, "id"),
+      parseEventInput(req.body),
+    ));
   });
 
   app.delete("/api/events/:id", (req, res) => {
-    service.deleteEvent(req.params.id);
+    service.deleteEvent(getRouteParam(req.params.id, "id"));
     res.status(204).send();
   });
 
@@ -272,14 +290,14 @@ export function createServer(service: ControlPanelService) {
   app.post(
     "/api/manual/start",
     asyncRoute(async (req, res) => {
-      res.status(202).json(await service.startManualRun(req.body));
+      res.status(202).json(await service.startManualRun(
+        parseManualRunInput(req.body),
+      ));
     }),
   );
 
   app.post("/api/stop", (req, res) => {
-    const body = req.body && typeof req.body === "object"
-      ? req.body as { botId?: string; all?: boolean }
-      : {};
+    const body = parseStopInput(req.body);
 
     if (body.all) {
       const stoppedCount = service.stopAllActive();
@@ -293,8 +311,7 @@ export function createServer(service: ControlPanelService) {
 
   app.get("/api/stream/health", (req, res) => {
     const state = service.snapshot();
-    const botId =
-      typeof req.query.botId === "string" ? req.query.botId : undefined;
+    const botId = parseOptionalBotQuery(req.query as Record<string, unknown>);
     const activeRuns = state.runtime.activeRuns ?? [];
     const activeRun = botId
       ? activeRuns.find((run) => run.botId === botId)
@@ -323,11 +340,7 @@ export function createServer(service: ControlPanelService) {
   app.post(
     "/api/presets/test-url",
     asyncRoute(async (req, res) => {
-      const { url } = req.body;
-      if (!url || typeof url !== "string") {
-        res.status(400).json({ error: "URL is required" });
-        return;
-      }
+      const { url } = parsePresetTestUrlInput(req.body);
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -356,7 +369,7 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.post("/api/queue", (req, res) => {
-    const { url, name, sourceMode } = req.body;
+    const { url, name, sourceMode } = parseQueueAddInput(req.body);
     res.status(201).json(service.addToQueue(url, name, sourceMode));
   });
 
@@ -371,15 +384,15 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.post("/api/queue/loop", (req, res) => {
-    const { enabled } = req.body;
-    service.setQueueLoop(!!enabled);
-    res.json({ ok: true, loop: !!enabled });
+    const { enabled } = parseQueueLoopInput(req.body);
+    service.setQueueLoop(enabled);
+    res.json({ ok: true, loop: enabled });
   });
 
   app.post(
     "/api/queue/start",
     asyncRoute(async (req, res) => {
-      const { channelId, presetId } = req.body;
+      const { channelId, presetId } = parseQueueStartInput(req.body);
       await service.startQueue(channelId, presetId);
       res.status(202).json({ ok: true });
     }),
@@ -401,7 +414,7 @@ export function createServer(service: ControlPanelService) {
   app.post(
     "/api/queue/reorder",
     asyncRoute(async (req, res) => {
-      const { id, newIndex } = req.body;
+      const { id, newIndex } = parseQueueReorderInput(req.body);
       service.reorderQueue(id, newIndex);
       res.json({ ok: true });
     }),
@@ -413,16 +426,15 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.put("/api/settings/notifications", (req, res) => {
-    res.json(service.updateNotificationSettings(req.body ?? {}));
+    res.json(service.updateNotificationSettings(
+      parseNotificationSettingsInput(req.body),
+    ));
   });
 
   app.post(
     "/api/settings/notifications/test",
     asyncRoute(async (req, res) => {
-      const body =
-        req.body && typeof req.body === "object"
-          ? req.body as { webhookUrl?: string; dmEnabled?: boolean; botId?: string }
-          : {};
+      const body = parseNotificationTestInput(req.body);
       await service.testNotificationSettings(body, body.botId);
       res.json({ ok: true });
     }),
@@ -446,7 +458,7 @@ export function createServer(service: ControlPanelService) {
   });
 
   app.post("/api/config/import", (req, res) => {
-    res.json(service.importConfiguration(req.body));
+    res.json(service.importConfiguration(parseConfigImportInput(req.body)));
   });
 
   // ── Cookie Management ─────────────────────────────────────────
@@ -478,11 +490,7 @@ export function createServer(service: ControlPanelService) {
   app.post(
     "/api/cookies/upload",
     asyncRoute(async (req, res) => {
-      const { content } = req.body;
-      if (!content || typeof content !== "string") {
-        res.status(400).json({ error: "Cookie content is required" });
-        return;
-      }
+      const { content } = parseCookieUploadInput(req.body);
 
       // Validate it looks like a Netscape cookies file
       const lines = content.split("\n").filter((l: string) => l.trim());
@@ -716,7 +724,7 @@ export function createServer(service: ControlPanelService) {
   ) => {
     const message =
       error instanceof Error ? error.message : "Unexpected server error";
-    res.status(400).json({ error: message });
+    res.status(getStatusCodeForError(error)).json({ error: message });
   });
 
   return app;

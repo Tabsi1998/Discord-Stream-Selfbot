@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -6,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, parse, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   coerceBufferProfile,
@@ -160,34 +161,52 @@ function normalizeState(input: unknown): ControlPanelState {
 export class AppStateStore {
   private state: ControlPanelState;
   private readonly listeners = new Set<(state: ControlPanelState) => void>();
+  private readonly logsFilePath: string;
 
   constructor(private readonly filePath: string) {
     this.filePath = resolve(filePath);
+    this.logsFilePath = this.deriveLogsFilePath(this.filePath);
     mkdirSync(dirname(this.filePath), { recursive: true });
     this.state = this.load();
     this.save();
   }
 
   private load(): ControlPanelState {
-    if (!existsSync(this.filePath)) {
+    const rawState = this.readJsonFileWithBackup(this.filePath);
+    if (!rawState) {
       return createDefaultState();
     }
 
-    try {
-      const raw = readFileSync(this.filePath, "utf-8");
-      return normalizeState(JSON.parse(raw));
-    } catch {
-      return createDefaultState();
+    const normalized = normalizeState(rawState);
+    const rawLogs = this.readJsonFileWithBackup(this.logsFilePath);
+    if (Array.isArray(rawLogs)) {
+      normalized.logs = rawLogs.slice(0, 200) as LogEntry[];
     }
+    return normalized;
   }
 
   private save() {
-    const tempPath = `${this.filePath}.tmp`;
-    const payload = JSON.stringify(this.state, null, 2);
+    const statePayload = JSON.stringify({
+      ...this.state,
+      logs: [],
+    }, null, 2);
+    const logsPayload = JSON.stringify(this.state.logs, null, 2);
+
+    this.writeJsonFile(this.filePath, statePayload);
+    this.writeJsonFile(this.logsFilePath, logsPayload);
+  }
+
+  private writeJsonFile(targetPath: string, payload: string) {
+    const tempPath = `${targetPath}.tmp`;
+    const backupPath = `${targetPath}.bak`;
     writeFileSync(tempPath, payload, "utf-8");
 
+    if (existsSync(targetPath)) {
+      copyFileSync(targetPath, backupPath);
+    }
+
     try {
-      renameSync(tempPath, this.filePath);
+      renameSync(tempPath, targetPath);
       return;
     } catch (error: unknown) {
       const code =
@@ -203,8 +222,35 @@ export class AppStateStore {
       }
     }
 
-    writeFileSync(this.filePath, payload, "utf-8");
+    writeFileSync(targetPath, payload, "utf-8");
     rmSync(tempPath, { force: true });
+  }
+
+  private readJsonFileWithBackup(targetPath: string) {
+    const primary = this.tryReadJsonFile(targetPath);
+    if (primary !== undefined) {
+      return primary;
+    }
+    return this.tryReadJsonFile(`${targetPath}.bak`);
+  }
+
+  private tryReadJsonFile(targetPath: string) {
+    if (!existsSync(targetPath)) {
+      return undefined;
+    }
+
+    try {
+      const raw = readFileSync(targetPath, "utf-8");
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private deriveLogsFilePath(filePath: string) {
+    const parts = parse(filePath);
+    const extension = parts.ext || ".json";
+    return resolve(parts.dir, `${parts.name}.logs${extension}`);
   }
 
   public snapshot(): ControlPanelState {

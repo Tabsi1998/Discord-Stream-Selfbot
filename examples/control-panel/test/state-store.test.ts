@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -101,6 +101,85 @@ test("AppStateStore notifies subscribers after updates", () => {
     });
 
     assert.deepEqual(events, ["ready"]);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("AppStateStore stores logs in a dedicated file while keeping state lean", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "stream-bot-state-"));
+  const filePath = join(tempDir, "state.json");
+  const logsFilePath = join(tempDir, "state.logs.json");
+
+  try {
+    const store = new AppStateStore(filePath);
+    store.appendLog("info", "Separated log entry");
+
+    assert.equal(existsSync(logsFilePath), true);
+
+    const statePayload = JSON.parse(readFileSync(filePath, "utf-8"));
+    const logsPayload = JSON.parse(readFileSync(logsFilePath, "utf-8"));
+
+    assert.deepEqual(statePayload.logs, []);
+    assert.equal(logsPayload[0]?.message, "Separated log entry");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("AppStateStore falls back to backup files when the primary state file is corrupted", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "stream-bot-state-"));
+  const filePath = join(tempDir, "state.json");
+  const backupPath = `${filePath}.bak`;
+  const logsFilePath = join(tempDir, "state.logs.json");
+  const logsBackupPath = `${logsFilePath}.bak`;
+
+  try {
+    writeFileSync(filePath, "{ broken json", "utf-8");
+    writeFileSync(
+      backupPath,
+      JSON.stringify({
+        channels: [],
+        presets: [],
+        events: [],
+        queue: [],
+        queueConfig: {
+          active: false,
+          loop: false,
+          currentIndex: 0,
+        },
+        notificationSettings: {
+          webhookUrl: "",
+          dmEnabled: true,
+        },
+        runtime: {
+          discordStatus: "ready",
+          activeRuns: [],
+        },
+        logs: [],
+      }),
+      "utf-8",
+    );
+    writeFileSync(logsFilePath, "[broken", "utf-8");
+    writeFileSync(
+      logsBackupPath,
+      JSON.stringify([
+        {
+          id: "log-1",
+          level: "warn",
+          message: "Recovered from backup",
+          createdAt: "2026-03-30T10:00:00.000Z",
+        },
+      ]),
+      "utf-8",
+    );
+
+    const store = new AppStateStore(filePath);
+    const snapshot = store.snapshot();
+
+    assert.equal(snapshot.runtime.discordStatus, "ready");
+    assert.equal(snapshot.notificationSettings.dmEnabled, true);
+    assert.equal(snapshot.logs[0]?.message, "Recovered from backup");
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
