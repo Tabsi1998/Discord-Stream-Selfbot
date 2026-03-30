@@ -53,7 +53,7 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/dank074/Discord-video-stream.git"
+        "url": "git+https://github.com/Tabsi1998/Discord-Stream-Selfbot.git"
     },
     "contributors": [
         "Long Nguyen <nguyen.long.908132@gmail.com>",
@@ -65,9 +65,9 @@
     ],
     "license": "ISC",
     "bugs": {
-        "url": "https://github.com/dank074/Discord-video-stream/issues"
+        "url": "https://github.com/Tabsi1998/Discord-Stream-Selfbot/issues"
     },
-    "homepage": "https://github.com/dank074/Discord-video-stream#readme",
+    "homepage": "https://github.com/Tabsi1998/Discord-Stream-Selfbot#readme",
     "pnpm": {
         "onlyBuiltDependencies": [
             "@lng2004/node-datachannel",
