@@ -579,6 +579,7 @@ export class StreamRuntime extends EventEmitter {
         },
         controller.signal,
       ));
+      this.attachFfmpegDiagnostics(session, command);
       this.attachFfmpegTelemetry(session, command);
       waitForStartup = this.createStartupWatcher(command, controller.signal);
     } catch (error: unknown) {
@@ -937,18 +938,13 @@ export class StreamRuntime extends EventEmitter {
     command: ReturnType<typeof prepareStream>["command"],
     cancelSignal: AbortSignal,
   ) {
-    const proc = this.getInternalProcess(command);
-    if (proc?.pid && proc.exitCode == null) {
-      return Promise.resolve();
-    }
-
     return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error("Timed out waiting for FFmpeg to start"));
+        reject(new Error("Timed out waiting for FFmpeg output"));
       }, appConfig.startupTimeoutMs);
 
-      const onStart = () => {
+      const onProgress = () => {
         cleanup();
         resolve();
       };
@@ -962,21 +958,24 @@ export class StreamRuntime extends EventEmitter {
           error instanceof Error ? error : new Error("FFmpeg startup failed"),
         );
       };
+      const onEnd = () => {
+        cleanup();
+        reject(new Error("FFmpeg ended before producing media output"));
+      };
 
       const cleanup = () => {
         clearTimeout(timeout);
-        command.off("start", onStart);
+        command.off("progress", onProgress);
         command.off("error", onError);
+        command.off("end", onEnd);
       };
 
-      command.once("start", onStart);
+      command.once("progress", onProgress);
       command.once("error", onError);
+      command.once("end", onEnd);
 
       const currentProc = this.getInternalProcess(command);
-      if (currentProc?.pid && currentProc.exitCode == null) {
-        cleanup();
-        resolve();
-      } else if (
+      if (
         typeof currentProc?.exitCode === "number" &&
         currentProc.exitCode !== 0
       ) {
@@ -1287,5 +1286,49 @@ export class StreamRuntime extends EventEmitter {
           break;
       }
     });
+  }
+
+  private attachFfmpegDiagnostics(
+    session: ActiveSession,
+    command: ReturnType<typeof prepareStream>["command"],
+  ) {
+    const diagnosticLines: string[] = [];
+
+    const rememberLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.includes("=")) {
+        return;
+      }
+      if (
+        !/error|invalid|failed|forbidden|403|404|unable|could not|no such|unsupported/i.test(
+          trimmed,
+        )
+      ) {
+        return;
+      }
+      if (diagnosticLines.includes(trimmed)) {
+        return;
+      }
+      diagnosticLines.push(trimmed);
+      if (diagnosticLines.length > 6) {
+        diagnosticLines.shift();
+      }
+    };
+
+    const flushDiagnostics = (reason: string) => {
+      if (!diagnosticLines.length) {
+        return;
+      }
+      this.store.appendLog("warn", "FFmpeg diagnostic", {
+        botId: session.botId,
+        botName: session.run.botName,
+        preset: session.preset.name,
+        reason,
+        details: diagnosticLines.slice(-3).join(" | ").slice(0, 240),
+      });
+    };
+
+    command.on("stderr", rememberLine);
+    command.once("error", () => flushDiagnostics("error"));
   }
 }

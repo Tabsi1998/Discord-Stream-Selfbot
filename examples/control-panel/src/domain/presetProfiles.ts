@@ -436,6 +436,22 @@ export function buildYtDlpFormatForPreset(
   ].join("/");
 }
 
+export function buildYtDlpMuxedFormatForPreset(
+  qualityProfile: QualityProfile,
+) {
+  if (qualityProfile === "custom") {
+    return "best[vcodec!=none][acodec!=none]/best";
+  }
+
+  const quality = getQualityProfileConfig(qualityProfile);
+  return [
+    `best[vcodec!=none][acodec!=none][height<=${quality.height}][fps<=${quality.fps}]`,
+    `best[vcodec!=none][acodec!=none][height<=${quality.height}]`,
+    "best[vcodec!=none][acodec!=none]",
+    "best",
+  ].join("/");
+}
+
 export function applyRuntimePerformanceGuardrails(
   preset: Pick<
     StreamPreset,

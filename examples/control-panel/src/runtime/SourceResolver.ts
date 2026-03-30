@@ -3,7 +3,10 @@ import { spawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appConfig } from "../config/appConfig.js";
-import { buildYtDlpFormatForPreset } from "../domain/presetProfiles.js";
+import {
+  buildYtDlpFormatForPreset,
+  buildYtDlpMuxedFormatForPreset,
+} from "../domain/presetProfiles.js";
 import type {
   FallbackSource,
   SourceMode,
@@ -320,6 +323,7 @@ export class SourceResolver {
     cancelSignal?: AbortSignal,
     extractorArgs?: string,
     forceOAuth2 = false,
+    formatOverride?: string,
   ): Promise<ResolvedSource> {
     const ytDlpPath = appConfig.ytDlpPath;
     if (!ytDlpPath) {
@@ -340,7 +344,8 @@ export class SourceResolver {
       ...cookieArgs,
       ...(extractorArgs ? ["--extractor-args", extractorArgs] : []),
       "--format",
-      buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
+      formatOverride ??
+        buildYtDlpFormatForPreset(preset.qualityProfile, appConfig.ytDlpFormat),
       "--print",
       "%(title)s",
       "--print",
@@ -357,6 +362,7 @@ export class SourceResolver {
       sourceMode: source.sourceMode,
       cookieSource: authSource,
       extractorArgs: extractorArgs ?? "",
+      formatOverride: formatOverride ?? "",
     });
 
     const child = spawn(ytDlpPath, args, {
@@ -421,6 +427,53 @@ export class SourceResolver {
         throw new Error("yt-dlp did not return a playable media URL");
       }
 
+      const isLive = isLiveFlag.toLowerCase() === "true";
+
+      if (
+        urls.length > 1 &&
+        !isLive &&
+        !formatOverride &&
+        isYouTubeUrl(source.url)
+      ) {
+        try {
+          const muxedResolved = await this.resolveViaYtDlp(
+            preset,
+            source,
+            cancelSignal,
+            extractorArgs,
+            forceOAuth2,
+            buildYtDlpMuxedFormatForPreset(preset.qualityProfile),
+          );
+
+          if (typeof muxedResolved.input === "string") {
+            this.store.appendLog(
+              "info",
+              "Using muxed yt-dlp source for VOD compatibility",
+              {
+                preset: preset.name,
+                url: source.url,
+                title: resolvedTitle,
+              },
+            );
+            return muxedResolved;
+          }
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Muxed yt-dlp compatibility fallback failed";
+          this.store.appendLog(
+            "warn",
+            "Muxed yt-dlp compatibility fallback failed",
+            {
+              preset: preset.name,
+              url: source.url,
+              error: message.slice(0, 160),
+            },
+          );
+        }
+      }
+
       const input =
         urls.length === 1
           ? urls[0]
@@ -434,7 +487,7 @@ export class SourceResolver {
         inputUrl: source.url,
         sourceMode: source.sourceMode,
         resolvedTitle,
-        isLive: isLiveFlag.toLowerCase() === "true",
+        isLive,
         resolverKind: "yt-dlp",
       };
     } finally {
