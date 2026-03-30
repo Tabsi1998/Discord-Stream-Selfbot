@@ -8,10 +8,7 @@ import {
 } from "discord.js";
 import type { Message as SelfbotMessage } from "discord.js-selfbot-v13";
 import { appConfig } from "../config/appConfig.js";
-import type {
-  ChannelDefinition,
-  ScheduledEvent,
-} from "../domain/types.js";
+import type { ChannelDefinition, ScheduledEvent } from "../domain/types.js";
 import type { ControlPanelService } from "../services/ControlPanelService.js";
 import type { AppStateStore } from "../state/AppStateStore.js";
 import type { StreamRuntime } from "./StreamRuntime.js";
@@ -321,11 +318,10 @@ export class DiscordCommandBridge {
     }
     this.store.appendLog("info", "Discord command bridge enabled", {
       prefixes: appConfig.commandPrefixes.join(","),
-      selfbotListeners:
-        !this.controlBotExclusiveMode
-          ? this.selfbotListeners.map((listener) => listener.id).join(",") ||
-            "none"
-          : "disabled (control-bot-only)",
+      selfbotListeners: !this.controlBotExclusiveMode
+        ? this.selfbotListeners.map((listener) => listener.id).join(",") ||
+          "none"
+        : "disabled (control-bot-only)",
       mode: this.controlBotExclusiveMode ? "control-bot-only" : "selfbot+bot",
       controlBot: appConfig.controlBotToken ? "enabled" : "disabled",
     });
@@ -886,7 +882,9 @@ export class DiscordCommandBridge {
     };
   }
 
-  private extractCommandPrefix(content: string): CommandPrefixMatch | undefined {
+  private extractCommandPrefix(
+    content: string,
+  ): CommandPrefixMatch | undefined {
     const prefixes = [
       ...this.getMentionPrefixes().map((prefix) => ({
         value: prefix,
@@ -1223,9 +1221,10 @@ export class DiscordCommandBridge {
   ) {
     const [channelQuery, presetQuery, stopAtRaw] = splitSegments(rawArgs);
     if (channelQuery && looksLikeUrl(channelQuery)) {
-      const quickPlayArgs = (presetQuery || stopAtRaw)
-        ? `${channelQuery} | ${presetQuery || stopAtRaw}`
-        : channelQuery;
+      const quickPlayArgs =
+        presetQuery || stopAtRaw
+          ? `${channelQuery} | ${presetQuery || stopAtRaw}`
+          : channelQuery;
       await this.playFromCommand(message, quickPlayArgs);
       return;
     }
@@ -1297,17 +1296,16 @@ export class DiscordCommandBridge {
     const heap = Math.round(mem.heapUsed / 1024 / 1024);
     const commandPrefixes = state.runtime.commandPrefixes?.length
       ? state.runtime.commandPrefixes.join(", ")
-      : state.runtime.commandPrefix ?? "aus";
-    const commandListeners =
-      state.runtime.commandListenerBotIds?.length
-        ? state.runtime.commandListenerBotIds
-            .map(
-              (botId) =>
-                state.runtime.bots?.find((bot) => bot.id === botId)?.name ??
-                botId,
-            )
-            .join(", ")
-        : "keine";
+      : (state.runtime.commandPrefix ?? "aus");
+    const commandListeners = state.runtime.commandListenerBotIds?.length
+      ? state.runtime.commandListenerBotIds
+          .map(
+            (botId) =>
+              state.runtime.bots?.find((bot) => bot.id === botId)?.name ??
+              botId,
+          )
+          .join(", ")
+      : "keine";
     const authMode =
       state.runtime.commandAuthMode === "allowlist"
         ? `allowlist (${state.runtime.commandAuthorIds?.join(", ") || "leer"})`

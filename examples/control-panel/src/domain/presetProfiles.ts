@@ -8,12 +8,7 @@ import type {
   VideoCodec,
 } from "./types.js";
 
-export type SourceProfile =
-  | "generic"
-  | "yt-dlp"
-  | "hls"
-  | "mpeg-ts"
-  | "file";
+export type SourceProfile = "generic" | "yt-dlp" | "hls" | "mpeg-ts" | "file";
 
 type QualityProfileConfig = {
   id: QualityProfile;
@@ -376,7 +371,10 @@ export function resolveRuntimePresetConfig(preset: PresetLike) {
     preset.minimizeLatency,
   );
   const qualityConfig = getQualityProfileConfig(qualityProfile);
-  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
+  const sourceProfile = detectSourceProfile(
+    preset.sourceMode,
+    preset.sourceUrl,
+  );
   const effectiveBufferProfile =
     bufferProfile === "auto"
       ? pickAutoBufferProfile(
@@ -467,7 +465,10 @@ export function applyRuntimePerformanceGuardrails(
   >,
   selectedEncoderMode: VideoEncoderMode,
 ) {
-  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
+  const sourceProfile = detectSourceProfile(
+    preset.sourceMode,
+    preset.sourceUrl,
+  );
   let width = preset.width;
   let height = preset.height;
   let fps = preset.fps;

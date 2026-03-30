@@ -196,7 +196,6 @@ export class SourceResolver {
               error: message.slice(0, 160),
             },
           );
-          continue;
         }
       }
     }

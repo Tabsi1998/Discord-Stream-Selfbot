@@ -1041,8 +1041,7 @@ function describeFallbackSources(item) {
         : `${source.sourceMode}: ${source.url}`,
     )
     .join(" | ");
-  const extra =
-    sources.length > 2 ? ` | +${sources.length - 2} weitere` : "";
+  const extra = sources.length > 2 ? ` | +${sources.length - 2} weitere` : "";
   return `${sources.length} Reservequelle${sources.length === 1 ? "" : "n"} | ${preview}${extra}`;
 }
 
@@ -1170,9 +1169,7 @@ function renderOverview() {
     const controlBot =
       runtime.controlBotEnabled && runtime.controlBotStatus !== "disabled"
         ? ` | Control-Bot: ${runtime.controlBotStatus}${
-            runtime.controlBotUserTag
-              ? ` (${runtime.controlBotUserTag})`
-              : ""
+            runtime.controlBotUserTag ? ` (${runtime.controlBotUserTag})` : ""
           }`
         : "";
     const slashInfo =
@@ -1183,8 +1180,7 @@ function renderOverview() {
               : ""
           }`
         : "";
-    els.commandInfo.textContent =
-      `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}${slashInfo}`;
+    els.commandInfo.textContent = `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}${slashInfo}`;
     const authInfo = runtime.commandAuthorIds?.length
       ? `Erlaubte User-IDs: ${runtime.commandAuthorIds.join(", ")}`
       : "Aktuell sind nur die Selfbot-Accounts freigeschaltet. Fuer den normalen Bot deine User-ID in COMMAND_ALLOWED_AUTHOR_IDS eintragen.";
@@ -1199,8 +1195,7 @@ function renderOverview() {
           runtime.lastRejectedCommandPrefix || "?"
         }`
       : "";
-    els.commandDebugInfo.textContent =
-      `${authInfo}${mentionInfo}${slashGuildInfo}${rejectionInfo}`;
+    els.commandDebugInfo.textContent = `${authInfo}${mentionInfo}${slashGuildInfo}${rejectionInfo}`;
   } else {
     els.commandInfo.textContent = "Discord-Commands deaktiviert";
     els.commandDebugInfo.textContent = "";

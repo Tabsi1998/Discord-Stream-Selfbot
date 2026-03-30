@@ -345,7 +345,10 @@ test("ControlPanelService validates fallback sources with source-mode rules", ()
     assert.throws(
       () =>
         context.service.createPreset({
-          ...createPresetInput("Fallback Test", "https://example.com/live.m3u8"),
+          ...createPresetInput(
+            "Fallback Test",
+            "https://example.com/live.m3u8",
+          ),
           fallbackSources: [
             {
               url: "https://youtu.be/example",

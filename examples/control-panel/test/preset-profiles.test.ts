@@ -23,7 +23,10 @@ test("detectSourceProfile classifies direct URLs by transport type", () => {
     detectSourceProfile("direct", "https://example.com/video.mp4"),
     "file",
   );
-  assert.equal(detectSourceProfile("yt-dlp", "https://youtu.be/example"), "yt-dlp");
+  assert.equal(
+    detectSourceProfile("yt-dlp", "https://youtu.be/example"),
+    "yt-dlp",
+  );
 });
 
 test("getRecommendedBitrates is more conservative for hls-style sources", () => {

@@ -149,7 +149,10 @@ function describeEventSource(preset: StreamPreset | undefined) {
     return "YouTube / yt-dlp";
   }
 
-  const sourceProfile = detectSourceProfile(preset.sourceMode, preset.sourceUrl);
+  const sourceProfile = detectSourceProfile(
+    preset.sourceMode,
+    preset.sourceUrl,
+  );
   switch (sourceProfile) {
     case "hls":
       return "HLS / Live-Stream";
@@ -209,7 +212,9 @@ function createDefaultQueueConfig(): QueueConfig {
   };
 }
 
-function isFallbackSourceLike(value: unknown): value is Partial<FallbackSource> {
+function isFallbackSourceLike(
+  value: unknown,
+): value is Partial<FallbackSource> {
   return !!value && typeof value === "object";
 }
 
@@ -318,7 +323,9 @@ export class ControlPanelService {
       {
         webhook: settings.webhookUrl ? "configured" : "disabled",
         dmEnabled: settings.dmEnabled ? "1" : "0",
-        activeRules: String(Object.values(settings.rules).filter(Boolean).length),
+        activeRules: String(
+          Object.values(settings.rules).filter(Boolean).length,
+        ),
       },
     );
     return settings;
@@ -647,10 +654,12 @@ export class ControlPanelService {
       preset.name = normalizedInput.name.trim();
       preset.sourceUrl = normalizedInput.sourceUrl.trim();
       preset.sourceMode = normalizedInput.sourceMode;
-      preset.fallbackSources = normalizedInput.fallbackSources.map((source) => ({
-        url: source.url.trim(),
-        sourceMode: source.sourceMode,
-      }));
+      preset.fallbackSources = normalizedInput.fallbackSources.map(
+        (source) => ({
+          url: source.url.trim(),
+          sourceMode: source.sourceMode,
+        }),
+      );
       preset.qualityProfile = normalizedInput.qualityProfile;
       preset.bufferProfile = normalizedInput.bufferProfile;
       preset.description = normalizedInput.description?.trim() ?? "";
@@ -1194,7 +1203,9 @@ export class ControlPanelService {
     assertNonEmpty(source.url, fieldName);
 
     if (source.sourceMode === "direct" && isYouTubeUrl(source.url)) {
-      throw new Error(`YouTube URLs require source mode 'yt-dlp' (${fieldName})`);
+      throw new Error(
+        `YouTube URLs require source mode 'yt-dlp' (${fieldName})`,
+      );
     }
 
     if (source.sourceMode === "yt-dlp" && !appConfig.ytDlpPath) {
@@ -1700,9 +1711,11 @@ export class ControlPanelService {
     }
     this.store.appendLog("info", "Queue gestoppt");
     if (wasActive) {
-      this.sendNotification("Queue gestoppt", "queueLifecycle", queueBotId).catch(
-        () => {},
-      );
+      this.sendNotification(
+        "Queue gestoppt",
+        "queueLifecycle",
+        queueBotId,
+      ).catch(() => {});
     }
   }
 
