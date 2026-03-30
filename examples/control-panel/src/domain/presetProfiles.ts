@@ -4,6 +4,7 @@ import type {
   QualityProfile,
   SourceMode,
   StreamPreset,
+  VideoEncoderMode,
   VideoCodec,
 } from "./types.js";
 
@@ -350,4 +351,81 @@ export function buildYtDlpFormatForPreset(
     `best[vcodec!=none][acodec!=none][height<=${quality.height}][fps<=${quality.fps}]`,
     fallbackFormat,
   ].join("/");
+}
+
+export function applyRuntimePerformanceGuardrails(
+  preset: Pick<
+    StreamPreset,
+    | "sourceMode"
+    | "width"
+    | "height"
+    | "fps"
+    | "bitrateVideoKbps"
+    | "maxBitrateVideoKbps"
+    | "bitrateAudioKbps"
+    | "videoCodec"
+  >,
+  selectedEncoderMode: VideoEncoderMode,
+) {
+  let width = preset.width;
+  let height = preset.height;
+  let fps = preset.fps;
+  let bitrateVideoKbps = preset.bitrateVideoKbps;
+  let maxBitrateVideoKbps = preset.maxBitrateVideoKbps;
+  let bitrateAudioKbps = preset.bitrateAudioKbps;
+  const warnings: string[] = [];
+
+  if (selectedEncoderMode === "software") {
+    const exceeds1080p = width > 1920 || height > 1080;
+    if (exceeds1080p) {
+      const scale = Math.min(1920 / width, 1080 / height);
+      width = Math.max(2, Math.round((width * scale) / 2) * 2);
+      height = Math.max(2, Math.round((height * scale) / 2) * 2);
+      warnings.push("High-resolution software encoding was capped to 1080p");
+    }
+
+    if (fps > 30 && (width >= 1920 || height >= 1080)) {
+      fps = 30;
+      warnings.push("Software encoding at 1080p+ was capped to 30 FPS");
+    } else if (fps > 60) {
+      fps = 60;
+      warnings.push("Frame rate was capped to 60 FPS");
+    }
+
+    if (warnings.length > 0) {
+      const recommended = getRecommendedBitrates(
+        "custom",
+        width,
+        height,
+        fps,
+        preset.videoCodec,
+      );
+      bitrateVideoKbps = Math.min(
+        bitrateVideoKbps,
+        recommended.maxBitrateVideoKbps,
+      );
+      maxBitrateVideoKbps = Math.min(
+        Math.max(maxBitrateVideoKbps, bitrateVideoKbps),
+        Math.max(
+          recommended.maxBitrateVideoKbps,
+          recommended.bitrateVideoKbps,
+        ),
+      );
+      bitrateAudioKbps = Math.min(bitrateAudioKbps, recommended.bitrateAudioKbps);
+    }
+  }
+
+  if (preset.sourceMode === "yt-dlp" && fps >= 60 && selectedEncoderMode === "software") {
+    warnings.push("yt-dlp live sources at 60 FPS can require a hardware encoder");
+  }
+
+  return {
+    width,
+    height,
+    fps,
+    bitrateVideoKbps,
+    maxBitrateVideoKbps: Math.max(maxBitrateVideoKbps, bitrateVideoKbps),
+    bitrateAudioKbps,
+    warnings,
+  };
 }

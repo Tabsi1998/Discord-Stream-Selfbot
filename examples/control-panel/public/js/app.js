@@ -475,11 +475,24 @@ function updatePresetQualityHint() {
   const currentVideoMax = parsePositiveNumber(els.presetBitrateVideoMax.value, 0);
   const currentAudio = parsePositiveNumber(els.presetBitrateAudio.value, 0);
   const includeAudio = els.presetIncludeAudio.checked;
+  const width = parsePositiveNumber(els.presetWidth.value, recommendation.width);
+  const height = parsePositiveNumber(els.presetHeight.value, recommendation.height);
+  const fps = parsePositiveNumber(els.presetFps.value, recommendation.fps);
+  const softwareHighLoad =
+    !els.presetHardwareAcceleration.checked &&
+    (height > 1080 || width > 1920 || ((height >= 1080 || width >= 1920) && fps > 30));
 
   const belowRecommendation =
     currentVideo < recommendation.video
     || currentVideoMax < recommendation.videoMax
     || (includeAudio && currentAudio < recommendation.audio);
+
+  if (softwareHighLoad) {
+    els.presetQualityHint.dataset.tone = "warn";
+    els.presetQualityHint.textContent =
+      "Ohne Hardware-Beschleunigung werden 1440p/4K oder 1080p60 zur Laufzeit auf sicherere Werte begrenzt, damit der Stream nicht ins Ruckeln faellt.";
+    return;
+  }
 
   els.presetQualityHint.dataset.tone = belowRecommendation ? "warn" : "success";
   els.presetQualityHint.textContent = belowRecommendation

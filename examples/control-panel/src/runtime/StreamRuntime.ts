@@ -18,7 +18,10 @@ import {
   buildManagedSelfbotState,
   type SelfbotProfileConfig,
 } from "../config/selfbotConfig.js";
-import { resolveRuntimePresetConfig } from "../domain/presetProfiles.js";
+import {
+  applyRuntimePerformanceGuardrails,
+  resolveRuntimePresetConfig,
+} from "../domain/presetProfiles.js";
 import type {
   ActiveRun,
   ChannelDefinition,
@@ -76,6 +79,14 @@ type ActiveSession = {
   run: ActiveRun;
   channel: ChannelDefinition;
   preset: StreamPreset;
+  selectedEncoderMode: VideoEncoderMode;
+  effectiveWidth: number;
+  effectiveHeight: number;
+  effectiveFps: number;
+  lagTelemetrySamples: number;
+  lowFpsTelemetrySamples: number;
+  lagWarningIssued: boolean;
+  dropWarningIssued: boolean;
   controller: AbortController;
   stopReason?: string;
   closed: boolean;
@@ -334,11 +345,33 @@ export class StreamRuntime extends EventEmitter {
     });
 
     const controller = new AbortController();
+    const resolvedEncoder = this.resolveVideoEncoder(options.preset);
+    const guardedPreset = applyRuntimePerformanceGuardrails(
+      options.preset,
+      resolvedEncoder.mode,
+    );
+    const resolvedPreset = resolveRuntimePresetConfig({
+      ...options.preset,
+      width: guardedPreset.width,
+      height: guardedPreset.height,
+      fps: guardedPreset.fps,
+      bitrateVideoKbps: guardedPreset.bitrateVideoKbps,
+      maxBitrateVideoKbps: guardedPreset.maxBitrateVideoKbps,
+      bitrateAudioKbps: guardedPreset.bitrateAudioKbps,
+    });
     const session: ActiveSession = {
       botId: bot.profile.id,
       run,
       channel: options.channel,
       preset: options.preset,
+      selectedEncoderMode: resolvedEncoder.mode,
+      effectiveWidth: guardedPreset.width,
+      effectiveHeight: guardedPreset.height,
+      effectiveFps: guardedPreset.fps,
+      lagTelemetrySamples: 0,
+      lowFpsTelemetrySamples: 0,
+      lagWarningIssued: false,
+      dropWarningIssued: false,
       controller,
       closed: false,
     };
@@ -353,8 +386,6 @@ export class StreamRuntime extends EventEmitter {
     let command: ReturnType<typeof prepareStream>["command"];
     let output: ReturnType<typeof prepareStream>["output"];
     let waitForStartup: Promise<void> | undefined;
-    const resolvedPreset = resolveRuntimePresetConfig(options.preset);
-    const resolvedEncoder = this.resolveVideoEncoder(options.preset);
     let presenceContext: PresenceTemplateContext = {
       botId: bot.profile.id,
       botName: bot.profile.name,
@@ -389,6 +420,9 @@ export class StreamRuntime extends EventEmitter {
           ? "true"
           : "false",
         encoder: resolvedEncoder.mode,
+        width: String(guardedPreset.width),
+        height: String(guardedPreset.height),
+        fps: String(guardedPreset.fps),
         qualityProfile: resolvedPreset.qualityProfile,
         bufferProfile: resolvedPreset.effectiveBufferProfile,
       });
@@ -403,6 +437,19 @@ export class StreamRuntime extends EventEmitter {
         });
       }
 
+      for (const warning of guardedPreset.warnings) {
+        this.store.appendLog("warn", "Runtime performance guardrail applied", {
+          botId: bot.profile.id,
+          botName: bot.profile.name,
+          preset: options.preset.name,
+          warning,
+          width: String(guardedPreset.width),
+          height: String(guardedPreset.height),
+          fps: String(guardedPreset.fps),
+          encoder: resolvedEncoder.mode,
+        });
+      }
+
       this.store.setRuntime((runtime) => {
         runtime.selectedVideoEncoder = resolvedEncoder.mode;
         runtime.telemetry = {
@@ -414,12 +461,12 @@ export class StreamRuntime extends EventEmitter {
         resolvedSource.input,
         {
           includeAudio: options.preset.includeAudio,
-          width: resolvedPreset.preserveSource ? undefined : options.preset.width,
-          height: resolvedPreset.preserveSource ? undefined : options.preset.height,
-          frameRate: resolvedPreset.preserveSource ? undefined : options.preset.fps,
-          bitrateVideo: options.preset.bitrateVideoKbps,
-          bitrateVideoMax: options.preset.maxBitrateVideoKbps,
-          bitrateAudio: options.preset.bitrateAudioKbps,
+          width: resolvedPreset.preserveSource ? undefined : guardedPreset.width,
+          height: resolvedPreset.preserveSource ? undefined : guardedPreset.height,
+          frameRate: resolvedPreset.preserveSource ? undefined : guardedPreset.fps,
+          bitrateVideo: guardedPreset.bitrateVideoKbps,
+          bitrateVideoMax: guardedPreset.maxBitrateVideoKbps,
+          bitrateAudio: guardedPreset.bitrateAudioKbps,
           encoder: resolvedEncoder.encoder,
           hardwareAcceleratedDecoding: options.preset.hardwareAcceleration,
           minimizeLatency: resolvedPreset.minimizeLatency,
@@ -939,6 +986,67 @@ export class StreamRuntime extends EventEmitter {
     return available[0];
   }
 
+  private evaluatePerformance(
+    session: ActiveSession,
+    telemetry: StreamTelemetry,
+  ) {
+    if (this.activeSession !== session || session.closed) return;
+
+    const speed = telemetry.speed;
+    const fps = telemetry.fps;
+    const dropFrames = telemetry.dropFrames ?? 0;
+    const targetFps = session.effectiveFps;
+
+    if (typeof speed === "number" && speed < 0.95) {
+      session.lagTelemetrySamples += 1;
+    } else {
+      session.lagTelemetrySamples = 0;
+    }
+
+    if (
+      typeof fps === "number" &&
+      targetFps > 0 &&
+      fps < Math.max(targetFps * 0.82, 20)
+    ) {
+      session.lowFpsTelemetrySamples += 1;
+    } else {
+      session.lowFpsTelemetrySamples = 0;
+    }
+
+    if (
+      !session.lagWarningIssued &&
+      (session.lagTelemetrySamples >= 3 || session.lowFpsTelemetrySamples >= 3)
+    ) {
+      session.lagWarningIssued = true;
+      this.store.appendLog("warn", "Encoder is falling behind realtime", {
+        botId: session.botId,
+        botName: session.run.botName,
+        channel: session.channel.name,
+        preset: session.preset.name,
+        encoder: session.selectedEncoderMode,
+        speed: typeof speed === "number" ? speed.toFixed(2) : "",
+        fps: typeof fps === "number" ? fps.toFixed(1) : "",
+        targetFps: String(targetFps),
+        hint:
+          session.selectedEncoderMode === "software"
+            ? "Use hardware acceleration or lower the preset"
+            : "Lower the preset or bitrate if the source remains unstable",
+      });
+    }
+
+    if (!session.dropWarningIssued && dropFrames >= 20) {
+      session.dropWarningIssued = true;
+      this.store.appendLog("warn", "Dropped video frames detected", {
+        botId: session.botId,
+        botName: session.run.botName,
+        channel: session.channel.name,
+        preset: session.preset.name,
+        encoder: session.selectedEncoderMode,
+        dropped: String(dropFrames),
+      });
+    }
+  }
+
   private attachFfmpegTelemetry(
     session: ActiveSession,
     command: ReturnType<typeof prepareStream>["command"],
@@ -985,14 +1093,18 @@ export class StreamRuntime extends EventEmitter {
           break;
         case "progress":
           if (value === "continue" || value === "end") {
+            const telemetrySnapshot = {
+              ...sample,
+              updatedAt: new Date().toISOString(),
+            };
             this.store.setRuntime((runtime) => {
               if (this.activeSession !== session || !runtime.activeRun) return;
               runtime.telemetry = {
                 ...runtime.telemetry,
-                ...sample,
-                updatedAt: new Date().toISOString(),
+                ...telemetrySnapshot,
               };
             });
+            this.evaluatePerformance(session, telemetrySnapshot);
           }
           break;
         default:
