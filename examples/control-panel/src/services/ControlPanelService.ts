@@ -1000,6 +1000,7 @@ export class ControlPanelService {
     const preset: StreamPreset = {
       id: `adhoc-preset-${randomUUID()}`,
       ...normalizedPreset,
+      description: normalizedPreset.description?.trim() ?? "",
       createdAt: timestamp,
       updatedAt: timestamp,
     };
