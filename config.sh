@@ -32,8 +32,10 @@ print_error()   { echo -e "  ${RED}✗${NC} $1" >&2; }
 set_env_value() {
   local key="$1"
   local value="$2"
+  local escaped_value
+  escaped_value=$(printf '%s' "$value" | sed 's/[&|]/\\&/g')
   if grep -q "^${key}=" "$ENV_FILE"; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    sed -i "s|^${key}=.*|${key}=${escaped_value}|" "$ENV_FILE"
   else
     printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
   fi
@@ -49,6 +51,34 @@ ask() {
     printf "  ${BOLD}%s${NC}: " "$label" >&2
   fi
   read -r answer
+  [ -z "$answer" ] && answer="$default"
+  printf '%s' "$answer"
+}
+
+mask_secret() {
+  local value="$1"
+  if [ -z "$value" ]; then
+    printf ''
+  elif [ "${#value}" -le 6 ]; then
+    printf 'gesetzt'
+  else
+    printf '%s...%s' "${value:0:4}" "${value: -2}"
+  fi
+}
+
+ask_secret() {
+  local label="$1"
+  local default="$2"
+  local answer
+  local masked_default
+  masked_default=$(mask_secret "$default")
+  if [ -n "$masked_default" ]; then
+    printf "  ${BOLD}%s${NC} ${DIM}[%s]${NC}: " "$label" "$masked_default" >&2
+  else
+    printf "  ${BOLD}%s${NC}: " "$label" >&2
+  fi
+  IFS= read -r -s answer
+  echo "" >&2
   [ -z "$answer" ] && answer="$default"
   printf '%s' "$answer"
 }
@@ -71,6 +101,23 @@ ask_yn() {
 read_env() {
   local key="$1"
   [ -f "$ENV_FILE" ] && grep -m1 "^${key}=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- || true
+}
+
+validate_panel_auth() {
+  local enabled="$1"
+  local username="$2"
+  local password="$3"
+  if [ "$enabled" != "1" ]; then
+    return 0
+  fi
+  if [ -z "$username" ]; then
+    print_error "Panel Benutzername ist erforderlich, wenn der Login aktiviert ist"
+    exit 1
+  fi
+  if [ -z "$password" ]; then
+    print_error "Panel Passwort ist erforderlich, wenn der Login aktiviert ist"
+    exit 1
+  fi
 }
 
 # ══════════════════════════════════════════════════════════════════
@@ -100,11 +147,14 @@ CUR_YTDLP_PACKAGE=$(read_env "YT_DLP_PACKAGE")
 CUR_YTDLP=$(read_env "YT_DLP_FORMAT")
 CUR_POLL=$(read_env "SCHEDULER_POLL_MS")
 CUR_TIMEOUT=$(read_env "STARTUP_TIMEOUT_MS")
+CUR_PANEL_AUTH=$(read_env "PANEL_AUTH_ENABLED")
+CUR_PANEL_USER=$(read_env "PANEL_AUTH_USERNAME")
+CUR_PANEL_PASSWORD=$(read_env "PANEL_AUTH_PASSWORD")
 
 echo "" >&2
 echo -e "  ${BOLD}Aktuelle Konfiguration:${NC}" >&2
 echo -e "  ${DIM}─────────────────────────────────────────────${NC}" >&2
-echo -e "  ${DIM}1)${NC} Discord Token:     ${CUR_TOKEN:0:8}...${CUR_TOKEN: -4}" >&2
+echo -e "  ${DIM}1)${NC} Discord Token:     $(mask_secret "$CUR_TOKEN")" >&2
 echo -e "  ${DIM}2)${NC} Zeitzone:          $CUR_TZ" >&2
 echo -e "  ${DIM}3)${NC} Chat-Befehle:      $([ "$CUR_CMD" = "1" ] && echo "Aktiv ($CUR_PREFIX)" || echo "Aus")" >&2
 echo -e "  ${DIM}4)${NC} Erlaubte User-IDs: ${CUR_IDS:-nur du selbst}" >&2
@@ -112,6 +162,7 @@ echo -e "  ${DIM}5)${NC} yt-dlp Cookies:    ${CUR_YTDLP_BROWSER:-${CUR_YTDLP_COO
 echo -e "  ${DIM}6)${NC} yt-dlp Paket:     ${CUR_YTDLP_PACKAGE:-yt-dlp[default]}" >&2
 echo -e "  ${DIM}7)${NC} yt-dlp Format:     ${CUR_YTDLP:0:40}..." >&2
 echo -e "  ${DIM}8)${NC} Scheduler:         Poll ${CUR_POLL}ms / Timeout ${CUR_TIMEOUT}ms" >&2
+echo -e "  ${DIM}9)${NC} Panel Login:       $([ "$CUR_PANEL_AUTH" = "1" ] && echo "Aktiv (${CUR_PANEL_USER:-unbekannt})" || echo "Aus")" >&2
 echo "" >&2
 echo -e "  ${BOLD}Was aendern?${NC}" >&2
 echo "" >&2
@@ -119,6 +170,7 @@ echo -e "  ${CYAN}1${NC} - Discord Token       ${CYAN}4${NC} - Erlaubte User-IDs
 echo -e "  ${CYAN}2${NC} - Zeitzone            ${CYAN}5${NC} - yt-dlp Cookies" >&2
 echo -e "  ${CYAN}3${NC} - Chat-Befehle        ${CYAN}6${NC} - yt-dlp Paket" >&2
 echo -e "  ${CYAN}7${NC} - yt-dlp Format       ${CYAN}8${NC} - Scheduler" >&2
+echo -e "  ${CYAN}9${NC} - Web-Panel Login" >&2
 echo -e "  ${CYAN}a${NC} - Alles               ${CYAN}q${NC} - Abbrechen" >&2
 echo "" >&2
 printf "  ${BOLD}Auswahl${NC}: " >&2
@@ -129,7 +181,7 @@ cp "$ENV_FILE" "$ENV_BACKUP"
 
 case "$CHOICE" in
   1)
-    NEW_TOKEN=$(ask "Neuer Discord Token" "$CUR_TOKEN")
+    NEW_TOKEN=$(ask_secret "Neuer Discord Token" "$CUR_TOKEN")
     set_env_value "DISCORD_TOKEN" "$NEW_TOKEN"
     print_success "Token aktualisiert"
     ;;
@@ -175,25 +227,52 @@ case "$CHOICE" in
     set_env_value "STARTUP_TIMEOUT_MS" "$NEW_TIMEOUT"
     print_success "Scheduler aktualisiert"
     ;;
+  9)
+    PANEL_DEF="n"; [ "$CUR_PANEL_AUTH" = "1" ] && PANEL_DEF="y"
+    NEW_PANEL_AUTH=$(ask_yn "Web-Panel mit Login absichern?" "$PANEL_DEF")
+    NEW_PANEL_USER=""
+    NEW_PANEL_PASSWORD=""
+    if [ "$NEW_PANEL_AUTH" = "1" ]; then
+      NEW_PANEL_USER=$(ask "Panel Benutzername" "${CUR_PANEL_USER:-admin}")
+      NEW_PANEL_PASSWORD=$(ask_secret "Panel Passwort" "$CUR_PANEL_PASSWORD")
+    fi
+    validate_panel_auth "$NEW_PANEL_AUTH" "$NEW_PANEL_USER" "$NEW_PANEL_PASSWORD"
+    set_env_value "PANEL_AUTH_ENABLED" "$NEW_PANEL_AUTH"
+    set_env_value "PANEL_AUTH_USERNAME" "$NEW_PANEL_USER"
+    set_env_value "PANEL_AUTH_PASSWORD" "$NEW_PANEL_PASSWORD"
+    print_success "Panel Login aktualisiert"
+    ;;
   a|A)
     echo "" >&2
-    NEW_TOKEN=$(ask "Discord Token" "$CUR_TOKEN")
+    NEW_TOKEN=$(ask_secret "Discord Token" "$CUR_TOKEN")
     NEW_TZ=$(ask "Zeitzone" "$CUR_TZ")
     CMD_DEF="y"; [ "$CUR_CMD" = "0" ] && CMD_DEF="n"
     NEW_CMD=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEF")
     NEW_PREFIX=$(ask "Prefix" "$CUR_PREFIX")
     NEW_IDS=$(ask "Erlaubte User-IDs" "$CUR_IDS")
+    PANEL_DEF="n"; [ "$CUR_PANEL_AUTH" = "1" ] && PANEL_DEF="y"
+    NEW_PANEL_AUTH=$(ask_yn "Web-Panel mit Login absichern?" "$PANEL_DEF")
+    NEW_PANEL_USER=""
+    NEW_PANEL_PASSWORD=""
+    if [ "$NEW_PANEL_AUTH" = "1" ]; then
+      NEW_PANEL_USER=$(ask "Panel Benutzername" "${CUR_PANEL_USER:-admin}")
+      NEW_PANEL_PASSWORD=$(ask_secret "Panel Passwort" "$CUR_PANEL_PASSWORD")
+    fi
     NEW_BROWSER=$(ask "yt-dlp Browser-Cookies (optional)" "$CUR_YTDLP_BROWSER")
     NEW_COOKIE_FILE=$(ask "yt-dlp Cookie-Datei (optional)" "$CUR_YTDLP_COOKIE_FILE")
     NEW_YTDLP_PACKAGE=$(ask "yt-dlp Paket/Spec" "${CUR_YTDLP_PACKAGE:-yt-dlp[default]}")
     NEW_YTDLP=$(ask "yt-dlp Format" "$CUR_YTDLP")
     NEW_POLL=$(ask "Scheduler Poll (ms)" "$CUR_POLL")
     NEW_TIMEOUT=$(ask "Startup Timeout (ms)" "$CUR_TIMEOUT")
+    validate_panel_auth "$NEW_PANEL_AUTH" "$NEW_PANEL_USER" "$NEW_PANEL_PASSWORD"
     set_env_value "DISCORD_TOKEN" "$NEW_TOKEN"
     set_env_value "TZ" "$NEW_TZ"
     set_env_value "DISCORD_COMMANDS_ENABLED" "$NEW_CMD"
     set_env_value "COMMAND_PREFIX" "$NEW_PREFIX"
     set_env_value "COMMAND_ALLOWED_AUTHOR_IDS" "$NEW_IDS"
+    set_env_value "PANEL_AUTH_ENABLED" "$NEW_PANEL_AUTH"
+    set_env_value "PANEL_AUTH_USERNAME" "$NEW_PANEL_USER"
+    set_env_value "PANEL_AUTH_PASSWORD" "$NEW_PANEL_PASSWORD"
     set_env_value "YT_DLP_COOKIES_FROM_BROWSER" "$NEW_BROWSER"
     set_env_value "YT_DLP_COOKIES_FILE" "$NEW_COOKIE_FILE"
     set_env_value "YT_DLP_PACKAGE" "$NEW_YTDLP_PACKAGE"

@@ -3,6 +3,7 @@ import express, {
   type Request,
   type Response,
 } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { appConfig } from "../config/appConfig.js";
@@ -27,10 +28,80 @@ function asyncRoute(handler: AsyncRoute) {
   };
 }
 
+function safeEquals(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function decodeBasicAuthHeader(value: string | undefined) {
+  if (!value?.startsWith("Basic ")) {
+    return undefined;
+  }
+
+  try {
+    const decoded = Buffer.from(value.slice("Basic ".length), "base64")
+      .toString("utf-8");
+    const separatorIndex = decoded.indexOf(":");
+    if (separatorIndex < 0) {
+      return undefined;
+    }
+    return {
+      username: decoded.slice(0, separatorIndex),
+      password: decoded.slice(separatorIndex + 1),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function rejectUnauthorized(res: Response) {
+  res.setHeader(
+    "WWW-Authenticate",
+    `Basic realm="${appConfig.panelAuthRealm.replaceAll('"', "")}"`,
+  );
+  res.status(401).json({ error: "Authentication required" });
+}
+
+function panelAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!appConfig.panelAuthEnabled) {
+    next();
+    return;
+  }
+
+  const credentials = decodeBasicAuthHeader(req.headers.authorization);
+  const username = appConfig.panelAuthUsername;
+  const password = appConfig.panelAuthPassword;
+  if (
+    !credentials ||
+    !username ||
+    !password ||
+    !safeEquals(credentials.username, username) ||
+    !safeEquals(credentials.password, password)
+  ) {
+    rejectUnauthorized(res);
+    return;
+  }
+
+  next();
+}
+
 export function createServer(service: ControlPanelService) {
   const app = express();
 
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      ok: true,
+      authEnabled: appConfig.panelAuthEnabled,
+      discordStatus: service.snapshot().runtime.discordStatus,
+    });
+  });
+
   app.use(express.json({ limit: "1mb" }));
+  app.use(panelAuthMiddleware);
   app.use(express.static(appConfig.publicDir));
 
   app.get(
@@ -45,6 +116,21 @@ export function createServer(service: ControlPanelService) {
 
   app.get("/api/state", (_req, res) => {
     res.json(service.snapshot());
+  });
+
+  app.get("/api/logs", (req, res) => {
+    const limitRaw =
+      typeof req.query.limit === "string"
+        ? Number.parseInt(req.query.limit, 10)
+        : Number.NaN;
+    const limit = Number.isInteger(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 200)
+      : 50;
+    res.json({ items: service.snapshot().logs.slice(0, limit) });
+  });
+
+  app.get("/api/channels", (_req, res) => {
+    res.json(service.snapshot().channels);
   });
 
   app.get(
@@ -68,6 +154,10 @@ export function createServer(service: ControlPanelService) {
     res.status(204).send();
   });
 
+  app.get("/api/presets", (_req, res) => {
+    res.json(service.snapshot().presets);
+  });
+
   app.post("/api/presets", (req, res) => {
     res.status(201).json(service.createPreset(req.body));
   });
@@ -79,6 +169,10 @@ export function createServer(service: ControlPanelService) {
   app.delete("/api/presets/:id", (req, res) => {
     service.deletePreset(req.params.id);
     res.status(204).send();
+  });
+
+  app.get("/api/events", (_req, res) => {
+    res.json(service.snapshot().events);
   });
 
   app.post("/api/events", (req, res) => {

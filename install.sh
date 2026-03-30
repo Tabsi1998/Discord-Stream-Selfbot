@@ -37,6 +37,10 @@ DEFAULT_YT_DLP_PACKAGE='yt-dlp[default]'
 DEFAULT_YT_DLP_FORMAT='bestvideo[vcodec!=none]+bestaudio[acodec!=none]/best[vcodec!=none][acodec!=none]/best*[vcodec!=none][acodec!=none]/best'
 DEFAULT_SCHEDULER_POLL_MS=1000
 DEFAULT_STARTUP_TIMEOUT_MS=15000
+DEFAULT_PANEL_AUTH_USERNAME='admin'
+DEFAULT_PANEL_AUTH_REALM='Stream Bot'
+DEFAULT_PREFERRED_HW_ENCODER='auto'
+DEFAULT_FFMPEG_LOG_LEVEL='warning'
 
 # ── Helper ──────────────────────────────────────────────────────
 print_step() {
@@ -61,6 +65,37 @@ ask() {
     printf "  ${BOLD}%s${NC}: " "$label" >&2
   fi
   read -r answer
+  if [ -z "$answer" ]; then
+    answer="$default"
+  fi
+  printf '%s' "$answer"
+}
+
+mask_secret() {
+  local value="$1"
+  if [ -z "$value" ]; then
+    printf ''
+  elif [ "${#value}" -le 6 ]; then
+    printf 'gesetzt'
+  else
+    printf '%s...%s' "${value:0:4}" "${value: -2}"
+  fi
+}
+
+ask_secret() {
+  local label="$1"
+  local default="$2"
+  local answer
+  local masked_default
+
+  masked_default=$(mask_secret "$default")
+  if [ -n "$masked_default" ]; then
+    printf "  ${BOLD}%s${NC} ${DIM}[%s]${NC}: " "$label" "$masked_default" >&2
+  else
+    printf "  ${BOLD}%s${NC}: " "$label" >&2
+  fi
+  IFS= read -r -s answer
+  echo "" >&2
   if [ -z "$answer" ]; then
     answer="$default"
   fi
@@ -109,6 +144,23 @@ get_or_default() {
 check_number() {
   if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
     print_error "$1 muss eine positive Zahl sein (eingegeben: $2)"
+    exit 1
+  fi
+}
+
+validate_panel_auth() {
+  local enabled="$1"
+  local username="$2"
+  local password="$3"
+  if [ "$enabled" != "1" ]; then
+    return 0
+  fi
+  if [ -z "$username" ]; then
+    print_error "Panel Benutzername ist erforderlich, wenn der Login aktiviert ist"
+    exit 1
+  fi
+  if [ -z "$password" ]; then
+    print_error "Panel Passwort ist erforderlich, wenn der Login aktiviert ist"
     exit 1
   fi
 }
@@ -187,8 +239,7 @@ echo "" >&2
 
 CURRENT_TOKEN=$(read_env "DISCORD_TOKEN")
 
-# Token SICHTBAR eingeben
-CONF_TOKEN=$(ask "Discord Self-Token" "$CURRENT_TOKEN")
+CONF_TOKEN=$(ask_secret "Discord Self-Token" "$CURRENT_TOKEN")
 
 if [ -z "$CONF_TOKEN" ]; then
   print_error "Discord Token ist erforderlich!"
@@ -221,6 +272,19 @@ CMD_DEFAULT="y"
 CONF_COMMANDS_ENABLED=$(ask_yn "Chat-Befehle aktivieren?" "$CMD_DEFAULT")
 CONF_PREFIX=$(ask "Befehl-Prefix" "$(get_or_default COMMAND_PREFIX "$DEFAULT_COMMAND_PREFIX")")
 echo "" >&2
+print_info "Optional: Login-Schutz fuer das Web Panel per HTTP Basic Auth"
+CURRENT_PANEL_AUTH=$(read_env "PANEL_AUTH_ENABLED")
+PANEL_AUTH_DEFAULT="n"
+[ "$CURRENT_PANEL_AUTH" = "1" ] && PANEL_AUTH_DEFAULT="y"
+CONF_PANEL_AUTH_ENABLED=$(ask_yn "Web-Panel mit Login absichern?" "$PANEL_AUTH_DEFAULT")
+CONF_PANEL_AUTH_USERNAME=""
+CONF_PANEL_AUTH_PASSWORD=""
+if [ "$CONF_PANEL_AUTH_ENABLED" = "1" ]; then
+  CONF_PANEL_AUTH_USERNAME=$(ask "Panel Benutzername" "$(get_or_default PANEL_AUTH_USERNAME "$DEFAULT_PANEL_AUTH_USERNAME")")
+  CONF_PANEL_AUTH_PASSWORD=$(ask_secret "Panel Passwort" "$(get_or_default PANEL_AUTH_PASSWORD "")")
+fi
+validate_panel_auth "$CONF_PANEL_AUTH_ENABLED" "$CONF_PANEL_AUTH_USERNAME" "$CONF_PANEL_AUTH_PASSWORD"
+echo "" >&2
 print_info "Optional: yt-dlp Cookies helfen gegen YouTube-Bot-Checks"
 print_info "  Browser: z.B. edge oder chrome:Default"
 print_info "  Docker Cookie-Datei: z.B. /app/examples/control-panel/cookies/yt-dlp-cookies.txt"
@@ -233,11 +297,12 @@ print_step 4 4 "Zusammenfassung"
 echo "" >&2
 echo -e "  ${BOLD}Deine Konfiguration:${NC}" >&2
 echo "" >&2
-echo -e "  ${DIM}Discord Token:${NC}     ${CONF_TOKEN:0:12}...${CONF_TOKEN: -4}" >&2
+echo -e "  ${DIM}Discord Token:${NC}     $(mask_secret "$CONF_TOKEN")" >&2
 echo -e "  ${DIM}Erlaubte IDs:${NC}      ${CONF_ALLOWED_IDS:-nur du selbst}" >&2
 echo -e "  ${DIM}Web Panel Port:${NC}    $FIXED_HOST_PORT (fest)" >&2
 echo -e "  ${DIM}Zeitzone:${NC}          $CONF_TZ" >&2
 echo -e "  ${DIM}Chat-Befehle:${NC}      $([ "$CONF_COMMANDS_ENABLED" = "1" ] && echo "Aktiv ($CONF_PREFIX)" || echo "Aus")" >&2
+echo -e "  ${DIM}Panel Login:${NC}       $([ "$CONF_PANEL_AUTH_ENABLED" = "1" ] && echo "Aktiv (${CONF_PANEL_AUTH_USERNAME})" || echo "Aus")" >&2
 echo -e "  ${DIM}yt-dlp Cookies:${NC}    ${CONF_YT_DLP_COOKIES_BROWSER:-${CONF_YT_DLP_COOKIES_FILE:-keine}}" >&2
 echo "" >&2
 
@@ -264,6 +329,9 @@ CONF_YT_DLP_FORMAT=$(get_or_default YT_DLP_FORMAT "$DEFAULT_YT_DLP_FORMAT")
 CONF_YT_DLP_PACKAGE=$(get_or_default YT_DLP_PACKAGE "$DEFAULT_YT_DLP_PACKAGE")
 CONF_SCHEDULER_POLL=$(get_or_default SCHEDULER_POLL_MS "$DEFAULT_SCHEDULER_POLL_MS")
 CONF_STARTUP_TIMEOUT=$(get_or_default STARTUP_TIMEOUT_MS "$DEFAULT_STARTUP_TIMEOUT_MS")
+CONF_PANEL_AUTH_REALM=$(get_or_default PANEL_AUTH_REALM "$DEFAULT_PANEL_AUTH_REALM")
+CONF_PREFERRED_HW_ENCODER=$(get_or_default PREFERRED_HW_ENCODER "$DEFAULT_PREFERRED_HW_ENCODER")
+CONF_FFMPEG_LOG_LEVEL=$(get_or_default FFMPEG_LOG_LEVEL "$DEFAULT_FFMPEG_LOG_LEVEL")
 
 umask 077
 cat > "$ENV_FILE" << ENVEOF
@@ -277,10 +345,16 @@ DATA_FILE=/app/examples/control-panel/data/control-panel-state.json
 DISCORD_COMMANDS_ENABLED=$CONF_COMMANDS_ENABLED
 COMMAND_PREFIX=$CONF_PREFIX
 COMMAND_ALLOWED_AUTHOR_IDS=$CONF_ALLOWED_IDS
+PANEL_AUTH_ENABLED=$CONF_PANEL_AUTH_ENABLED
+PANEL_AUTH_USERNAME=$CONF_PANEL_AUTH_USERNAME
+PANEL_AUTH_PASSWORD=$CONF_PANEL_AUTH_PASSWORD
+PANEL_AUTH_REALM=$CONF_PANEL_AUTH_REALM
 YT_DLP_COOKIES_FROM_BROWSER=$CONF_YT_DLP_COOKIES_BROWSER
 YT_DLP_COOKIES_FILE=$CONF_YT_DLP_COOKIES_FILE
 YT_DLP_PACKAGE=$CONF_YT_DLP_PACKAGE
 YT_DLP_FORMAT=$CONF_YT_DLP_FORMAT
+PREFERRED_HW_ENCODER=$CONF_PREFERRED_HW_ENCODER
+FFMPEG_LOG_LEVEL=$CONF_FFMPEG_LOG_LEVEL
 SCHEDULER_POLL_MS=$CONF_SCHEDULER_POLL
 STARTUP_TIMEOUT_MS=$CONF_STARTUP_TIMEOUT
 ENVEOF

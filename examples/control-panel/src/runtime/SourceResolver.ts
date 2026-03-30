@@ -29,7 +29,7 @@ export type ResolvedSource = {
   sourceMode: SourceMode;
   resolvedTitle?: string;
   isLive?: boolean;
-  resolverKind: "yt-dlp";
+  resolverKind: "direct" | "yt-dlp";
 };
 
 const YOUTUBE_HOSTS = new Set([
@@ -129,7 +129,7 @@ export class SourceResolver {
         input: preset.sourceUrl,
         inputUrl: preset.sourceUrl,
         sourceMode: preset.sourceMode,
-        resolverKind: "yt-dlp",
+        resolverKind: "direct",
       };
     }
 

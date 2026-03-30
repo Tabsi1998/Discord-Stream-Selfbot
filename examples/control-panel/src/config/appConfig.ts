@@ -83,6 +83,14 @@ function parsePositiveIntegerEnv(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parseBooleanEnv(value: string | undefined, fallback = false) {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 function normalizeOptionalEnv(value: string | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
@@ -91,6 +99,87 @@ function normalizeOptionalEnv(value: string | undefined) {
 function resolveOptionalPath(value: string | undefined, baseDir: string) {
   if (!value) return undefined;
   return isAbsolute(value) ? value : resolve(baseDir, value);
+}
+
+type HardwareEncoder = "nvenc" | "vaapi";
+type PreferredHardwareEncoder = "auto" | HardwareEncoder;
+type FfmpegLogLevel =
+  | "quiet"
+  | "panic"
+  | "fatal"
+  | "error"
+  | "warning"
+  | "info"
+  | "verbose"
+  | "debug"
+  | "trace";
+
+function parsePreferredHardwareEncoder(
+  value: string | undefined,
+): PreferredHardwareEncoder {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "nvenc" || normalized === "vaapi") {
+    return normalized;
+  }
+  return "auto";
+}
+
+function parseFfmpegLogLevel(
+  value: string | undefined,
+): FfmpegLogLevel {
+  const normalized = value?.trim().toLowerCase();
+  switch (normalized) {
+    case "quiet":
+    case "panic":
+    case "fatal":
+    case "error":
+    case "warning":
+    case "info":
+    case "verbose":
+    case "debug":
+    case "trace":
+      return normalized;
+    default:
+      return "warning";
+  }
+}
+
+function detectHardwareEncoders(
+  commandPath: string | undefined,
+  vaapiDevice: string,
+): HardwareEncoder[] {
+  if (!commandPath) return [];
+
+  const result = spawnSync(commandPath, ["-hide_banner", "-encoders"], {
+    encoding: "utf-8",
+    shell: false,
+  });
+
+  if (result.status !== 0) {
+    return [];
+  }
+
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  const detected: HardwareEncoder[] = [];
+
+  if (
+    /\bh264_nvenc\b/i.test(output) ||
+    /\bhevc_nvenc\b/i.test(output) ||
+    /\bav1_nvenc\b/i.test(output)
+  ) {
+    detected.push("nvenc");
+  }
+
+  if (
+    existsSync(vaapiDevice) &&
+    (/\bh264_vaapi\b/i.test(output) ||
+      /\bhevc_vaapi\b/i.test(output) ||
+      /\bav1_vaapi\b/i.test(output))
+  ) {
+    detected.push("vaapi");
+  }
+
+  return detected;
 }
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -110,6 +199,30 @@ const ytDlpCookiesFile = resolveOptionalPath(
 const ytDlpCookiesFromBrowser = normalizeOptionalEnv(
   process.env.YT_DLP_COOKIES_FROM_BROWSER,
 );
+const panelAuthUsername = normalizeOptionalEnv(process.env.PANEL_AUTH_USERNAME);
+const panelAuthPassword = normalizeOptionalEnv(process.env.PANEL_AUTH_PASSWORD);
+const panelAuthEnabled = parseBooleanEnv(
+  process.env.PANEL_AUTH_ENABLED,
+  !!panelAuthUsername || !!panelAuthPassword,
+);
+if (panelAuthEnabled && (!panelAuthUsername || !panelAuthPassword)) {
+  throw new Error(
+    "PANEL_AUTH_ENABLED requires both PANEL_AUTH_USERNAME and PANEL_AUTH_PASSWORD",
+  );
+}
+const panelAuthRealm =
+  normalizeOptionalEnv(process.env.PANEL_AUTH_REALM) ?? "Stream Bot";
+const preferredHardwareEncoder = parsePreferredHardwareEncoder(
+  process.env.PREFERRED_HW_ENCODER,
+);
+const vaapiDevice =
+  normalizeOptionalEnv(process.env.FFMPEG_VAAPI_DEVICE) ??
+  "/dev/dri/renderD128";
+const availableHardwareEncoders = detectHardwareEncoders(
+  ffmpegPath,
+  vaapiDevice,
+);
+const ffmpegLogLevel = parseFfmpegLogLevel(process.env.FFMPEG_LOG_LEVEL);
 
 if (ffmpegPath) process.env.FFMPEG_PATH = ffmpegPath;
 if (ffprobePath) process.env.FFPROBE_PATH = ffprobePath;
@@ -140,4 +253,12 @@ export const appConfig = {
   startupTimeoutMs: parsePositiveIntegerEnv(process.env.STARTUP_TIMEOUT_MS, 15000),
   notificationWebhookUrl: process.env.NOTIFICATION_WEBHOOK_URL?.trim() ?? "",
   notificationDmEnabled: process.env.NOTIFICATION_DM_ENABLED === "1",
+  panelAuthEnabled,
+  panelAuthUsername,
+  panelAuthPassword,
+  panelAuthRealm,
+  preferredHardwareEncoder,
+  availableHardwareEncoders,
+  vaapiDevice,
+  ffmpegLogLevel,
 } as const;

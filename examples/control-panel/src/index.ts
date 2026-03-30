@@ -46,12 +46,37 @@ store.appendLog("info", "Control panel booting", {
   port: String(appConfig.port),
 });
 
+if (appConfig.panelAuthEnabled) {
+  store.appendLog("info", "Panel authentication enabled", {
+    username: appConfig.panelAuthUsername ?? "configured",
+  });
+}
+
+if (appConfig.availableHardwareEncoders.length > 0) {
+  store.appendLog("info", "Hardware video encoders detected", {
+    encoders: appConfig.availableHardwareEncoders.join(","),
+    preferred: appConfig.preferredHardwareEncoder,
+  });
+} else {
+  store.appendLog(
+    "warn",
+    "No hardware video encoders detected; hardware-accelerated presets will fall back to software",
+  );
+}
+
 store.setRuntime((runtime) => {
   runtime.ffmpegPath = appConfig.ffmpegPath;
   runtime.ffprobePath = appConfig.ffprobePath;
   runtime.ytDlpPath = appConfig.ytDlpPath;
   runtime.ytDlpVersion = appConfig.ytDlpVersion;
   runtime.ytDlpAvailable = !!appConfig.ytDlpPath;
+  runtime.panelAuthEnabled = appConfig.panelAuthEnabled;
+  runtime.availableVideoEncoders = [
+    "software",
+    ...appConfig.availableHardwareEncoders,
+  ];
+  runtime.preferredHardwareEncoder = appConfig.preferredHardwareEncoder;
+  runtime.ffmpegLogLevel = appConfig.ffmpegLogLevel;
 });
 
 if (!appConfig.ffmpegPath) {

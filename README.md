@@ -1,4 +1,4 @@
-# Discord Stream Selfbot
+# Discord Stream Bot
 
 > Automatisches Streaming auf Discord - YouTube, Twitch, IPTV, Direktlinks - alles per Web Panel oder Chat-Befehl steuerbar.
 
@@ -16,17 +16,20 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 
 | Feature | Beschreibung |
 |---------|-------------|
-| Web Panel | Modernes Dark-Theme Dashboard zum Verwalten von allem |
+| Web Panel | Dashboard zum Verwalten von Kanaelen, Presets, Queue und Events |
+| Web Panel Login | Optionaler HTTP Basic Auth Schutz direkt in der App |
 | Scheduler | Streams zeitgesteuert planen - einmalig, taeglich, woechentlich |
 | Discord Events | Geplante Streams werden automatisch als Discord Events erstellt |
 | YouTube / Twitch | Automatisch ueber yt-dlp, einfach URL reinkopieren |
 | MPEG-TS / IPTV | Dispatcharr, Tvheadend und andere TS-Proxies direkt nutzen |
 | Direkt-URLs | Jede MP4, HLS, M3U8 oder sonstige Media-URL |
 | Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
+| Queue | Mehrere URLs nacheinander abspielen, optional mit Loop |
 | Stream Health | Live Uptime-Anzeige und Status im Dashboard |
 | URL-Test | Vor dem Streamen pruefen ob die Quelle erreichbar ist |
 | Qualitaetsprofile | 720p bis 4K, 30/60fps, Custom Encoder-Settings |
 | Buffer-Profile | Auto, Stabil, Ausgewogen, Minimale Latenz |
+| Hardware-Encoding | NVENC/VAAPI wird automatisch erkannt und bei Bedarf genutzt |
 | Go Live / Camera | Beide Discord Stream-Modi unterstuetzt |
 
 ---
@@ -42,8 +45,8 @@ Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Da
 ### Installation
 
 ```bash
-git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
-cd Discord-Stream-Selfbot
+git clone <dein-repo-url>
+cd stream-bot
 ./install.sh
 ```
 
@@ -52,7 +55,8 @@ Das Install-Script fragt alles interaktiv ab:
 1. Discord Token
 2. Zeitzone (Standard: Europe/Vienna)
 3. Chat-Befehle an/aus
-4. Erlaubte User-IDs
+4. Optionaler Login fuer das Web-Panel
+5. Erlaubte User-IDs
 
 Danach laeuft das Panel auf **http://localhost:3099**
 
@@ -238,11 +242,19 @@ Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
 | `$panel start Kanal \| Preset` | Stream sofort starten |
 | `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
 | `$panel stop` | Aktiven Stream stoppen |
+| `$panel restart` | Aktiven Stream mit gleichem Kanal/Preset neu starten |
 | `$panel channels` | Alle konfigurierten Kanaele anzeigen |
 | `$panel presets` | Alle Presets anzeigen |
 | `$panel events` | Kommende Events anzeigen |
 | `$panel event start <id>` | Geplantes Event sofort starten |
 | `$panel event cancel <id>` | Event abbrechen |
+| `$panel queue` | Queue anzeigen |
+| `$panel queue add <url> \| [name]` | URL in die Queue legen |
+| `$panel queue start Kanal \| Preset` | Queue im Kanal starten |
+| `$panel queue stop` | Queue stoppen |
+| `$panel queue skip` | Zum naechsten Queue-Item springen |
+| `$panel info` | System-/Runtime-Infos anzeigen |
+| `$panel logs [n]` | Letzte Logs abrufen |
 
 ---
 
@@ -309,7 +321,12 @@ Discord-Stream-Selfbot/
 | `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
 | `COMMAND_PREFIX` | Prefix fuer Chat-Befehle | $panel |
 | `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur du selbst |
+| `PANEL_AUTH_ENABLED` | Web-Panel per Login absichern | 0 |
+| `PANEL_AUTH_USERNAME` | Benutzername fuer das Panel | leer |
+| `PANEL_AUTH_PASSWORD` | Passwort fuer das Panel | leer |
 | `YT_DLP_FORMAT` | yt-dlp Formatauswahl | bestvideo+bestaudio |
+| `PREFERRED_HW_ENCODER` | Hardware-Encoder Auswahl (`auto`, `nvenc`, `vaapi`) | auto |
+| `FFMPEG_LOG_LEVEL` | FFmpeg Log-Level fuer Streams | warning |
 | `SCHEDULER_POLL_MS` | Wie oft der Scheduler Events prueft | 1000 |
 | `STARTUP_TIMEOUT_MS` | Max. Wartezeit bis Discord verbunden | 15000 |
 
@@ -322,8 +339,16 @@ Discord-Stream-Selfbot/
 1. **Buffer-Profil auf "Stabil" setzen** - Mehr Buffer = stabiler
 2. **Qualitaet reduzieren** - 1080p statt 4K, 30fps statt 60fps
 3. **Bitrate senken** - Weniger kbps = weniger Bandbreite noetig
-4. **Quelle pruefen** - URL-Test im Preset verwenden
-5. **Logs checken** - Im Logs-Tab nach Fehlern suchen
+4. **Hardware-Beschleunigung im Preset aktivieren** - nutzt automatisch NVENC/VAAPI wenn verfuegbar
+5. **Quelle pruefen** - URL-Test im Preset verwenden
+6. **Logs checken** - Im Logs-Tab oder per `$panel logs` nach Fehlern suchen
+
+### 1440p / 4K soll fluessiger laufen
+
+- Aktiviere im Preset **Hardware Acceleration**
+- Lasse `PREFERRED_HW_ENCODER=auto`, ausser du willst gezielt `nvenc` oder `vaapi` erzwingen
+- Fuer VAAPI im Docker-Container muss `/dev/dri` in den Container durchgereicht werden
+- Ohne Hardware-Encoder faellt das System automatisch auf Software-Encoding zurueck; fuer stabile Streams dann besser auf `1080p30` oder `1080p60` bleiben
 
 ### YouTube funktioniert nicht
 

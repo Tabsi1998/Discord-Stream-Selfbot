@@ -1,5 +1,15 @@
 # Performance related tweaks
 
+## Control panel defaults
+
+Im Control-Panel-Pfad gilt jetzt:
+
+- Aktivierte `hardwareAcceleration` im Preset nutzt nicht mehr nur Hardware-Decoding, sondern waehlt auch automatisch einen passenden Hardware-Encoder
+- Bevorzugte Auswahl per `PREFERRED_HW_ENCODER=auto|nvenc|vaapi`
+- Standard fuer produktive Streams ist `FFMPEG_LOG_LEVEL=warning`
+- Fuer VAAPI im Docker-Container muss `/dev/dri` verfuegbar sein; optional `FFMPEG_VAAPI_DEVICE=/dev/dri/renderD128`
+- Wenn kein passender Hardware-Encoder erkannt wird, faellt der Stream automatisch auf Software-Encoding zurueck
+
 ## `ultrafast` shouldn't be used for x264/5
 
 In our testing, the `ultrafast` preset produces a lot of bitrate spikes, causing the stream to stutter. `superfast` and below seems to keep it under control pretty well. Do not use `ultrafast`. Previous versions of the library has `ultrafast` as the default, which has been changed after the testing.

@@ -1,6 +1,9 @@
 export type StreamMode = "go-live" | "camera";
 export type VideoCodec = "H264" | "H265";
 export type SourceMode = "direct" | "yt-dlp";
+export type HardwareEncoder = "nvenc" | "vaapi";
+export type VideoEncoderMode = "software" | HardwareEncoder;
+export type PreferredHardwareEncoder = "auto" | HardwareEncoder;
 export type QualityProfile =
   | "720p30"
   | "720p60"
@@ -110,6 +113,11 @@ export type RuntimeState = {
   ytDlpAvailable?: boolean;
   commandPrefix?: string;
   commandAuthorIds?: string[];
+  panelAuthEnabled?: boolean;
+  availableVideoEncoders?: VideoEncoderMode[];
+  preferredHardwareEncoder?: PreferredHardwareEncoder;
+  selectedVideoEncoder?: VideoEncoderMode;
+  ffmpegLogLevel?: string;
   activeRun?: ActiveRun;
   lastError?: string;
   lastStartedAt?: string;

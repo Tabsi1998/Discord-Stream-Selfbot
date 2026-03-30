@@ -201,25 +201,30 @@ export class DiscordCommandBridge {
         }
         const channelName = run.channelName;
         const presetName = run.presetName;
+        const stopAt = run.plannedStopAt;
         this.service.stopActive();
         await message.channel.send(
           `Stream wird neugestartet: ${channelName} → ${presetName}`,
         );
-        // startRun picks up from the saved channel + preset
         const state = this.store.snapshot();
-        const ch = state.channels.find((c) => c.name === channelName);
-        const pr = state.presets.find((p) => p.name === presetName);
+        const ch = state.channels.find((c) => c.id === run.channelId);
+        const pr = state.presets.find((p) => p.id === run.presetId);
         if (ch && pr) {
           setTimeout(async () => {
             try {
               await this.service.startManualRun({
                 channelId: ch.id,
                 presetId: pr.id,
+                stopAt,
               });
             } catch {
               await message.channel.send("Neustart fehlgeschlagen.");
             }
           }, 2000);
+        } else {
+          await message.channel.send(
+            "Neustart nicht moeglich: Kanal oder Preset nicht mehr vorhanden.",
+          );
         }
         return;
       }
@@ -444,6 +449,8 @@ export class DiscordCommandBridge {
         "System Info",
         `Discord: ${state.runtime.discordStatus}`,
         `yt-dlp: ${state.runtime.ytDlpAvailable ? `ja (${state.runtime.ytDlpVersion ?? "Version unbekannt"})` : "nein"}`,
+        `Panel Login: ${state.runtime.panelAuthEnabled ? "an" : "aus"}`,
+        `Encoder: ${state.runtime.selectedVideoEncoder ?? "idle"} (bevorzugt: ${state.runtime.preferredHardwareEncoder ?? "auto"})`,
         `Kanaele: ${state.channels.length}`,
         `Presets: ${state.presets.length}`,
         `Events: ${state.events.length}`,
@@ -455,7 +462,7 @@ export class DiscordCommandBridge {
   }
 
   private async sendLogs(message: Message, count: number) {
-    const logs = this.store.snapshot().logs.slice(-count);
+    const logs = this.store.snapshot().logs.slice(0, count);
     if (!logs.length) {
       await message.channel.send("Keine Logs vorhanden.");
       return;

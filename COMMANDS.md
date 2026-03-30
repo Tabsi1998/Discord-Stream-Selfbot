@@ -12,11 +12,21 @@
 | `status` | Aktuellen Stream-Status |
 | `start` | Stream manuell starten |
 | `stop` | Aktiven Stream stoppen |
+| `restart` | Aktiven Stream neu starten |
 | `channels` | Kanaele auflisten |
 | `presets` | Presets auflisten |
 | `events` | Kommende Events auflisten |
 | `event start` | Geplantes Event starten |
 | `event cancel` | Event abbrechen |
+| `queue` | Queue anzeigen |
+| `queue add` | URL in die Queue legen |
+| `queue start` | Queue starten |
+| `queue stop` | Queue stoppen |
+| `queue skip` | Zum naechsten Queue-Item springen |
+| `queue clear` | Queue leeren |
+| `queue loop on/off` | Queue-Loop umschalten |
+| `info` | System- und Runtime-Infos |
+| `logs` | Letzte Logs abrufen |
 
 ---
 
@@ -37,11 +47,22 @@ $panel help
 $panel status
 $panel start <kanal|id> | <preset|id> | [zeit]
 $panel stop
+$panel restart
 $panel channels
 $panel presets
 $panel events
 $panel event start <event-id>
 $panel event cancel <event-id>
+$panel queue
+$panel queue add <url> | [name]
+$panel queue start <kanal> | <preset>
+$panel queue stop
+$panel queue skip
+$panel queue clear
+$panel queue loop on
+$panel queue loop off
+$panel info
+$panel logs [n]
 ```
 
 ---
@@ -124,6 +145,21 @@ Kein aktiver Stream.
 
 ---
 
+### `$panel restart`
+
+Stoppt den aktiven Stream und startet ihn mit demselben Kanal/Preset erneut. Eine gesetzte Stoppzeit wird uebernommen.
+
+```text
+$panel restart
+```
+
+**Ausgabe:**
+```text
+Stream wird neugestartet: Gaming Kanal → YouTube HD
+```
+
+---
+
 ### `$panel channels`
 
 Listet alle konfigurierten Voice Channels auf.
@@ -200,6 +236,98 @@ $panel event cancel ev_abc123
 **Ausgabe:**
 ```
 Event ev_abc123 wurde abgebrochen.
+```
+
+---
+
+### `$panel queue`
+
+Zeigt die aktuelle Queue an.
+
+```text
+$panel queue
+```
+
+---
+
+### `$panel queue add <url> | [name]`
+
+Legt eine URL in die Queue. Der Name ist optional.
+
+```text
+$panel queue add https://example.com/live.m3u8 | Abendprogramm
+```
+
+---
+
+### `$panel queue start <kanal> | <preset>`
+
+Startet die Queue im angegebenen Kanal mit dem angegebenen Preset.
+
+```text
+$panel queue start Gaming Kanal | IPTV Balanced
+```
+
+---
+
+### `$panel queue stop`
+
+Stoppt die Queue.
+
+```text
+$panel queue stop
+```
+
+---
+
+### `$panel queue skip`
+
+Springt direkt zum naechsten Queue-Item.
+
+```text
+$panel queue skip
+```
+
+---
+
+### `$panel queue clear`
+
+Entfernt alle Queue-Items.
+
+```text
+$panel queue clear
+```
+
+---
+
+### `$panel queue loop on/off`
+
+Schaltet den Queue-Loop an oder aus.
+
+```text
+$panel queue loop on
+$panel queue loop off
+```
+
+---
+
+### `$panel info`
+
+Zeigt Systemdaten wie Discord-Status, yt-dlp-Version, Uptime und RAM an.
+
+```text
+$panel info
+```
+
+---
+
+### `$panel logs [n]`
+
+Zeigt die neuesten Logs an. Standard sind 5, maximal 20.
+
+```text
+$panel logs
+$panel logs 10
 ```
 
 ---

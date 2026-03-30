@@ -8,7 +8,6 @@ Dieses Repo kann als persistenter Docker-Dienst auf deinem eigenen Server betrie
 
 - **Docker** mit `docker compose` (v2)
 - **Git**
-- Auf Windows: Git Bash oder WSL fuer die `.sh`-Skripte
 - Ein **Discord Self-Token** ([Anleitung im README](README.md#discord-token-finden))
 
 ---
@@ -17,8 +16,8 @@ Dieses Repo kann als persistenter Docker-Dienst auf deinem eigenen Server betrie
 
 ```bash
 # 1. Repo klonen
-git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
-cd Discord-Stream-Selfbot
+git clone <dein-repo-url>
+cd stream-bot
 
 # 2. Interaktive Installation
 ./install.sh
@@ -33,7 +32,7 @@ cd Discord-Stream-Selfbot
 |---------|-------------------|
 | 1/4 | Voraussetzungen pruefen (Docker, Compose, Dateien) |
 | 2/4 | Discord Token + erlaubte User-IDs |
-| 3/4 | Zeitzone, Chat-Befehle an/aus, Prefix, yt-dlp Cookies |
+| 3/4 | Zeitzone, Chat-Befehle an/aus, Panel-Login, yt-dlp Cookies |
 | 4/4 | Zusammenfassung + Bestaetigung |
 
 ---
@@ -53,8 +52,10 @@ Zeigt die aktuelle Konfiguration und bietet Optionen:
 | 3 | Chat-Befehle (an/aus, Prefix) |
 | 4 | Erlaubte User-IDs |
 | 5 | yt-dlp Cookies |
-| 6 | yt-dlp Format |
-| 7 | Scheduler (Poll-Intervall, Timeout) |
+| 6 | yt-dlp Paket |
+| 7 | yt-dlp Format |
+| 8 | Scheduler (Poll-Intervall, Timeout) |
+| 9 | Web-Panel Login |
 | a | Alles auf einmal |
 | q | Abbrechen |
 
@@ -137,8 +138,11 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 ## Hinweise
 
 - Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
+- Das Panel kann direkt per `PANEL_AUTH_ENABLED=1` plus Benutzername/Passwort abgesichert werden
 - YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bei jedem `./update.sh` frisch ohne Build-Cache neu gebaut wird
 - Standard fuer Docker ist jetzt der offizielle `pip`-Pfad `--pre "yt-dlp[default]"`, damit YouTube-Fixes schneller im Server landen
+- Aktivierte Hardware-Beschleunigung im Preset nutzt jetzt echte Hardware-Encoder statt nur Hardware-Decoding
+- Mit `PREFERRED_HW_ENCODER=auto|nvenc|vaapi` kannst du den bevorzugten Encoder festlegen
 - Wenn YouTube `Sign in to confirm you're not a bot` meldet, setze in `deploy/.env` entweder:
   - `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
   - oder `YT_DLP_COOKIES_FROM_BROWSER=...` wenn du den Browser-Profile-Zugriff selbst in den Container bringst
@@ -148,6 +152,38 @@ Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
 - FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten
 - Die State-Datei wird bei jedem Schreibvorgang automatisch gespeichert
 - Fuer Aenderungen an Code oder Abhaengigkeiten: `./update.sh` ausfuehren
+
+---
+
+## Hardware-Encoding in Docker
+
+Fuer 1440p/4K oder laengere Streams solltest du Hardware-Encoding bevorzugen.
+
+### Intel / AMD iGPU via VAAPI
+
+Ergaenze in `deploy/docker-compose.yml` bei Bedarf:
+
+```yaml
+services:
+  control-panel:
+    devices:
+      - /dev/dri:/dev/dri
+```
+
+Optional in `deploy/.env`:
+
+```bash
+PREFERRED_HW_ENCODER=vaapi
+FFMPEG_VAAPI_DEVICE=/dev/dri/renderD128
+```
+
+### NVIDIA via NVENC
+
+- `nvidia-container-toolkit` auf dem Host installieren
+- GPU fuer Docker freigeben
+- optional `PREFERRED_HW_ENCODER=nvenc` setzen
+
+Wenn kein passender Hardware-Encoder erkannt wird, faellt der Stream automatisch auf Software-Encoding zurueck.
 
 ---
 
@@ -181,4 +217,4 @@ stream.deinedomain.at {
 }
 ```
 
-**Empfehlung:** Passwortschutz einrichten (z.B. Basic Auth), da das Panel volle Kontrolle ueber den Stream-Bot hat.
+**Empfehlung:** Entweder Reverse-Proxy-Auth oder direkt die eingebauten `PANEL_AUTH_*` Variablen verwenden, da das Panel volle Kontrolle ueber den Stream-Bot hat.

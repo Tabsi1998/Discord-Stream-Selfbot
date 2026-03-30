@@ -19,7 +19,10 @@ Web-basiertes Dashboard zum Verwalten und Planen von Discord Streams.
 - Adaptive Auto-Aktualisierung (schneller bei aktivem Stream)
 - Qualitaetsprofile: 720p/30 bis 4K/60, Custom
 - Buffer-Profile: Auto, Stabil, Ausgewogen, Minimale Latenz
-- Discord Chat-Befehle (help, status, start, stop, events, etc.)
+- Queue fuer mehrere Quellen mit Loop-Unterstuetzung
+- Eingebauter Login-Schutz fuer das Panel per `PANEL_AUTH_*`
+- Automatische Hardware-Encoder-Erkennung fuer NVENC / VAAPI
+- Discord Chat-Befehle (help, status, start, stop, queue, logs, etc.)
 
 ---
 
@@ -52,13 +55,18 @@ public/
 
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
+| GET | `/api/health` | Unauthentifizierter Healthcheck fuer Docker/Monitoring |
 | GET | `/api/bootstrap` | Gesamtstatus (Channels, Presets, Events, Runtime, Logs) |
+| GET | `/api/state` | Vollstaendiger App-State |
+| GET | `/api/logs` | Neueste Log-Eintraege |
 | GET | `/api/stream/health` | Stream Health (aktiv/inaktiv, Uptime, Kanal, Preset) |
 | GET | `/api/channels` | Alle Kanaele |
-| POST | `/api/channels` | Kanal erstellen/aktualisieren |
+| POST | `/api/channels` | Kanal erstellen |
+| PUT | `/api/channels/:id` | Kanal aktualisieren |
 | DELETE | `/api/channels/:id` | Kanal loeschen |
 | GET | `/api/presets` | Alle Presets |
-| POST | `/api/presets` | Preset erstellen/aktualisieren |
+| POST | `/api/presets` | Preset erstellen |
+| PUT | `/api/presets/:id` | Preset aktualisieren |
 | DELETE | `/api/presets/:id` | Preset loeschen |
 | POST | `/api/presets/test-url` | URL Erreichbarkeit testen |
 | GET | `/api/events` | Alle Events |
@@ -69,8 +77,13 @@ public/
 | POST | `/api/events/:id/start` | Event sofort starten |
 | POST | `/api/manual/start` | Manuellen Stream starten |
 | POST | `/api/stop` | Aktiven Stream stoppen |
-| GET | `/api/logs` | Letzte Log-Eintraege |
 | GET | `/api/voice-channels` | Verfuegbare Discord Voice Channels |
+| GET | `/api/queue` | Queue + Queue-Konfiguration |
+| POST | `/api/queue` | Queue-Item anlegen |
+| POST | `/api/queue/start` | Queue starten |
+| POST | `/api/queue/skip` | Queue-Item ueberspringen |
+| POST | `/api/queue/stop` | Queue stoppen |
+| POST | `/api/queue/loop` | Queue-Loop schalten |
 
 ---
 
@@ -104,6 +117,23 @@ Wenn YouTube trotzdem weiter blockiert, kannst du zusaetzlich Cookies konfigurie
 - `YT_DLP_COOKIES_FILE=/pfad/zu/cookies.txt` fuer exportierte Netscape-Cookies
 
 Das Panel gibt in diesem Fall jetzt auch eine konkrete Konfigurationshilfe zurueck.
+
+Fuer produktive Deployments kann das Panel direkt per Basic Auth geschuetzt werden:
+
+```bash
+PANEL_AUTH_ENABLED=1
+PANEL_AUTH_USERNAME=admin
+PANEL_AUTH_PASSWORD=<dein-passwort>
+```
+
+Fuer fluessigere Streams bei hohen Aufloesungen:
+
+```bash
+PREFERRED_HW_ENCODER=auto
+FFMPEG_LOG_LEVEL=warning
+```
+
+Wenn Docker Zugriff auf `/dev/dri` oder eine NVIDIA-GPU hat, nutzt ein Preset mit aktivierter Hardware-Beschleunigung automatisch den passenden Encoder.
 
 Web Panel: **http://localhost:3099**
 

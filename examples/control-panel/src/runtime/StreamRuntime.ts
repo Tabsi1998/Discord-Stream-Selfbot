@@ -4,15 +4,25 @@ import {
   StageChannel,
   VoiceChannel,
 } from "discord.js-selfbot-v13";
-import { Streamer, Utils, prepareStream, playStream } from "@dank074/discord-video-stream";
+import {
+  Encoders,
+  Streamer,
+  type EncoderSettingsGetter,
+  Utils,
+  playStream,
+  prepareStream,
+} from "@dank074/discord-video-stream";
 import { setFFmpegPath, setFFprobePath } from "fluent-ffmpeg-simplified";
 import { appConfig } from "../config/appConfig.js";
 import { resolveRuntimePresetConfig } from "../domain/presetProfiles.js";
 import type {
   ActiveRun,
   ChannelDefinition,
+  HardwareEncoder,
+  PreferredHardwareEncoder,
   RunKind,
   StreamPreset,
+  VideoEncoderMode,
   VoiceChannelOption,
 } from "../domain/types.js";
 import { AppStateStore } from "../state/AppStateStore.js";
@@ -58,6 +68,12 @@ type CommandProcessLike = {
   exitCode?: number | null;
 };
 
+type ResolvedVideoEncoder = {
+  mode: VideoEncoderMode;
+  encoder: EncoderSettingsGetter;
+  fallbackReason?: string;
+};
+
 export class StreamRuntime extends EventEmitter {
   private readonly client = new Client();
   private readonly streamer = new Streamer(this.client);
@@ -93,6 +109,13 @@ export class StreamRuntime extends EventEmitter {
         ? appConfig.commandPrefix
         : undefined;
       runtime.commandAuthorIds = appConfig.commandAllowedAuthorIds;
+      runtime.panelAuthEnabled = appConfig.panelAuthEnabled;
+      runtime.availableVideoEncoders = [
+        "software",
+        ...appConfig.availableHardwareEncoders,
+      ];
+      runtime.preferredHardwareEncoder = appConfig.preferredHardwareEncoder;
+      runtime.ffmpegLogLevel = appConfig.ffmpegLogLevel;
     });
 
     this.client.on("ready", () => {
@@ -254,6 +277,7 @@ export class StreamRuntime extends EventEmitter {
     let output: ReturnType<typeof prepareStream>["output"];
     let waitForStartup: Promise<void> | undefined;
     const resolvedPreset = resolveRuntimePresetConfig(options.preset);
+    const resolvedEncoder = this.resolveVideoEncoder(options.preset);
 
     try {
       const resolvedSource = await this.sourceResolver.resolve(
@@ -269,8 +293,21 @@ export class StreamRuntime extends EventEmitter {
         separateAudio: isSplitMediaInput(resolvedSource.input) && resolvedSource.input.audio
           ? "true"
           : "false",
+        encoder: resolvedEncoder.mode,
         qualityProfile: resolvedPreset.qualityProfile,
         bufferProfile: resolvedPreset.effectiveBufferProfile,
+      });
+
+      if (resolvedEncoder.fallbackReason) {
+        this.store.appendLog("warn", "Hardware acceleration fallback", {
+          preset: options.preset.name,
+          fallback: resolvedEncoder.fallbackReason,
+          selectedEncoder: resolvedEncoder.mode,
+        });
+      }
+
+      this.store.setRuntime((runtime) => {
+        runtime.selectedVideoEncoder = resolvedEncoder.mode;
       });
 
       ({ command, output } = prepareStream(
@@ -283,11 +320,13 @@ export class StreamRuntime extends EventEmitter {
           bitrateVideo: options.preset.bitrateVideoKbps,
           bitrateVideoMax: options.preset.maxBitrateVideoKbps,
           bitrateAudio: options.preset.bitrateAudioKbps,
+          encoder: resolvedEncoder.encoder,
           hardwareAcceleratedDecoding: options.preset.hardwareAcceleration,
           minimizeLatency: resolvedPreset.minimizeLatency,
           customInputOptions: resolvedPreset.customInputOptions,
           bitrateBufferFactor: resolvedPreset.bitrateBufferFactor,
           videoCodec: Utils.normalizeVideoCodec(options.preset.videoCodec),
+          logLevel: appConfig.ffmpegLogLevel,
         },
         controller.signal,
       ));
@@ -484,6 +523,7 @@ export class StreamRuntime extends EventEmitter {
     this.store.setRuntime((runtime) => {
       runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
+      runtime.selectedVideoEncoder = undefined;
       if (reason === "aborted" && abortReason) {
         runtime.lastError = undefined;
       }
@@ -521,6 +561,7 @@ export class StreamRuntime extends EventEmitter {
     this.store.setRuntime((runtime) => {
       runtime.activeRun = undefined;
       runtime.lastEndedAt = new Date().toISOString();
+      runtime.selectedVideoEncoder = undefined;
       runtime.lastError = error;
     });
     this.store.appendLog("error", "Stream failed", {
@@ -534,5 +575,63 @@ export class StreamRuntime extends EventEmitter {
       run: session.run,
       error,
     } satisfies RunFailedInfo);
+  }
+
+  private resolveVideoEncoder(preset: StreamPreset): ResolvedVideoEncoder {
+    if (!preset.hardwareAcceleration) {
+      return {
+        mode: "software",
+        encoder: Encoders.software(),
+      };
+    }
+
+    const available = appConfig.availableHardwareEncoders;
+    if (!available.length) {
+      return {
+        mode: "software",
+        encoder: Encoders.software(),
+        fallbackReason: "no supported hardware encoder detected",
+      };
+    }
+
+    const requested = this.pickPreferredHardwareEncoder(
+      available,
+      appConfig.preferredHardwareEncoder,
+    );
+    if (!requested) {
+      return {
+        mode: "software",
+        encoder: Encoders.software(),
+        fallbackReason: "preferred hardware encoder is unavailable",
+      };
+    }
+
+    if (requested === "nvenc") {
+      return {
+        mode: "nvenc",
+        encoder: Encoders.nvenc({
+          preset: preset.minimizeLatency ? "p3" : "p4",
+          spatialAq: !preset.minimizeLatency,
+          temporalAq: !preset.minimizeLatency,
+        }),
+      };
+    }
+
+    return {
+      mode: "vaapi",
+      encoder: Encoders.vaapi({
+        device: appConfig.vaapiDevice,
+      }),
+    };
+  }
+
+  private pickPreferredHardwareEncoder(
+    available: readonly HardwareEncoder[],
+    preferred: PreferredHardwareEncoder,
+  ) {
+    if (preferred !== "auto" && available.includes(preferred)) {
+      return preferred;
+    }
+    return available[0];
   }
 }
