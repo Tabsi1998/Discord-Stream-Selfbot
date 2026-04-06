@@ -18,6 +18,7 @@ import {
   applyRuntimePerformanceGuardrails,
   buildAdaptiveDowngradePreset,
   buildAdaptiveUpgradePreset,
+  getAdaptiveRecoverySpeedThreshold,
   resolveRuntimePresetConfig,
 } from "../domain/presetProfiles.js";
 import type {
@@ -1271,7 +1272,12 @@ export class StreamRuntime extends EventEmitter {
       session.dropTelemetrySamples = 0;
     }
 
-    const stableSpeed = typeof speed !== "number" || speed >= 1.04;
+    const stableSpeedThreshold = getAdaptiveRecoverySpeedThreshold(
+      session.preset.sourceMode,
+      session.preset.sourceUrl,
+    );
+    const stableSpeed =
+      typeof speed !== "number" || speed >= stableSpeedThreshold;
     const stableFps =
       typeof fps !== "number" ||
       targetFps <= 0 ||

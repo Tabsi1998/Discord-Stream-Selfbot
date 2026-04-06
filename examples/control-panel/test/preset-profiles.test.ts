@@ -5,6 +5,7 @@ import {
   buildAdaptiveDowngradePreset,
   buildAdaptiveUpgradePreset,
   detectSourceProfile,
+  getAdaptiveRecoverySpeedThreshold,
   getRecommendedBitrates,
   resolveRuntimePresetConfig,
 } from "../src/domain/presetProfiles.js";
@@ -74,6 +75,30 @@ test("resolveRuntimePresetConfig forces stable buffering for hls auto mode", () 
   assert.equal(result.sourceProfile, "hls");
   assert.equal(result.effectiveBufferProfile, "stable");
   assert.ok(result.readrateInitialBurst >= 6);
+});
+
+test("getAdaptiveRecoverySpeedThreshold is realtime-safe for live remote sources", () => {
+  assert.equal(
+    getAdaptiveRecoverySpeedThreshold(
+      "yt-dlp",
+      "https://www.twitch.tv/example",
+    ),
+    0.99,
+  );
+  assert.equal(
+    getAdaptiveRecoverySpeedThreshold(
+      "direct",
+      "https://example.com/live.m3u8",
+    ),
+    0.99,
+  );
+  assert.equal(
+    getAdaptiveRecoverySpeedThreshold(
+      "direct",
+      "https://example.com/video.mp4",
+    ),
+    1.04,
+  );
 });
 
 test("applyRuntimePerformanceGuardrails caps aggressive software bitrates on remote live-style sources", () => {

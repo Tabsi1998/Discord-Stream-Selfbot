@@ -293,6 +293,18 @@ export function detectSourceProfile(
   return "generic";
 }
 
+export function getAdaptiveRecoverySpeedThreshold(
+  sourceMode: SourceMode,
+  sourceUrl: string,
+) {
+  const sourceProfile = detectSourceProfile(sourceMode, sourceUrl);
+  return sourceProfile === "yt-dlp" ||
+    sourceProfile === "hls" ||
+    sourceProfile === "mpeg-ts"
+    ? 0.99
+    : 1.04;
+}
+
 export function describePresetQuality(
   preset: Pick<
     StreamPreset | PresetInput,
