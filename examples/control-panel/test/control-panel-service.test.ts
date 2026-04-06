@@ -730,6 +730,85 @@ test("ControlPanelService retries the same queue item after an adaptive restart"
   }
 });
 
+test("ControlPanelService keeps an ad-hoc run restartable across adaptive restarts", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = {
+      id: "adhoc-channel:primary:guild-adhoc:voice-adhoc",
+      botId: "primary",
+      name: "Ad-hoc Stage",
+      guildId: "guild-adhoc",
+      channelId: "voice-adhoc",
+      streamMode: "go-live" as const,
+      description: "Transient command channel",
+      createdAt: "2026-03-30T10:00:00.000Z",
+      updatedAt: "2026-03-30T10:00:00.000Z",
+    };
+    const currentPreset = {
+      id: "adhoc-preset-current",
+      name: "Quick Play www.twitch.tv",
+      sourceUrl: "https://www.twitch.tv/markrei93",
+      sourceMode: "yt-dlp" as const,
+      fallbackSources: [],
+      qualityProfile: "720p30" as const,
+      bufferProfile: "stable" as const,
+      description: "",
+      includeAudio: true,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      bitrateVideoKbps: 4500,
+      maxBitrateVideoKbps: 6500,
+      bitrateAudioKbps: 160,
+      videoCodec: "H264" as const,
+      hardwareAcceleration: false,
+      minimizeLatency: false,
+      createdAt: "2026-03-30T10:00:00.000Z",
+      updatedAt: "2026-03-30T10:00:00.000Z",
+    };
+    const targetPreset = {
+      ...currentPreset,
+      id: "adhoc-preset-target",
+      qualityProfile: "1080p30" as const,
+      width: 1920,
+      height: 1080,
+      bitrateVideoKbps: 7000,
+      maxBitrateVideoKbps: 9500,
+    };
+
+    await context.service.startAdHocRun({
+      channel,
+      sourceUrl: currentPreset.sourceUrl,
+      quality: "1080p30",
+    });
+    const activeRun = context.runtime.getActiveRun("primary");
+    assert.ok(activeRun);
+
+    context.runtime.emit("adaptiveRestartRequested", {
+      reason: "recovery",
+      trigger: "speed=1.00 | fps=30.0 | stableSamples=24",
+      run: activeRun,
+      channel,
+      currentPreset,
+      nextPreset: targetPreset,
+      adaptiveTargetPreset: targetPreset,
+    });
+
+    context.runtime.emit("runEnded", {
+      run: activeRun,
+      reason: "aborted",
+      abortReason: "adaptive-restart",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.equal(context.runtime.startCalls.length, 2);
+    assert.equal(context.runtime.startCalls.at(-1)?.qualityProfile, "1080p30");
+  } finally {
+    context.dispose();
+  }
+});
+
 test("ControlPanelService import normalizes stale running state and replaces persisted data", () => {
   const context = createServiceContext();
 

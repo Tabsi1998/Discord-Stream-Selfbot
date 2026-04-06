@@ -75,6 +75,7 @@ export type AdaptiveRestartRequestInfo = {
   reason: "lag" | "recovery";
   trigger: string;
   run: ActiveRun;
+  channel: ChannelDefinition;
   currentPreset: StreamPreset;
   nextPreset: StreamPreset;
   adaptiveTargetPreset: StreamPreset;
@@ -1217,6 +1218,7 @@ export class StreamRuntime extends EventEmitter {
       reason,
       trigger,
       run: session.run,
+      channel: session.channel,
       currentPreset: session.preset,
       nextPreset: transition.preset,
       adaptiveTargetPreset: session.adaptiveTargetPreset,

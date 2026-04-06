@@ -1256,9 +1256,9 @@ export class ControlPanelService {
     }
 
     const state = this.store.snapshot();
-    const channel = state.channels.find(
-      (entry) => entry.id === info.run.channelId,
-    );
+    const channel =
+      state.channels.find((entry) => entry.id === info.run.channelId) ??
+      info.channel;
     if (!channel) {
       this.store.appendLog("warn", "Adaptive quality switch skipped", {
         botId: info.run.botId,
