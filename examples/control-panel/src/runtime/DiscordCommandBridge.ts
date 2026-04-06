@@ -42,6 +42,16 @@ type SlashGuildSelection = {
   source: "explicit" | "configured-channels" | "single-guild" | "none";
 };
 
+const QUICK_PLAY_QUALITY_CHOICES = [
+  { name: "Auto", value: "auto" },
+  { name: "720p / 30 FPS", value: "720p30" },
+  { name: "720p / 60 FPS", value: "720p60" },
+  { name: "1080p / 30 FPS", value: "1080p30" },
+  { name: "1080p / 60 FPS", value: "1080p60" },
+  { name: "1440p / 30 FPS", value: "1440p30" },
+  { name: "1440p / 60 FPS", value: "1440p60" },
+] as const;
+
 const CONTROL_BOT_SLASH_COMMANDS = [
   new SlashCommandBuilder()
     .setName("help")
@@ -219,16 +229,6 @@ const CONTROL_BOT_SLASH_COMMANDS = [
 ].map((command) => command.toJSON());
 
 const DISCORD_MESSAGE_LIMIT = 1900;
-
-const QUICK_PLAY_QUALITY_CHOICES = [
-  { name: "Auto", value: "auto" },
-  { name: "720p / 30 FPS", value: "720p30" },
-  { name: "720p / 60 FPS", value: "720p60" },
-  { name: "1080p / 30 FPS", value: "1080p30" },
-  { name: "1080p / 60 FPS", value: "1080p60" },
-  { name: "1440p / 30 FPS", value: "1440p30" },
-  { name: "1440p / 60 FPS", value: "1440p60" },
-] as const;
 
 function isQuickPlayQualityOption(
   value: string | undefined,
