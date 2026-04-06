@@ -1033,17 +1033,15 @@ export class ControlPanelService {
         sourceProfile === "hls" ||
         sourceProfile === "mpeg-ts");
     const requestedQuality = input.quality ?? "auto";
-    const desiredQualityProfile = resolveQuickPlayDesiredQuality(
-      requestedQuality,
-    );
+    const desiredQualityProfile =
+      resolveQuickPlayDesiredQuality(requestedQuality);
     const actualQualityProfile = resolveQuickPlayStartQuality(
       desiredQualityProfile,
       useSafeSoftwareProfile,
     );
     const desiredPresetInput = {
       name:
-        input.name?.trim() ||
-        buildAdHocPresetName(input.sourceUrl, sourceMode),
+        input.name?.trim() || buildAdHocPresetName(input.sourceUrl, sourceMode),
       sourceUrl: input.sourceUrl.trim(),
       sourceMode,
       fallbackSources: [],

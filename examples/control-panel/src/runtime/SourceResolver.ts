@@ -48,11 +48,7 @@ const YOUTUBE_HOSTS = new Set([
   "youtu.be",
   "www.youtu.be",
 ]);
-const YT_DLP_HOSTS = new Set([
-  ...YOUTUBE_HOSTS,
-  "twitch.tv",
-  "www.twitch.tv",
-]);
+const YT_DLP_HOSTS = new Set([...YOUTUBE_HOSTS, "twitch.tv", "www.twitch.tv"]);
 const YOUTUBE_BOT_CHECK_PATTERN = /not a bot/i;
 const BROWSER_COOKIE_COPY_PATTERN = /could not copy .*cookie database/i;
 

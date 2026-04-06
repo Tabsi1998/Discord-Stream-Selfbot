@@ -56,7 +56,12 @@ class RuntimeStub extends EventEmitter {
     kind: "manual" | "event";
     eventId?: string;
     channel: { botId: string; id: string };
-    preset: { id: string; name?: string; sourceMode?: string; qualityProfile?: string };
+    preset: {
+      id: string;
+      name?: string;
+      sourceMode?: string;
+      qualityProfile?: string;
+    };
     adaptiveTargetPreset?: { qualityProfile?: string };
     plannedStopAt?: string;
   }) {
@@ -450,7 +455,10 @@ test("ControlPanelService rejects Twitch direct presets without yt-dlp mode", ()
     assert.throws(
       () =>
         context.service.createPreset({
-          ...createPresetInput("Twitch Test", "https://www.twitch.tv/markrei93"),
+          ...createPresetInput(
+            "Twitch Test",
+            "https://www.twitch.tv/markrei93",
+          ),
           sourceMode: "direct",
         }),
       /YouTube\/Twitch URLs require source mode 'yt-dlp'/,
