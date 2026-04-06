@@ -538,7 +538,7 @@ export class DiscordCommandBridge {
       partials: [Partials.Channel],
     });
 
-    client.on("ready", () => {
+    client.on("clientReady", () => {
       const user = client.user;
       if (!user) {
         return;
