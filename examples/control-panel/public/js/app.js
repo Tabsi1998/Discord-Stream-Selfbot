@@ -8,6 +8,8 @@ const state = {
   syncMode: "booting",
 };
 
+const htmlCache = new WeakMap();
+
 const QUALITY_PROFILES = {
   "720p30": {
     label: "720p / 30 FPS",
@@ -264,6 +266,53 @@ function clearNotice() {
   els.notice.textContent = "";
   els.notice.dataset.tone = "";
   els.notice.classList.add("hidden");
+}
+
+function setElementText(element, value) {
+  const nextValue = value ?? "";
+  if (element.textContent !== nextValue) {
+    element.textContent = nextValue;
+  }
+}
+
+function setElementClassName(element, value) {
+  if (element.className !== value) {
+    element.className = value;
+  }
+}
+
+function setElementHtml(element, markup) {
+  if (htmlCache.get(element) === markup) {
+    return false;
+  }
+  htmlCache.set(element, markup);
+  element.innerHTML = markup;
+  return true;
+}
+
+function isFormBeingEdited(form) {
+  const active = document.activeElement;
+  return active instanceof Element && form.contains(active);
+}
+
+function syncInputValue(element, value) {
+  if (document.activeElement === element) {
+    return;
+  }
+  const nextValue = value ?? "";
+  if (element.value !== nextValue) {
+    element.value = nextValue;
+  }
+}
+
+function syncCheckboxValue(element, checked) {
+  if (document.activeElement === element) {
+    return;
+  }
+  const nextChecked = !!checked;
+  if (element.checked !== nextChecked) {
+    element.checked = nextChecked;
+  }
 }
 
 async function api(path, options = {}) {
@@ -1098,7 +1147,7 @@ function fillSelect(select, items, placeholder, mapper) {
       return `<option value="${escapeHtml(item.id)}">${escapeHtml(label)}</option>`;
     }),
   ];
-  select.innerHTML = options.join("");
+  setElementHtml(select, options.join(""));
   if (items.some((item) => item.id === current)) {
     select.value = current;
   }
@@ -1113,11 +1162,14 @@ function fillDiscoveredChannelSelect() {
       return `<option value="${value}">${escapeHtml(label)}</option>`;
     }),
   ];
-  els.discoveredChannelSelect.innerHTML = options.join("");
+  setElementHtml(els.discoveredChannelSelect, options.join(""));
   const discoveryBot = findBot(els.discoveryBotId.value);
-  els.voiceChannelDiscoveryInfo.textContent = state.voiceChannels.length
-    ? `${state.voiceChannels.length} Voice-Channels fuer ${discoveryBot?.name || "den Selfbot"} geladen`
-    : "Noch keine Voice-Channels geladen";
+  setElementText(
+    els.voiceChannelDiscoveryInfo,
+    state.voiceChannels.length
+      ? `${state.voiceChannels.length} Voice-Channels fuer ${discoveryBot?.name || "den Selfbot"} geladen`
+      : "Noch keine Voice-Channels geladen",
+  );
 }
 
 function renderOverview() {
@@ -1139,15 +1191,24 @@ function renderOverview() {
     (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
   )[0];
 
-  els.discordStatusBadge.textContent = runtime.discordStatus;
-  els.discordStatusBadge.className = `badge ${badgeClass(runtime.discordStatus)}`;
-  els.discordUser.textContent = runtime.discordUserTag
-    ? `${runtime.discordUserTag} (${runtime.discordUserId || "?"})`
-    : runtime.lastError || "nicht verbunden";
+  setElementText(els.discordStatusBadge, runtime.discordStatus);
+  setElementClassName(
+    els.discordStatusBadge,
+    `badge ${badgeClass(runtime.discordStatus)}`,
+  );
+  setElementText(
+    els.discordUser,
+    runtime.discordUserTag
+      ? `${runtime.discordUserTag} (${runtime.discordUserId || "?"})`
+      : runtime.lastError || "nicht verbunden",
+  );
   const readyBots = bots.filter((bot) => bot.status === "ready");
-  els.botSummary.textContent = bots.length
-    ? `${readyBots.length}/${bots.length} Selfbots bereit`
-    : "keine Selfbots konfiguriert";
+  setElementText(
+    els.botSummary,
+    bots.length
+      ? `${readyBots.length}/${bots.length} Selfbots bereit`
+      : "keine Selfbots konfiguriert",
+  );
 
   const ffmpegParts = [];
   ffmpegParts.push(runtime.ffmpegPath ? "ffmpeg erkannt" : "ffmpeg fehlt");
@@ -1155,7 +1216,7 @@ function renderOverview() {
   ffmpegParts.push(
     runtime.ytDlpAvailable ? "yt-dlp erkannt" : "yt-dlp nicht erkannt",
   );
-  els.ffmpegInfo.textContent = ffmpegParts.join(" | ");
+  setElementText(els.ffmpegInfo, ffmpegParts.join(" | "));
 
   if (runtime.commandPrefix) {
     const prefixes = runtime.commandPrefixes?.length
@@ -1180,7 +1241,10 @@ function renderOverview() {
               : ""
           }`
         : "";
-    els.commandInfo.textContent = `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}${slashInfo}`;
+    setElementText(
+      els.commandInfo,
+      `Discord-Commands: ${prefixes} | Listener: ${listeners}${controlBot}${slashInfo}`,
+    );
     const authInfo = runtime.commandAuthorIds?.length
       ? `Erlaubte User-IDs: ${runtime.commandAuthorIds.join(", ")}`
       : "Aktuell sind nur die Selfbot-Accounts freigeschaltet. Fuer den normalen Bot deine User-ID in COMMAND_ALLOWED_AUTHOR_IDS eintragen.";
@@ -1195,100 +1259,133 @@ function renderOverview() {
           runtime.lastRejectedCommandPrefix || "?"
         }`
       : "";
-    els.commandDebugInfo.textContent = `${authInfo}${mentionInfo}${slashGuildInfo}${rejectionInfo}`;
+    setElementText(
+      els.commandDebugInfo,
+      `${authInfo}${mentionInfo}${slashGuildInfo}${rejectionInfo}`,
+    );
   } else {
-    els.commandInfo.textContent = "Discord-Commands deaktiviert";
-    els.commandDebugInfo.textContent = "";
+    setElementText(els.commandInfo, "Discord-Commands deaktiviert");
+    setElementText(els.commandDebugInfo, "");
   }
   renderLiveSyncInfo();
 
   if (!activeRun) {
-    els.activeRunPrimary.textContent = "kein aktiver Stream";
-    els.activeRunSecondary.textContent = runtime.lastEndedAt
-      ? `Letztes Ende: ${formatDateTime(runtime.lastEndedAt)}`
-      : "kein letzter Lauf";
+    setElementText(els.activeRunPrimary, "kein aktiver Stream");
+    setElementText(
+      els.activeRunSecondary,
+      runtime.lastEndedAt
+        ? `Letztes Ende: ${formatDateTime(runtime.lastEndedAt)}`
+        : "kein letzter Lauf",
+    );
     els.streamHealthBar.classList.add("hidden");
-    els.activeRunsList.innerHTML = "";
+    setElementHtml(els.activeRunsList, "");
   } else {
-    els.activeRunPrimary.textContent =
+    setElementText(
+      els.activeRunPrimary,
       activeRuns.length === 1
         ? `${activeRun.channelName} -> ${activeRun.presetName}`
-        : `${activeRuns.length} aktive Streams`;
+        : `${activeRuns.length} aktive Streams`,
+    );
     const uptimeMs = Date.now() - Date.parse(activeRun.startedAt);
-    els.activeRunSecondary.textContent = [
-      `Bot: ${activeRun.botName || activeRun.botId || "unbekannt"}`,
-      `Status: ${activeRun.status}`,
-      `Seit: ${formatDateTime(activeRun.startedAt)}`,
-      activeRun.plannedStopAt
-        ? `Stop: ${formatDateTime(activeRun.plannedStopAt)}`
-        : "Stop: offen",
-    ].join(" | ");
+    setElementText(
+      els.activeRunSecondary,
+      [
+        `Bot: ${activeRun.botName || activeRun.botId || "unbekannt"}`,
+        `Status: ${activeRun.status}`,
+        `Seit: ${formatDateTime(activeRun.startedAt)}`,
+        activeRun.plannedStopAt
+          ? `Stop: ${formatDateTime(activeRun.plannedStopAt)}`
+          : "Stop: offen",
+      ].join(" | "),
+    );
     if (activeRun.status === "running") {
       els.streamHealthBar.classList.remove("hidden");
-      els.streamUptime.textContent = formatUptime(uptimeMs);
+      setElementText(els.streamUptime, formatUptime(uptimeMs));
     } else {
       els.streamHealthBar.classList.add("hidden");
     }
 
-    els.activeRunsList.innerHTML = activeRuns
-      .map((run) => {
-        const uptimeLabel = formatUptime(
-          Date.now() - Date.parse(run.startedAt),
-        );
-        return `
-          <article class="item-card">
-            <div class="item-topline">
-              <div>
-                <h3 class="item-title">${escapeHtml(run.botName)} | ${escapeHtml(run.channelName)}</h3>
-                <p class="item-meta">${escapeHtml(run.presetName)} | ${escapeHtml(run.status)} | seit ${escapeHtml(formatDateTime(run.startedAt))}${run.plannedStopAt ? ` | Stop ${escapeHtml(formatDateTime(run.plannedStopAt))}` : ""}</p>
-                <p class="item-meta">Uptime: ${escapeHtml(uptimeLabel)} | ${escapeHtml(summarizeRunTelemetry(run))}</p>
+    setElementHtml(
+      els.activeRunsList,
+      activeRuns
+        .map((run) => {
+          const uptimeLabel = formatUptime(
+            Date.now() - Date.parse(run.startedAt),
+          );
+          return `
+            <article class="item-card">
+              <div class="item-topline">
+                <div>
+                  <h3 class="item-title">${escapeHtml(run.botName)} | ${escapeHtml(run.channelName)}</h3>
+                  <p class="item-meta">${escapeHtml(run.presetName)} | ${escapeHtml(run.status)} | seit ${escapeHtml(formatDateTime(run.startedAt))}${run.plannedStopAt ? ` | Stop ${escapeHtml(formatDateTime(run.plannedStopAt))}` : ""}</p>
+                  <p class="item-meta">Uptime: ${escapeHtml(uptimeLabel)} | ${escapeHtml(summarizeRunTelemetry(run))}</p>
+                </div>
               </div>
-            </div>
-            <div class="item-actions">
-              <button type="button" data-action="stop-active-run" data-bot-id="${escapeHtml(run.botId)}">Stop</button>
-            </div>
-          </article>
-        `;
-      })
-      .join("");
+              <div class="item-actions">
+                <button type="button" data-action="stop-active-run" data-bot-id="${escapeHtml(run.botId)}">Stop</button>
+              </div>
+            </article>
+          `;
+        })
+        .join(""),
+    );
   }
 
-  els.stopButton.textContent =
+  setElementText(
+    els.stopButton,
     activeRuns.length > 1
       ? "Alle aktiven Streams stoppen"
-      : "Aktiven Stream stoppen";
+      : "Aktiven Stream stoppen",
+  );
   els.stopButton.disabled = !activeRuns.length;
 
-  els.scheduledSummary.textContent = `${scheduled.length} Events geplant`;
-  els.nextEventSummary.textContent = nextEvent
-    ? `${nextEvent.name}: ${formatDateTime(nextEvent.startAt)}`
-    : "kein naechstes Event";
+  setElementText(els.scheduledSummary, `${scheduled.length} Events geplant`);
+  setElementText(
+    els.nextEventSummary,
+    nextEvent
+      ? `${nextEvent.name}: ${formatDateTime(nextEvent.startAt)}`
+      : "kein naechstes Event",
+  );
 
-  els.telemetryPrimary.textContent = activeRun
-    ? `${String(getRunEncoder(activeRun)).toUpperCase()} | ${activeRuns.length} aktiv | FFmpeg ${runtime.ffmpegLogLevel || "warning"}`
-    : "keine aktive Session";
-  els.telemetrySecondary.textContent = telemetry?.updatedAt
-    ? `Letztes Update: ${formatDateTime(telemetry.updatedAt)}`
-    : activeRun
-      ? "warte auf FFmpeg-Progress"
-      : "keine Live-Metriken";
+  setElementText(
+    els.telemetryPrimary,
+    activeRun
+      ? `${String(getRunEncoder(activeRun)).toUpperCase()} | ${activeRuns.length} aktiv | FFmpeg ${runtime.ffmpegLogLevel || "warning"}`
+      : "keine aktive Session",
+  );
+  setElementText(
+    els.telemetrySecondary,
+    telemetry?.updatedAt
+      ? `Letztes Update: ${formatDateTime(telemetry.updatedAt)}`
+      : activeRun
+        ? "warte auf FFmpeg-Progress"
+        : "keine Live-Metriken",
+  );
 
-  els.telemetryMetrics.innerHTML = renderTelemetryChipMarkup(telemetry);
+  setElementHtml(els.telemetryMetrics, renderTelemetryChipMarkup(telemetry));
 
   if (!queue.length) {
-    els.queuePrimary.textContent = "keine Queue aktiv";
-    els.queueSecondary.textContent = `0 Items | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
+    setElementText(els.queuePrimary, "keine Queue aktiv");
+    setElementText(
+      els.queueSecondary,
+      `0 Items | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`,
+    );
   } else if (queueConfig.active && queueItem) {
-    els.queuePrimary.textContent = `${queueItem.name}`;
-    els.queueSecondary.textContent =
+    setElementText(els.queuePrimary, `${queueItem.name}`);
+    setElementText(
+      els.queueSecondary,
       `Item ${queueConfig.currentIndex + 1}/${queue.length}${queueConfig.loop ? " | Loop an" : ""}${queueBotName ? ` | Bot ${queueBotName}` : ""}` +
-      `${queueConfig.pausedByEvent ? " | pausiert fuer Event" : ""}` +
-      ` | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
+        `${queueConfig.pausedByEvent ? " | pausiert fuer Event" : ""}` +
+        ` | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`,
+    );
   } else {
-    els.queuePrimary.textContent = `${queue.length} Items bereit`;
-    els.queueSecondary.textContent = `${
-      queueConfig.loop ? "Loop aktiviert" : "noch nicht gestartet"
-    } | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`;
+    setElementText(els.queuePrimary, `${queue.length} Items bereit`);
+    setElementText(
+      els.queueSecondary,
+      `${
+        queueConfig.loop ? "Loop aktiviert" : "noch nicht gestartet"
+      } | ${queueConflictPolicyLabel(queueConfig.conflictPolicy)}`,
+    );
   }
 }
 
@@ -1296,37 +1393,42 @@ function renderSelfbots() {
   const bots = getBots();
   const activeRuns = getActiveRuns();
   if (!bots.length) {
-    els.selfbotsList.innerHTML =
-      '<p class="muted">Keine Selfbots konfiguriert.</p>';
+    setElementHtml(
+      els.selfbotsList,
+      '<p class="muted">Keine Selfbots konfiguriert.</p>',
+    );
     return;
   }
 
-  els.selfbotsList.innerHTML = bots
-    .map((bot) => {
-      const botRuns = activeRuns.filter((run) => run.botId === bot.id);
-      const isStreaming = botRuns.length > 0;
-      const presence = bot.lastPresenceText
-        ? `Presence: ${bot.lastPresenceText}`
-        : "Presence: keine";
-      const voiceStatus = bot.lastVoiceStatus
-        ? `Voice-Status: ${bot.lastVoiceStatus}`
-        : "Voice-Status: leer";
-      return `
-        <article class="item-card">
-          <div class="item-topline">
-            <div>
-              <h3 class="item-title">${escapeHtml(bot.name)}</h3>
-              <p class="item-meta"><span class="badge ${badgeClass(bot.status)}">${escapeHtml(bot.status)}</span>${bot.userTag ? ` | ${escapeHtml(bot.userTag)}` : ""}${bot.commandEnabled ? " | Commands" : ""}${isStreaming ? ` | ${botRuns.length} aktiver Stream${botRuns.length === 1 ? "" : "s"}` : ""}</p>
-              <p class="item-meta">${escapeHtml(presence)}</p>
-              <p class="item-meta">${escapeHtml(voiceStatus)}</p>
-              ${isStreaming ? `<p class="item-meta">${escapeHtml(botRuns.map((run) => `${run.channelName} -> ${run.presetName}`).join(" | "))}</p>` : ""}
-              ${bot.lastError ? `<p class="item-meta">Fehler: ${escapeHtml(bot.lastError)}</p>` : ""}
+  setElementHtml(
+    els.selfbotsList,
+    bots
+      .map((bot) => {
+        const botRuns = activeRuns.filter((run) => run.botId === bot.id);
+        const isStreaming = botRuns.length > 0;
+        const presence = bot.lastPresenceText
+          ? `Presence: ${bot.lastPresenceText}`
+          : "Presence: keine";
+        const voiceStatus = bot.lastVoiceStatus
+          ? `Voice-Status: ${bot.lastVoiceStatus}`
+          : "Voice-Status: leer";
+        return `
+          <article class="item-card">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(bot.name)}</h3>
+                <p class="item-meta"><span class="badge ${badgeClass(bot.status)}">${escapeHtml(bot.status)}</span>${bot.userTag ? ` | ${escapeHtml(bot.userTag)}` : ""}${bot.commandEnabled ? " | Commands" : ""}${isStreaming ? ` | ${botRuns.length} aktiver Stream${botRuns.length === 1 ? "" : "s"}` : ""}</p>
+                <p class="item-meta">${escapeHtml(presence)}</p>
+                <p class="item-meta">${escapeHtml(voiceStatus)}</p>
+                ${isStreaming ? `<p class="item-meta">${escapeHtml(botRuns.map((run) => `${run.channelName} -> ${run.presetName}`).join(" | "))}</p>` : ""}
+                ${bot.lastError ? `<p class="item-meta">Fehler: ${escapeHtml(bot.lastError)}</p>` : ""}
+              </div>
             </div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+          </article>
+        `;
+      })
+      .join(""),
+  );
 }
 
 function badgeClass(status) {
@@ -1337,169 +1439,191 @@ function badgeClass(status) {
 
 function renderChannels() {
   if (!state.app.channels.length) {
-    els.channelsList.innerHTML =
-      '<p class="muted">Noch keine Kanaele gespeichert.</p>';
+    setElementHtml(
+      els.channelsList,
+      '<p class="muted">Noch keine Kanaele gespeichert.</p>',
+    );
     return;
   }
 
-  els.channelsList.innerHTML = state.app.channels
-    .map((item) => {
-      const bot = findBot(item.botId);
-      return `
-        <article class="item-card">
-          <div class="item-topline">
-            <div>
-              <h3 class="item-title">${escapeHtml(item.name)}</h3>
-              <p class="item-meta">${escapeHtml(item.guildId)} / ${escapeHtml(item.channelId)}</p>
-              <p class="item-meta">${escapeHtml(item.streamMode)}${bot ? ` | ${escapeHtml(bot.name)}` : ""}${item.description ? ` | ${escapeHtml(item.description)}` : ""}</p>
+  setElementHtml(
+    els.channelsList,
+    state.app.channels
+      .map((item) => {
+        const bot = findBot(item.botId);
+        return `
+          <article class="item-card">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(item.name)}</h3>
+                <p class="item-meta">${escapeHtml(item.guildId)} / ${escapeHtml(item.channelId)}</p>
+                <p class="item-meta">${escapeHtml(item.streamMode)}${bot ? ` | ${escapeHtml(bot.name)}` : ""}${item.description ? ` | ${escapeHtml(item.description)}` : ""}</p>
+              </div>
             </div>
-          </div>
-          <div class="item-actions">
-            <button type="button" data-action="edit-channel" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
-            <button type="button" data-action="delete-channel" data-id="${escapeHtml(item.id)}">Loeschen</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+            <div class="item-actions">
+              <button type="button" data-action="edit-channel" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
+              <button type="button" data-action="delete-channel" data-id="${escapeHtml(item.id)}">Loeschen</button>
+            </div>
+          </article>
+        `;
+      })
+      .join(""),
+  );
 }
 
 function renderPresets() {
   if (!state.app.presets.length) {
-    els.presetsList.innerHTML =
-      '<p class="muted">Noch keine Presets gespeichert.</p>';
+    setElementHtml(
+      els.presetsList,
+      '<p class="muted">Noch keine Presets gespeichert.</p>',
+    );
     return;
   }
 
-  els.presetsList.innerHTML = state.app.presets
-    .map(
-      (item) => `
-        <article class="item-card">
-          <div class="item-topline">
-            <div>
-              <h3 class="item-title">${escapeHtml(item.name)}</h3>
-              <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(describePresetQuality(item))}</p>
-              <p class="item-meta">${item.bitrateVideoKbps}/${item.maxBitrateVideoKbps} kbps Video | ${item.bitrateAudioKbps} kbps Audio | ${item.includeAudio ? "Audio an" : "Audio aus"}</p>
-              <p class="item-meta">${escapeHtml(item.sourceUrl)}</p>
-              <p class="item-meta">Fallbacks: ${escapeHtml(describeFallbackSources(item))}</p>
-              <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
+  setElementHtml(
+    els.presetsList,
+    state.app.presets
+      .map(
+        (item) => `
+          <article class="item-card">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(item.name)}</h3>
+                <p class="item-meta">${escapeHtml(item.sourceMode)} | ${escapeHtml(describePresetQuality(item))}</p>
+                <p class="item-meta">${item.bitrateVideoKbps}/${item.maxBitrateVideoKbps} kbps Video | ${item.bitrateAudioKbps} kbps Audio | ${item.includeAudio ? "Audio an" : "Audio aus"}</p>
+                <p class="item-meta">${escapeHtml(item.sourceUrl)}</p>
+                <p class="item-meta">Fallbacks: ${escapeHtml(describeFallbackSources(item))}</p>
+                <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
+              </div>
             </div>
-          </div>
-          <div class="item-actions">
-            <button type="button" data-action="edit-preset" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
-            <button type="button" data-action="delete-preset" data-id="${escapeHtml(item.id)}">Loeschen</button>
-          </div>
-        </article>
-      `,
-    )
-    .join("");
+            <div class="item-actions">
+              <button type="button" data-action="edit-preset" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
+              <button type="button" data-action="delete-preset" data-id="${escapeHtml(item.id)}">Loeschen</button>
+            </div>
+          </article>
+        `,
+      )
+      .join(""),
+  );
 }
 
 function renderEvents() {
   if (!state.app.events.length) {
-    els.eventsList.innerHTML =
-      '<p class="muted">Noch keine Events gespeichert.</p>';
+    setElementHtml(
+      els.eventsList,
+      '<p class="muted">Noch keine Events gespeichert.</p>',
+    );
     return;
   }
 
   const items = [...state.app.events].sort(
     (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
   );
-  els.eventsList.innerHTML = items
-    .map((item) => {
-      const recurrence = recurrenceSummary(item.recurrence);
-      const seriesInfo = item.seriesId
-        ? `Serie ${escapeHtml(item.seriesId.slice(0, 8))} | Folge ${item.occurrenceIndex}`
-        : "Einzeltermin";
-      const errorInfo = item.lastError
-        ? `<p class="item-meta">Fehler: ${escapeHtml(item.lastError)}</p>`
-        : "";
-      const discordBadge = item.discordEventId
-        ? `<span class="discord-badge" title="Discord Event: ${escapeHtml(item.discordEventId)}">Discord</span>`
-        : "";
-      const statusClass = `event-status event-status-${item.status}`;
-      const deleteLabel = item.seriesId ? "Loeschen einzeln" : "Loeschen";
-      return `
-        <article class="item-card">
-          <div class="item-topline">
-            <div>
-              <h3 class="item-title">${escapeHtml(item.name)}${discordBadge}</h3>
-              <p class="item-meta">${formatDateTime(item.startAt)} -> ${formatDateTime(item.endAt)}</p>
-              <p class="item-meta"><span class="${statusClass}">${eventStatusLabel(item.status)}</span> | ${escapeHtml(recurrence)}</p>
-              <p class="item-meta">${seriesInfo}</p>
-              <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
-              ${errorInfo}
+  setElementHtml(
+    els.eventsList,
+    items
+      .map((item) => {
+        const recurrence = recurrenceSummary(item.recurrence);
+        const seriesInfo = item.seriesId
+          ? `Serie ${escapeHtml(item.seriesId.slice(0, 8))} | Folge ${item.occurrenceIndex}`
+          : "Einzeltermin";
+        const errorInfo = item.lastError
+          ? `<p class="item-meta">Fehler: ${escapeHtml(item.lastError)}</p>`
+          : "";
+        const discordBadge = item.discordEventId
+          ? `<span class="discord-badge" title="Discord Event: ${escapeHtml(item.discordEventId)}">Discord</span>`
+          : "";
+        const statusClass = `event-status event-status-${item.status}`;
+        const deleteLabel = item.seriesId ? "Loeschen einzeln" : "Loeschen";
+        return `
+          <article class="item-card">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(item.name)}${discordBadge}</h3>
+                <p class="item-meta">${formatDateTime(item.startAt)} -> ${formatDateTime(item.endAt)}</p>
+                <p class="item-meta"><span class="${statusClass}">${eventStatusLabel(item.status)}</span> | ${escapeHtml(recurrence)}</p>
+                <p class="item-meta">${seriesInfo}</p>
+                <p class="item-meta">${item.description ? escapeHtml(item.description) : "keine Beschreibung"}</p>
+                ${errorInfo}
+              </div>
             </div>
-          </div>
-          <div class="item-actions">
-            <button type="button" data-action="start-event" data-id="${escapeHtml(item.id)}">Start</button>
-            <button type="button" data-action="cancel-event" data-id="${escapeHtml(item.id)}">Abbrechen</button>
-            <button type="button" data-action="edit-event" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
-            <button type="button" data-action="delete-event" data-id="${escapeHtml(item.id)}">${deleteLabel}</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+            <div class="item-actions">
+              <button type="button" data-action="start-event" data-id="${escapeHtml(item.id)}">Start</button>
+              <button type="button" data-action="cancel-event" data-id="${escapeHtml(item.id)}">Abbrechen</button>
+              <button type="button" data-action="edit-event" data-id="${escapeHtml(item.id)}">Bearbeiten</button>
+              <button type="button" data-action="delete-event" data-id="${escapeHtml(item.id)}">${deleteLabel}</button>
+            </div>
+          </article>
+        `;
+      })
+      .join(""),
+  );
 }
 
 function renderQueue() {
   const items = state.app.queue;
   const queueConfig = state.app.queueConfig;
   if (!items.length) {
-    els.queueList.innerHTML = '<p class="muted">Die Queue ist leer.</p>';
+    setElementHtml(els.queueList, '<p class="muted">Die Queue ist leer.</p>');
     return;
   }
 
-  els.queueList.innerHTML = items
-    .map((item, index) => {
-      const isActive = queueConfig.active && queueConfig.currentIndex === index;
-      const activeClass = isActive ? " queue-item-active" : "";
-      const position = `${index + 1}/${items.length}`;
-      return `
-        <article class="item-card${activeClass}">
-          <div class="item-topline">
-            <div>
-              <h3 class="item-title">${escapeHtml(item.name)}</h3>
-              <p class="item-meta">${escapeHtml(item.sourceMode)} | ${position} | ${formatDateTime(item.addedAt)}</p>
-              <p class="item-meta">${escapeHtml(item.url)}</p>
-              <p class="item-meta"><span class="${queueStatusClass(item.status)}">${queueStatusLabel(item.status)}</span>${isActive ? " | aktuell" : ""}</p>
+  setElementHtml(
+    els.queueList,
+    items
+      .map((item, index) => {
+        const isActive =
+          queueConfig.active && queueConfig.currentIndex === index;
+        const activeClass = isActive ? " queue-item-active" : "";
+        const position = `${index + 1}/${items.length}`;
+        return `
+          <article class="item-card${activeClass}">
+            <div class="item-topline">
+              <div>
+                <h3 class="item-title">${escapeHtml(item.name)}</h3>
+                <p class="item-meta">${escapeHtml(item.sourceMode)} | ${position} | ${formatDateTime(item.addedAt)}</p>
+                <p class="item-meta">${escapeHtml(item.url)}</p>
+                <p class="item-meta"><span class="${queueStatusClass(item.status)}">${queueStatusLabel(item.status)}</span>${isActive ? " | aktuell" : ""}</p>
+              </div>
             </div>
-          </div>
-          <div class="item-actions">
-            <button type="button" data-action="queue-up" data-id="${escapeHtml(item.id)}"${index === 0 ? " disabled" : ""}>Hoch</button>
-            <button type="button" data-action="queue-down" data-id="${escapeHtml(item.id)}"${index === items.length - 1 ? " disabled" : ""}>Runter</button>
-            <button type="button" data-action="queue-delete" data-id="${escapeHtml(item.id)}">Entfernen</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+            <div class="item-actions">
+              <button type="button" data-action="queue-up" data-id="${escapeHtml(item.id)}"${index === 0 ? " disabled" : ""}>Hoch</button>
+              <button type="button" data-action="queue-down" data-id="${escapeHtml(item.id)}"${index === items.length - 1 ? " disabled" : ""}>Runter</button>
+              <button type="button" data-action="queue-delete" data-id="${escapeHtml(item.id)}">Entfernen</button>
+            </div>
+          </article>
+        `;
+      })
+      .join(""),
+  );
 }
 
 function renderLogs() {
   if (!state.app.logs.length) {
-    els.logsList.innerHTML = '<p class="muted">Noch keine Logs.</p>';
+    setElementHtml(els.logsList, '<p class="muted">Noch keine Logs.</p>');
     return;
   }
 
-  els.logsList.innerHTML = state.app.logs
-    .slice(0, 60)
-    .map((item) => {
-      const context = item.context
-        ? Object.entries(item.context)
-            .filter(([, value]) => value)
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(" | ")
-        : "";
-      return `
-        <article class="log-entry" data-level="${escapeHtml(item.level)}">
-          <p><strong>${escapeHtml(item.level.toUpperCase())}</strong> ${escapeHtml(item.message)}</p>
-          <p class="muted">${formatDateTime(item.createdAt)}${context ? ` | ${escapeHtml(context)}` : ""}</p>
-        </article>
-      `;
-    })
-    .join("");
+  setElementHtml(
+    els.logsList,
+    state.app.logs
+      .slice(0, 60)
+      .map((item) => {
+        const context = item.context
+          ? Object.entries(item.context)
+              .filter(([, value]) => value)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(" | ")
+          : "";
+        return `
+          <article class="log-entry" data-level="${escapeHtml(item.level)}">
+            <p><strong>${escapeHtml(item.level.toUpperCase())}</strong> ${escapeHtml(item.message)}</p>
+            <p class="muted">${formatDateTime(item.createdAt)}${context ? ` | ${escapeHtml(context)}` : ""}</p>
+          </article>
+        `;
+      })
+      .join(""),
+  );
 }
 
 function renderNotifications() {
@@ -1509,14 +1633,25 @@ function renderNotifications() {
     rules: DEFAULT_NOTIFICATION_RULES,
   };
   const rules = normalizeNotificationRules(settings.rules);
-  els.notificationWebhookUrl.value = settings.webhookUrl || "";
-  els.notificationDmEnabled.checked = !!settings.dmEnabled;
-  els.notificationRuleManualRuns.checked = !!rules.manualRuns;
-  els.notificationRuleScheduledEvents.checked = !!rules.scheduledEvents;
-  els.notificationRuleQueueLifecycle.checked = !!rules.queueLifecycle;
-  els.notificationRuleQueueItems.checked = !!rules.queueItems;
-  els.notificationRuleFailures.checked = !!rules.failures;
-  els.notificationRulePerformanceWarnings.checked = !!rules.performanceWarnings;
+  if (!isFormBeingEdited(els.notificationForm)) {
+    syncInputValue(els.notificationWebhookUrl, settings.webhookUrl || "");
+    syncCheckboxValue(els.notificationDmEnabled, !!settings.dmEnabled);
+    syncCheckboxValue(els.notificationRuleManualRuns, !!rules.manualRuns);
+    syncCheckboxValue(
+      els.notificationRuleScheduledEvents,
+      !!rules.scheduledEvents,
+    );
+    syncCheckboxValue(
+      els.notificationRuleQueueLifecycle,
+      !!rules.queueLifecycle,
+    );
+    syncCheckboxValue(els.notificationRuleQueueItems, !!rules.queueItems);
+    syncCheckboxValue(els.notificationRuleFailures, !!rules.failures);
+    syncCheckboxValue(
+      els.notificationRulePerformanceWarnings,
+      !!rules.performanceWarnings,
+    );
+  }
 
   const parts = [];
   if (settings.webhookUrl) {
@@ -1530,7 +1665,7 @@ function renderNotifications() {
   if (settings.updatedAt) {
     parts.push(`Zuletzt gespeichert: ${formatDateTime(settings.updatedAt)}`);
   }
-  els.notificationSummary.textContent = parts.join(" | ");
+  setElementText(els.notificationSummary, parts.join(" | "));
 
   const configCount = [
     `${state.app.channels.length} Kanaele`,
@@ -1538,7 +1673,7 @@ function renderNotifications() {
     `${state.app.events.length} Events`,
     `${state.app.queue.length} Queue-Items`,
   ];
-  els.configSummary.textContent = configCount.join(" | ");
+  setElementText(els.configSummary, configCount.join(" | "));
 }
 
 function renderSelects() {
