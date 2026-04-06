@@ -606,6 +606,7 @@ export class StreamRuntime extends EventEmitter {
       this.attachFfmpegDiagnostics(session, command);
       this.attachFfmpegTelemetry(session, command);
       waitForStartup = this.createStartupWatcher(command, controller.signal);
+      void waitForStartup.catch(() => {});
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Source preparation failed";

@@ -48,13 +48,42 @@ const YOUTUBE_HOSTS = new Set([
   "youtu.be",
   "www.youtu.be",
 ]);
+const YT_DLP_HOSTS = new Set([
+  ...YOUTUBE_HOSTS,
+  "twitch.tv",
+  "www.twitch.tv",
+]);
 const YOUTUBE_BOT_CHECK_PATTERN = /not a bot/i;
 const BROWSER_COOKIE_COPY_PATTERN = /could not copy .*cookie database/i;
+
+function matchesKnownHost(hostname: string, knownHosts: Set<string>) {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  for (const host of knownHosts) {
+    if (normalized === host || normalized.endsWith(`.${host}`)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export function isYouTubeUrl(input: string) {
   try {
     const url = new URL(input);
-    return YOUTUBE_HOSTS.has(url.hostname);
+    return matchesKnownHost(url.hostname, YOUTUBE_HOSTS);
+  } catch {
+    return false;
+  }
+}
+
+export function isYtDlpUrl(input: string) {
+  try {
+    const url = new URL(input);
+    return matchesKnownHost(url.hostname, YT_DLP_HOSTS);
   } catch {
     return false;
   }

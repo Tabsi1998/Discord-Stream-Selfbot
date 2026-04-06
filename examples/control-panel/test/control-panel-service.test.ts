@@ -23,6 +23,8 @@ class RuntimeStub extends EventEmitter {
     botId: string;
     channelId: string;
     presetId: string;
+    presetName?: string;
+    sourceMode?: string;
     qualityProfile?: string;
     adaptiveTargetQualityProfile?: string;
   }> = [];
@@ -54,7 +56,7 @@ class RuntimeStub extends EventEmitter {
     kind: "manual" | "event";
     eventId?: string;
     channel: { botId: string; id: string };
-    preset: { id: string; qualityProfile?: string };
+    preset: { id: string; name?: string; sourceMode?: string; qualityProfile?: string };
     adaptiveTargetPreset?: { qualityProfile?: string };
     plannedStopAt?: string;
   }) {
@@ -62,6 +64,8 @@ class RuntimeStub extends EventEmitter {
       botId: input.channel.botId,
       channelId: input.channel.id,
       presetId: input.preset.id,
+      presetName: input.preset.name,
+      sourceMode: input.preset.sourceMode,
       qualityProfile:
         "qualityProfile" in input.preset &&
         typeof input.preset.qualityProfile === "string"
@@ -379,6 +383,29 @@ test("ControlPanelService uses the requested quick play target quality", async (
   }
 });
 
+test("ControlPanelService auto-detects Twitch quick play as yt-dlp", async () => {
+  const context = createServiceContext();
+
+  try {
+    const channel = context.service.createChannel(
+      createChannelInput("primary", "Quick Play Twitch", "quick-play-twitch"),
+    );
+
+    await context.service.startAdHocRun({
+      channel,
+      sourceUrl: "https://www.twitch.tv/markrei93",
+    });
+
+    assert.equal(context.runtime.startCalls[0]?.sourceMode, "yt-dlp");
+    assert.equal(
+      context.runtime.startCalls[0]?.presetName,
+      "Quick Play www.twitch.tv",
+    );
+  } finally {
+    context.dispose();
+  }
+});
+
 test("ControlPanelService validates fallback sources with source-mode rules", () => {
   const context = createServiceContext();
 
@@ -397,7 +424,36 @@ test("ControlPanelService validates fallback sources with source-mode rules", ()
             },
           ],
         }),
-      /YouTube URLs require source mode 'yt-dlp'/,
+      /YouTube\/Twitch URLs require source mode 'yt-dlp'/,
+    );
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService auto-detects Twitch queue items as yt-dlp", () => {
+  const context = createServiceContext();
+
+  try {
+    const item = context.service.addToQueue("https://www.twitch.tv/markrei93");
+
+    assert.equal(item.sourceMode, "yt-dlp");
+  } finally {
+    context.dispose();
+  }
+});
+
+test("ControlPanelService rejects Twitch direct presets without yt-dlp mode", () => {
+  const context = createServiceContext();
+
+  try {
+    assert.throws(
+      () =>
+        context.service.createPreset({
+          ...createPresetInput("Twitch Test", "https://www.twitch.tv/markrei93"),
+          sourceMode: "direct",
+        }),
+      /YouTube\/Twitch URLs require source mode 'yt-dlp'/,
     );
   } finally {
     context.dispose();

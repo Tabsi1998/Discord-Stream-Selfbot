@@ -1,6 +1,7 @@
 import {
   Client as ControlBotClient,
   GatewayIntentBits,
+  MessageFlags,
   Partials,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
@@ -487,7 +488,7 @@ export class DiscordCommandBridge {
     try {
       if (!interaction.deferred && !interaction.replied) {
         await interaction.deferReply({
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (error: unknown) {
@@ -587,11 +588,22 @@ export class DiscordCommandBridge {
     });
 
     client.on("messageCreate", this.handleControlBotMessage);
-    client.on("interactionCreate", async (interaction) => {
+    client.on("interactionCreate", (interaction) => {
       if (!interaction.isChatInputCommand()) {
         return;
       }
-      await this.handleControlBotInteraction(interaction);
+      void this.handleControlBotInteraction(interaction).catch(
+        (error: unknown) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Discord interaction handler failed";
+          this.store.appendLog("warn", "Discord interaction handler failed", {
+            command: interaction.commandName,
+            error: message,
+          });
+        },
+      );
     });
 
     try {
@@ -891,14 +903,14 @@ export class DiscordCommandBridge {
       if (index === 0 && !interaction.replied && !interaction.deferred) {
         result = await interaction.reply({
           content: chunk,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         continue;
       }
 
       result = await interaction.followUp({
         content: chunk,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

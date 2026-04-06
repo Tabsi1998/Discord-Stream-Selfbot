@@ -32,7 +32,7 @@ import type {
   ScheduledEvent,
   StreamPreset,
 } from "../domain/types.js";
-import { isYouTubeUrl } from "../runtime/SourceResolver.js";
+import { isYtDlpUrl } from "../runtime/SourceResolver.js";
 import type {
   AdaptiveRestartRequestInfo,
   PerformanceWarningInfo,
@@ -148,8 +148,8 @@ function describeEventSource(preset: StreamPreset | undefined) {
   if (!preset) {
     return undefined;
   }
-  if (preset.sourceMode === "yt-dlp" || isYouTubeUrl(preset.sourceUrl)) {
-    return "YouTube / yt-dlp";
+  if (preset.sourceMode === "yt-dlp" || isYtDlpUrl(preset.sourceUrl)) {
+    return "yt-dlp / Remote";
   }
 
   const sourceProfile = detectSourceProfile(
@@ -195,8 +195,12 @@ function buildAdHocPresetName(
   sourceUrl: string,
   sourceMode: "direct" | "yt-dlp",
 ) {
-  if (sourceMode === "yt-dlp" || isYouTubeUrl(sourceUrl)) {
-    return "Quick Play YouTube";
+  if (sourceMode === "yt-dlp" || isYtDlpUrl(sourceUrl)) {
+    try {
+      return `Quick Play ${new URL(sourceUrl).hostname}`;
+    } catch {
+      return "Quick Play yt-dlp";
+    }
   }
   try {
     const url = new URL(sourceUrl);
@@ -1020,7 +1024,7 @@ export class ControlPanelService {
     assertNonEmpty(input.sourceUrl, "sourceUrl");
 
     const sourceMode =
-      input.sourceMode ?? (isYouTubeUrl(input.sourceUrl) ? "yt-dlp" : "direct");
+      input.sourceMode ?? (isYtDlpUrl(input.sourceUrl) ? "yt-dlp" : "direct");
     const sourceProfile = detectSourceProfile(sourceMode, input.sourceUrl);
     const hasHardwareEncoder = appConfig.availableHardwareEncoders.length > 0;
     const useSafeSoftwareProfile =
@@ -1410,9 +1414,9 @@ export class ControlPanelService {
   private validatePresetSource(source: FallbackSource, fieldName: string) {
     assertNonEmpty(source.url, fieldName);
 
-    if (source.sourceMode === "direct" && isYouTubeUrl(source.url)) {
+    if (source.sourceMode === "direct" && isYtDlpUrl(source.url)) {
       throw new Error(
-        `YouTube URLs require source mode 'yt-dlp' (${fieldName})`,
+        `YouTube/Twitch URLs require source mode 'yt-dlp' (${fieldName})`,
       );
     }
 
@@ -1785,7 +1789,7 @@ export class ControlPanelService {
       id: randomUUID(),
       url: url.trim(),
       name: (name?.trim() || url.trim()).slice(0, 120),
-      sourceMode: sourceMode ?? (isYouTubeUrl(url) ? "yt-dlp" : "direct"),
+      sourceMode: sourceMode ?? (isYtDlpUrl(url) ? "yt-dlp" : "direct"),
       addedAt: nowIso(),
       status: "pending",
     };
