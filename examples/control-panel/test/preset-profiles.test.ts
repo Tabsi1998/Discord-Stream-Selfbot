@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   applyRuntimePerformanceGuardrails,
   buildAdaptiveDowngradePreset,
+  buildEffectiveAdaptivePreset,
   buildAdaptiveUpgradePreset,
   detectSourceProfile,
   getAdaptiveRecoverySpeedThreshold,
@@ -191,4 +192,84 @@ test("buildAdaptiveUpgradePreset returns to the original target profile", () => 
   assert.equal(result?.preset.qualityProfile, "1080p30");
   assert.equal(result?.preset.width, 1920);
   assert.equal(result?.preset.height, 1080);
+});
+
+test("buildEffectiveAdaptivePreset clamps software-only 1080p60 targets to 1080p30", () => {
+  const preset = {
+    id: "preset-guarded",
+    name: "Main Feed",
+    sourceUrl: "https://www.twitch.tv/example",
+    sourceMode: "yt-dlp" as const,
+    fallbackSources: [],
+    qualityProfile: "1080p60" as const,
+    bufferProfile: "stable" as const,
+    description: "",
+    includeAudio: true,
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    bitrateVideoKbps: 8500,
+    maxBitrateVideoKbps: 10000,
+    bitrateAudioKbps: 160,
+    videoCodec: "H264" as const,
+    hardwareAcceleration: false,
+    minimizeLatency: false,
+    createdAt: "2026-03-30T10:00:00.000Z",
+    updatedAt: "2026-03-30T10:00:00.000Z",
+  };
+
+  const result = buildEffectiveAdaptivePreset(preset, "software");
+
+  assert.equal(result.qualityProfile, "1080p30");
+  assert.equal(result.width, 1920);
+  assert.equal(result.height, 1080);
+  assert.equal(result.fps, 30);
+});
+
+test("buildAdaptiveUpgradePreset skips recovery when software guardrails already cap the target", () => {
+  const currentPreset = {
+    id: "preset-current",
+    name: "Main Feed",
+    sourceUrl: "https://www.twitch.tv/example",
+    sourceMode: "yt-dlp" as const,
+    fallbackSources: [],
+    qualityProfile: "1080p30" as const,
+    bufferProfile: "stable" as const,
+    description: "",
+    includeAudio: true,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    bitrateVideoKbps: 7000,
+    maxBitrateVideoKbps: 9500,
+    bitrateAudioKbps: 160,
+    videoCodec: "H264" as const,
+    hardwareAcceleration: false,
+    minimizeLatency: false,
+    createdAt: "2026-03-30T10:00:00.000Z",
+    updatedAt: "2026-03-30T10:00:00.000Z",
+  };
+  const requestedTargetPreset = {
+    ...currentPreset,
+    id: "preset-target",
+    qualityProfile: "1080p60" as const,
+    fps: 60,
+    bitrateVideoKbps: 8500,
+    maxBitrateVideoKbps: 10000,
+  };
+
+  const effectiveCurrentPreset = buildEffectiveAdaptivePreset(
+    currentPreset,
+    "software",
+  );
+  const effectiveTargetPreset = buildEffectiveAdaptivePreset(
+    requestedTargetPreset,
+    "software",
+  );
+  const result = buildAdaptiveUpgradePreset(
+    effectiveCurrentPreset,
+    effectiveTargetPreset,
+  );
+
+  assert.equal(result, undefined);
 });

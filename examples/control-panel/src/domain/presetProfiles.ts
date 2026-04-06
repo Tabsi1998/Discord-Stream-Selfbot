@@ -644,6 +644,60 @@ export function applyRuntimePerformanceGuardrails(
   };
 }
 
+function resolveExactQualityProfile(
+  width: number,
+  height: number,
+  fps: number,
+): QualityProfile | undefined {
+  const exactMatch = Object.values(QUALITY_PROFILES).find(
+    (profile) =>
+      profile.id !== "custom" &&
+      profile.width === width &&
+      profile.height === height &&
+      profile.fps === fps,
+  );
+  return exactMatch?.id;
+}
+
+export function buildEffectiveAdaptivePreset(
+  preset: StreamPreset,
+  selectedEncoderMode: VideoEncoderMode,
+) {
+  const guarded = applyRuntimePerformanceGuardrails(
+    preset,
+    selectedEncoderMode,
+  );
+  const effectiveQualityProfile =
+    resolveExactQualityProfile(guarded.width, guarded.height, guarded.fps) ??
+    "custom";
+  const normalized = normalizePresetInput({
+    name: preset.name,
+    sourceUrl: preset.sourceUrl,
+    sourceMode: preset.sourceMode,
+    fallbackSources: preset.fallbackSources,
+    qualityProfile: effectiveQualityProfile,
+    bufferProfile: preset.bufferProfile,
+    description: preset.description,
+    includeAudio: preset.includeAudio,
+    width: guarded.width,
+    height: guarded.height,
+    fps: guarded.fps,
+    bitrateVideoKbps: guarded.bitrateVideoKbps,
+    maxBitrateVideoKbps: guarded.maxBitrateVideoKbps,
+    bitrateAudioKbps: guarded.bitrateAudioKbps,
+    videoCodec: preset.videoCodec,
+    hardwareAcceleration: preset.hardwareAcceleration,
+    minimizeLatency: preset.minimizeLatency,
+  });
+
+  return {
+    ...preset,
+    ...normalized,
+    fallbackSources: normalized.fallbackSources,
+    description: normalized.description?.trim() ?? "",
+  } satisfies StreamPreset;
+}
+
 function resolveAdaptiveStepId(
   preset: Pick<
     StreamPreset | PresetInput,

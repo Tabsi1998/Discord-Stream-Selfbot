@@ -16,6 +16,7 @@ import {
 } from "../config/selfbotConfig.js";
 import {
   applyRuntimePerformanceGuardrails,
+  buildEffectiveAdaptivePreset,
   buildAdaptiveDowngradePreset,
   buildAdaptiveUpgradePreset,
   getAdaptiveRecoverySpeedThreshold,
@@ -1196,12 +1197,20 @@ export class StreamRuntime extends EventEmitter {
       return;
     }
 
+    const effectiveCurrentPreset = buildEffectiveAdaptivePreset(
+      session.preset,
+      session.selectedEncoderMode,
+    );
+    const effectiveAdaptiveTargetPreset = buildEffectiveAdaptivePreset(
+      session.adaptiveTargetPreset,
+      session.selectedEncoderMode,
+    );
     const transition =
       reason === "lag"
-        ? buildAdaptiveDowngradePreset(session.preset)
+        ? buildAdaptiveDowngradePreset(effectiveCurrentPreset)
         : buildAdaptiveUpgradePreset(
-            session.preset,
-            session.adaptiveTargetPreset,
+            effectiveCurrentPreset,
+            effectiveAdaptiveTargetPreset,
           );
 
     if (!transition) {
@@ -1219,9 +1228,9 @@ export class StreamRuntime extends EventEmitter {
       trigger,
       run: session.run,
       channel: session.channel,
-      currentPreset: session.preset,
+      currentPreset: effectiveCurrentPreset,
       nextPreset: transition.preset,
-      adaptiveTargetPreset: session.adaptiveTargetPreset,
+      adaptiveTargetPreset: effectiveAdaptiveTargetPreset,
     } satisfies AdaptiveRestartRequestInfo);
   }
 
