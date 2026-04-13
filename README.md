@@ -1,52 +1,68 @@
 # Discord Stream Bot
 
-> Automatisches Streaming auf Discord - YouTube, Twitch, IPTV, Direktlinks - alles per Web Panel oder Chat-Befehl steuerbar.
+Self-hosted Discord stream stack for video sources via Selfbots, optional control bot, web panel, scheduler, queue, and Docker deployment.
 
----
+## Wichtiger Hinweis
 
-## Was ist das?
+- Dieses Repo enthaelt einen deploybaren Bot-Pfad und eine wiederverwendbare Streaming-Library.
+- Der produktive Bot-/Panel-Pfad liegt in `examples/control-panel/` und wird von `install.sh`, `config.sh` und `update.sh` verwendet.
+- Die Root-Ordner `src/` und `dist/` sind die zugrundeliegende Library `@dank074/discord-video-stream`.
+- Selfbots koennen gegen die Discord Terms of Service verstossen. Nutzung auf eigene Verantwortung.
 
-Ein Self-Bot der auf deinem Discord-Account Videos in Voice Channels streamt. Das Ganze laeuft als Docker Container auf deinem Server und wird ueber ein modernes Web Panel oder Discord Chat-Befehle gesteuert.
+## Doku-Navigation
 
-**Wichtig:** Self-Bots verstossen gegen die Discord ToS. Nutzung auf eigene Gefahr.
+- `README.md`: Einstieg, Architektur, Schnellstart
+- [`SELFHOSTING.md`](SELFHOSTING.md): Betrieb, Backups, Docker, Reverse Proxy, GPU
+- [`COMMANDS.md`](COMMANDS.md): Text- und Slash-Commands
+- [`PERFORMANCE.md`](PERFORMANCE.md): Qualitaetsprofile, Buffering, Hardware-Encoding, Tuning
+- [`examples/control-panel/README.md`](examples/control-panel/README.md): technische Doku fuer das deploybare Panel, API und Persistenz
 
----
+## Was das Projekt heute ist
 
-## Features
+- Web Panel fuer Kanaele, Presets, Queue, Events, Notifications und Konfig-Import/Export
+- primaerer Selfbot plus beliebig viele Zusatz-Selfbots mit eigenen Presence-/Voice-Status-Texten
+- optionale Steuerung ueber einen normalen Discord Bot fuer Chat-Commands und guild-spezifische Slash-Commands
+- Scheduler mit einmaligen, taeglichen und woechentlichen Events
+- Discord Scheduled Event Sync fuer geplante Streams
+- yt-dlp, HLS, MPEG-TS/IPTV und direkte Media-URLs
+- Queue mit Reorder, Loop und Konfliktregel `queue-first` oder `event-first`
+- Live-Status per SSE (`/api/live/state`), Healthcheck, FFmpeg-Telemetrie und URL-Test
+- Notification-Regeln fuer Webhooks und optionale Self-DM-Benachrichtigungen
+- YouTube-Helfer fuer Cookies und device-flow OAuth2
 
-| Feature | Beschreibung |
-|---------|-------------|
-| Web Panel | Dashboard zum Verwalten von Kanaelen, Presets, Queue und Events |
-| Web Panel Login | Optionaler HTTP Basic Auth Schutz direkt in der App |
-| Multi-Selfbot | Mehrere Selfbots mit eigenem Token, Presence und Voice-Status |
-| Parallele Streams | Mehrere Streams gleichzeitig, jeweils getrennt pro Selfbot |
-| Scheduler | Streams zeitgesteuert planen - einmalig, taeglich, woechentlich |
-| Discord Events | Geplante Streams werden automatisch als Discord Events erstellt |
-| YouTube / Twitch | Automatisch ueber yt-dlp, einfach URL reinkopieren |
-| Reserve-Quellen | Mehrere Backup-URLs pro Preset mit automatischem Fallback |
-| MPEG-TS / IPTV | Dispatcharr, Tvheadend und andere TS-Proxies direkt nutzen |
-| Direkt-URLs | Jede MP4, HLS, M3U8 oder sonstige Media-URL |
-| Chat-Befehle | Streams per Discord-Nachricht starten/stoppen |
-| Queue | Mehrere URLs nacheinander abspielen, optional mit Loop |
-| Notification-Regeln | Getrennte Schalter fuer manuelle Streams, Events, Queue, Fehler und Performance-Warnungen |
-| Stream Health | Live Uptime-Anzeige und Status im Dashboard |
-| Live Telemetrie | FPS, Speed, Bitrate und Frame-Drops direkt im Panel |
-| URL-Test | Vor dem Streamen pruefen ob die Quelle erreichbar ist |
-| Qualitaetsprofile | 720p bis 4K, 30/60fps, Custom Encoder-Settings |
-| Buffer-Profile | Auto, Stabil, Ausgewogen, Minimale Latenz |
-| Source-Auto-Tuning | HLS, MPEG-TS/IPTV, MP4 und yt-dlp bekommen passendere Auto-Profile |
-| Hardware-Encoding | NVENC/VAAPI wird automatisch erkannt und bei Bedarf genutzt |
-| Go Live / Camera | Beide Discord Stream-Modi unterstuetzt |
+## Architektur auf einen Blick
 
----
+```text
+repo root
+├── src/                         # Streaming-Library
+├── examples/control-panel/      # Deploybare App (HTTP + Scheduler + Runtime)
+├── deploy/                      # Docker Compose, .env, persistente Host-Daten
+├── install.sh                   # Erstinstallation fuer den Bot-Pfad
+├── config.sh                    # Konfig- und Selfbot-Pflege
+├── update.sh                    # Git-Update + Backups + Rebuild
+└── docker/control-panel.Dockerfile
+```
+
+Zur Laufzeit sieht das Modell so aus:
+
+1. Der primaere Selfbot kommt aus `deploy/.env`.
+2. Zusatz-Selfbots werden aus `deploy/data/selfbot-profiles.tsv` oder einer JSON-Datei geladen.
+3. Jeder gespeicherte Stream-Kanal ist genau einem Selfbot zugeordnet.
+4. Die Queue laeuft immer auf genau einem ausgewaehlten Selfbot/Kanal/Preset.
+5. Geplante Events koennen die Queue je nach Konfliktregel pausieren oder blockiert werden.
+6. Optional uebernimmt ein normaler Bot die Command-Eingabe, waehrend die Selfbots weiter streamen.
 
 ## Schnellstart
 
 ### Voraussetzungen
 
-- Docker + Docker Compose
+- Docker mit `docker compose`
 - Git
-- Discord Self-Token ([Wie finde ich den?](#discord-token-finden))
+- Discord Self-Token
+- optional:
+  - `CONTROL_BOT_TOKEN` fuer einen normalen Steuer-Bot
+  - `/dev/dri` oder NVIDIA Runtime fuer Hardware-Encoding
+  - Reverse Proxy und TLS fuer oeffentliche Bereitstellung
 
 ### Installation
 
@@ -56,414 +72,161 @@ cd stream-bot
 ./install.sh
 ```
 
-Das Install-Script fragt alles interaktiv ab:
+`install.sh` erledigt den produktiven Bot-Pfad:
 
-1. Discord Token
-2. Zeitzone (Standard: Europe/Vienna)
-3. Chat-Befehle an/aus
-4. Optionaler Login fuer das Web-Panel
-5. Erlaubte User-IDs
+- prueft Docker und Compose
+- schreibt `deploy/.env`
+- legt `deploy/data/selfbot-profiles.tsv` an
+- baut das Docker-Image inklusive `yt-dlp[default]` und `yt-dlp-youtube-oauth2`
+- startet den Container `discord-stream-selfbot`
 
-Danach laeuft das Panel auf **http://localhost:3099**
+Danach:
 
-### Einstellungen aendern
+- Web Panel: `http://localhost:3099`
+- Healthcheck: `http://localhost:3099/api/health`
+
+### Erster sinnvoller Test
+
+1. Im Panel mindestens einen Kanal anlegen
+2. Ein Preset anlegen
+3. Ueber "Manual Start" oder per Command einen Stream starten
+4. Im Dashboard pruefen, ob Discord-Status, aktiver Stream und Telemetrie erscheinen
+
+## Tagesgeschaeft
 
 ```bash
 ./config.sh
+./update.sh
+./update.sh --fresh
 ```
 
-Zeigt die aktuelle Konfiguration und laesst dich einzelne Werte oder alles auf einmal aendern.
+- `./config.sh` aendert `.env` und Zusatz-Selfbots
+- `./update.sh` sichert Konfiguration und State, fuehrt `git pull --ff-only` aus und baut neu
+- `./update.sh --fresh` baut ohne Docker-Cache und zieht yt-dlp aggressiver neu
 
-### Updates einspielen
+## Was die Scripts wirklich tun
+
+### `install.sh`
+
+- nutzt im Script fest `HOST_PORT=3099` und `PORT=3099`
+- fragt den ueblichen Betriebsumfang interaktiv ab
+- uebernimmt fortgeschrittene Defaults aus einer bestehenden `.env`, falls vorhanden
+
+### `config.sh`
+
+- bearbeitet `deploy/.env`
+- verwaltet Zusatz-Selfbots in `deploy/data/selfbot-profiles.tsv`
+- kann die Compose-Umgebung nach Aenderungen neu bauen
+
+### `update.sh`
+
+- stasht auf Wunsch lokale Git-Aenderungen
+- sichert:
+  - `deploy/.env` nach `deploy/.env.pre-update`
+  - `deploy/data/control-panel-state.json` nach `deploy/data/control-panel-state.pre-update.json`
+  - Zusatz-Selfbot-Datei nach `*.pre-update`
+- fuehrt `git pull --ff-only` aus
+- baut und startet den Container neu
+
+## Wichtige Dateien auf dem Host
+
+| Pfad | Zweck |
+| --- | --- |
+| `deploy/.env` | Laufzeitkonfiguration fuer den Bot-Pfad |
+| `deploy/.env.example` | Vorlage mit allen bekannten Variablen |
+| `deploy/docker-compose.yml` | Container- und Volume-Definition |
+| `deploy/data/control-panel-state.json` | Kanaele, Presets, Events, Queue, Notification-Settings |
+| `deploy/data/control-panel-state.logs.json` | separat persistierte Logs |
+| `deploy/data/control-panel-state.json.bak` | automatische Backup-Datei beim Speichern |
+| `deploy/data/selfbot-profiles.tsv` | Zusatz-Selfbots auf dem Host |
+| `deploy/cookies/yt-dlp-cookies.txt` | manuell hinterlegte YouTube-Cookies |
+| `deploy/yt-dlp-cache/` | yt-dlp Cache und OAuth2-Tokens |
+| `docker/control-panel.Dockerfile` | produktiver Build fuer das Panel |
+
+## Konfiguration
+
+Die vollstaendige Vorlage steht in [`deploy/.env.example`](deploy/.env.example). Fuer den Betrieb sind diese Punkte entscheidend:
+
+- `DISCORD_TOKEN` ist Pflicht.
+- `HOST_PORT` und `PORT` werden von `install.sh` fest auf `3099` gesetzt. Manuelle Aenderungen in `deploy/.env` sind moeglich, werden aber nicht interaktiv angeboten.
+- `SELFBOT_CONFIG_FILE` ist ein Container-Pfad. Im Standardfall zeigt er auf die vom Host gemountete Datei `deploy/data/selfbot-profiles.tsv`.
+- `CONTROL_BOT_TOKEN` aktiviert einen normalen Discord Bot fuer Text- und Slash-Commands.
+- `COMMAND_ALLOWED_AUTHOR_IDS` bestimmt, welche User ueber den normalen Bot Commands senden duerfen.
+- `IDLE_*`, `STREAM_*` und `VOICE_STATUS_TEMPLATE` steuern Presence und Voice-Status der Selfbots.
+- `YT_DLP_YOUTUBE_EXTRACTOR_ARGS` ist standardmaessig `youtube:player_client=android`.
+- `PREFERRED_HW_ENCODER` unterstuetzt `auto`, `nvenc` und `vaapi`.
+- `NOTIFICATION_WEBHOOK_URL` und `NOTIFICATION_DM_ENABLED` dienen nur als Startwerte, solange im gespeicherten Panel-State noch keine Notification-Einstellungen hinterlegt sind.
+
+## Was das Panel abdeckt
+
+- Dashboard mit Discord-Status, aktiven Streams, Queue, geplantem naechsten Event und Telemetrie
+- Channel-Management inklusive Selfbot-Zuordnung und `go-live`/`camera`
+- Presets mit Profilen, Buffer-Strategie, Hardware-Beschleunigung und Fallback-Quellen
+- manuelle Starts mit optionaler Stoppzeit
+- Queue mit Start, Stop, Skip, Clear, Reorder und Loop
+- Event-Serien mit Scope `single`, `this-and-following` und `all`
+- Notification-Settings inklusive Testversand
+- Konfig-Export und -Import
+- YouTube-Cookie-Status, Cookie-Upload und OAuth2-Device-Flow
+
+Ein paar wichtige Laufzeitdetails:
+
+- Die Queue ist global als Liste, aber immer genau an einen Selfbot/Kanal/Preset gebunden.
+- `queue-first` bedeutet: ein geplantes Event auf demselben Selfbot wird blockiert.
+- `event-first` bedeutet: die Queue wird fuer das Event pausiert und danach fortgesetzt.
+- Notification-DMs gehen an den verwendeten Selfbot-Account selbst; fuer externe Alarme ist ein Webhook meist sinnvoller.
+
+## Commands
+
+Text-Commands funktionieren ueber Selfbots oder optional ueber einen normalen Bot. Die komplette Referenz steht in [`COMMANDS.md`](COMMANDS.md).
+
+Kurzueberblick:
+
+- Prefix standardmaessig `$panel`
+- Zusatz-Prefixe ueber `COMMAND_PREFIX_ALIASES`
+- Bot-Mention als Prefix nur beim normalen Control-Bot
+- Slash-Commands nur guild-spezifisch, nie global
+- sobald `CONTROL_BOT_TOKEN` aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands
+
+## Entwicklung
+
+Fuer Docker-Betrieb brauchst du lokal kein Node. Fuer Entwicklung schon:
+
+- Node.js `>=22.4.0`
+- `npm install`
+
+Wichtige Root-Skripte:
 
 ```bash
-./update.sh
+npm run build
+npm run build:control-panel
+npm run test:control-panel
+npm run ci
+npm run docker:build:control-panel
+npm run lint
 ```
 
-Holt die neueste Version von GitHub, sichert vorher alles (Token, Einstellungen, Stream-Daten) und baut den Container neu.
-
----
-
-## Web Panel Bedienung
-
-### Dashboard
-
-Die Startseite zeigt dir auf einen Blick:
-
-- **Discord Status** - Verbunden/Offline
-- **Aktive Streams** - Alle laufenden Streams pro Selfbot mit eigener Uptime
-- **Naechstes Event** - Wann der naechste geplante Stream startet
-- **Manueller Start** - Kanal + Preset auswaehlen und sofort starten
-- **Letzte Logs** - Was zuletzt passiert ist
-
-### Kanaele
-
-Hier konfigurierst du die Discord Voice Channels in denen gestreamt werden soll.
-
-| Feld | Beschreibung |
-|------|-------------|
-| Selfbot | Welcher Selfbot diesen Voice Channel bedient |
-| Name | Frei waehlbarer Name (z.B. "Gaming Kanal") |
-| Guild ID | Server-ID (Rechtsklick auf Server → ID kopieren) |
-| Voice Channel ID | Kanal-ID (Rechtsklick auf Voice Channel → ID kopieren) |
-| Stream-Modus | `Go Live` oder `Camera` |
-
-**Tipp:** Developer Mode muss in Discord aktiviert sein (Einstellungen → Erweitert → Entwicklermodus).
-
-### Presets
-
-Stream-Vorlagen mit Quelle, Qualitaet und Encoder-Einstellungen.
-
-| Tab | Was du einstellst |
-|-----|------------------|
-| **Allgemein** | Name, URL, Quelltyp, Qualitaet, Buffer-Verhalten |
-| **Video** | Aufloesung, FPS, Bitrate, Codec (H264/H265) |
-| **Audio** | Audio-Bitrate, Audio an/aus |
-| **Erweitert** | Hardware-Decoding, Minimale Latenz |
-
-#### Quelltypen
-
-| Typ | Wann verwenden |
-|-----|---------------|
-| **Direkte Media-URL** | MP4, HLS/M3U8, MPEG-TS, RTMP - alles was FFmpeg direkt oeffnen kann |
-| **yt-dlp** | YouTube Videos, YouTube Livestreams, Twitch Streams |
-
-**Auto-Erkennung:** Das Panel erkennt automatisch:
-- YouTube/Twitch URLs → schaltet auf yt-dlp um
-- MPEG-TS Proxy URLs (Dispatcharr) → setzt Buffer auf Stabil
-- Pro Preset koennen Reserve-Quellen hinterlegt werden; bei Fehlern probiert das Panel automatisch die naechste Quelle
-
-#### Qualitaetsprofile
-
-| Profil | Aufloesung | FPS | Standard-Bitrate |
-|--------|-----------|-----|-----------------|
-| 720p/30 | 1280x720 | 30 | 3000 kbps |
-| 720p/60 | 1280x720 | 60 | 4500 kbps |
-| 1080p/30 | 1920x1080 | 30 | 5000 kbps |
-| 1080p/60 | 1920x1080 | 60 | 7500 kbps |
-| 1440p/30 | 2560x1440 | 30 | 8500 kbps |
-| 1440p/60 | 2560x1440 | 60 | 12000 kbps |
-| 4K/30 | 3840x2160 | 30 | 15000 kbps |
-| 4K/60 | 3840x2160 | 60 | 20000 kbps |
-| Custom | frei | frei | frei |
-
-#### Buffer-Profile
-
-| Profil | Beschreibung | Wann verwenden |
-|--------|-------------|---------------|
-| **Auto** | Intelligenter Default | Meistens die beste Wahl |
-| **Maximale Stabilitaet** | Grosser Buffer, langsamer Start | IPTV, lange Streams, instabile Quellen |
-| **Ausgewogen** | Mittlerer Buffer | Normaler Betrieb |
-| **Minimale Latenz** | Kleiner Buffer, schneller Start | Live Events wo Verzoegerung stoert |
-
-#### URL Test
-
-Der **Testen** Button neben dem URL-Feld prueft ob die Quelle erreichbar ist und zeigt dir:
-- HTTP Status Code
-- Content-Type (video/mp2t, video/mp4, application/vnd.apple.mpegurl, etc.)
-
-### Events
-
-Streams zeitgesteuert planen.
-
-| Feld | Beschreibung |
-|------|-------------|
-| Name | Name des Events (wird auch in Discord angezeigt) |
-| Kanal | In welchem Voice Channel gestreamt wird |
-| Preset | Welche Stream-Vorlage verwendet wird |
-| Start/Ende | Zeitraum des Streams |
-| Wiederholung | Einmalig, Taeglich, Woechentlich |
-| Wochentage | Bei woechentlich: an welchen Tagen |
-| Intervall | Alle X Tage/Wochen |
-| Wiederholen bis | Bis wann die Serie laeuft |
-
-#### Discord Event Sync
-
-Wenn ein Event erstellt wird, wird automatisch ein **Discord Scheduled Event** auf dem Server erstellt. Das funktioniert in beide Richtungen:
-
-- Event erstellen → Discord Event wird erstellt
-- Event starten → Discord Event Status wird auf "Active" gesetzt
-- Event beenden → Discord Event Status wird auf "Completed" gesetzt
-- Event abbrechen → Discord Event wird geloescht
-- Event bearbeiten → Altes Discord Event wird geloescht, neues erstellt
-
-Events mit Discord-Sync zeigen ein **DISCORD** Badge in der Event-Liste.
-
-### Logs
-
-Alle Systemereignisse mit Filtern:
-- **INFO** - Normale Vorgaenge (Stream gestartet, Event erstellt)
-- **WARN** - Warnungen (Discord Event Sync fehlgeschlagen)
-- **ERROR** - Fehler (Stream abgestuerzt, Verbindungsprobleme)
-
----
-
-## Multi-Selfbot Betrieb
-
-- Der primaere Selfbot wird direkt ueber `deploy/.env` konfiguriert.
-- Weitere Selfbots liegen in `examples/control-panel/data/selfbot-profiles.tsv`.
-- Jeder konfigurierte Discord Voice Channel ist genau einem Selfbot zugeordnet.
-- Scheduler, Queue und manuelle Starts arbeiten bot-spezifisch. Dadurch koennen verschiedene Selfbots parallel streamen, ohne sich global zu blockieren.
-- Die Queue ist weiterhin global als Playlist, streamt aber immer ueber genau den Selfbot des gewaehlten Queue-Kanals.
-
-Die wichtigsten Presence-Variablen:
-
-| Variable | Beschreibung |
-|----------|-------------|
-| `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots |
-| `IDLE_ACTIVITY_TEXT` | Idle-Status wenn der Bot gerade nichts streamt |
-| `STREAM_ACTIVITY_TEXT` | Status-Template waehrend eines Streams, z.B. `{{title}}` |
-| `VOICE_STATUS_TEMPLATE` | Voice-Status-Template, z.B. `Now streaming: {{title}}` |
-| `SELFBOT_CONFIG_FILE` | Pfad zur TSV/JSON Datei mit Zusatzbots |
-
-`config.sh` bietet dafuer den Punkt `10) Selfbots`.
-
----
-
-## MPEG-TS / Dispatcharr / IPTV Integration
-
-Du hast einen IPTV-Proxy wie Dispatcharr, Tvheadend oder aehnliches? Perfekt.
-
-### So funktioniert es
-
-1. Kopiere die TS-Stream URL in das Preset, z.B.:
-   ```
-   http://192.168.2.104:9191/proxy/ts/stream/412ccfb1-8868-42c1-aaf3-b0e3565c1a74
-   ```
-2. Das Panel erkennt automatisch dass es ein MPEG-TS Proxy ist
-3. Quelltyp wird auf "Direkt" gesetzt
-4. Buffer-Profil wird auf "Stabil" gesetzt
-5. FFmpeg bekommt spezielle Flags:
-   - `-fflags +genpts+discardcorrupt` (fehlende Timestamps generieren, kaputte Pakete verwerfen)
-   - Kein `-readrate` (Live-Stream ist bereits in Echtzeit)
-   - Reconnect bei Verbindungsabbruch
-
-### Warum das gut ist
-
-| Vorteil | Erklaerung |
-|---------|-----------|
-| Kein Token sichtbar | Der IPTV-Proxy kuemmert sich um die Authentifizierung |
-| Stabiler Stream | Dispatcharr liefert einen sauberen TS-Feed |
-| Lokal | Laeuft im Heimnetz, kein externer Traffic |
-| Kein Transcoding noetig | FFmpeg kopiert Audio/Video direkt (copy codec) |
-
-### Typische Setups
-
-```
-Dispatcharr (IPTV) → FFmpeg (im Docker) → Discord Voice Channel
-Tvheadend → FFmpeg → Discord
-Jellyfin → FFmpeg → Discord
-```
-
----
-
-## Discord Chat-Befehle
-
-Alle Befehle starten mit dem konfigurierten Prefix (Standard: `$panel`).
-Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden.
-Sie funktionieren ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot mit `CONTROL_BOT_TOKEN`.
-Beim normalen Bot funktioniert nach dem Login auch die Bot-Mention als Prefix.
-Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
-Zusaetzlich kann der normale Bot guild-spezifische Slash-Commands registrieren. Diese werden bewusst nie global angelegt.
-
-Komplette Befehlsreferenz: siehe [COMMANDS.md](COMMANDS.md)
-
-Wenn Commands nicht reagieren, pruefe zuerst:
-
-1. `DISCORD_COMMANDS_ENABLED=1`
-2. `COMMAND_PREFIX` oder `COMMAND_PREFIX_ALIASES` passt zu deiner Nachricht
-3. Beim normalen Bot steht deine User-ID in `COMMAND_ALLOWED_AUTHOR_IDS`
-4. Beim normalen Bot ist das `Message Content Intent` aktiviert
-5. Fuer Slash-Commands ist der Ziel-Server in `CONTROL_BOT_COMMAND_GUILD_IDS` gesetzt oder wird ueber deine konfigurierten Kanaele erkannt
-
-Mit `play <url>` nutzt der Control-Bot nach Moeglichkeit automatisch deinen aktuellen Voice-Channel.
-Optional kannst du fuer Quick Play eine Zielqualitaet setzen, z. B. `play <url> | 1080p60` oder `play <url> | 2026-04-30 22:30 | 1440p30`.
-Mit Slash-Commands geht dasselbe als `/play`, `/start`, `/stop`, `/queue`, `/info` und `/whoami`.
-
-### Kurzuebersicht
-
-| Befehl | Was es tut |
-|--------|-----------|
-| `$panel help` | Alle Befehle anzeigen |
-| `$panel whoami` | Eigene Discord-ID und Command-Freigabe pruefen |
-| `$panel play URL \| [Zeit] \| [Qualitaet]` | URL direkt im aktuellen Voice-Channel starten |
-| `$panel status` | Aktuellen Stream-Status anzeigen |
-| `$panel start Kanal \| Preset` | Stream sofort starten |
-| `$panel start URL \| [Zeit] \| [Qualitaet]` | Schnellstart fuer eine URL |
-| `$panel start Kanal \| Preset \| 2025-12-31 22:00` | Stream mit Stoppzeit starten |
-| `$panel stop` | Einen oder mehrere aktive Streams stoppen |
-| `$panel restart [bot\|kanal\|id]` | Aktiven Stream gezielt neu starten |
-| `$panel channels` | Alle konfigurierten Kanaele anzeigen |
-| `$panel presets` | Alle Presets anzeigen |
-| `$panel events` | Kommende Events anzeigen |
-| `$panel event start <id>` | Geplantes Event sofort starten |
-| `$panel event cancel <id>` | Event abbrechen |
-| `$panel queue` | Queue anzeigen |
-| `$panel queue add <url> \| [name]` | URL in die Queue legen |
-| `$panel queue start Kanal \| Preset` | Queue im Kanal starten |
-| `$panel queue stop` | Queue stoppen |
-| `$panel queue skip` | Zum naechsten Queue-Item springen |
-| `$panel info` | System-/Runtime-Infos anzeigen |
-| `$panel logs [n]` | Letzte Logs abrufen |
-
----
-
-## Discord Token finden
-
-1. Discord im Browser oeffnen (discord.com/app)
-2. **F12** druecken (Developer Tools)
-3. Tab **Network** waehlen
-4. Beliebige Aktion in Discord ausfuehren (Nachricht senden, Kanal wechseln)
-5. Auf einen der Requests klicken
-6. In den **Headers** nach `Authorization` suchen
-7. Der Wert ist dein Token
-
-**ACHTUNG:** Dein Token ist wie ein Passwort. Niemals teilen!
-
----
+Der lokale Dev-Pfad fuer das deploybare Panel ist in [`examples/control-panel/README.md`](examples/control-panel/README.md) beschrieben.
 
 ## Projektstruktur
 
-```
-Discord-Stream-Selfbot/
-├── install.sh                  # Interaktive Ersteinrichtung
-├── update.sh                   # Git Update + Container Rebuild
-├── config.sh                   # Konfiguration aendern
+```text
+stream-bot/
+├── COMMANDS.md
+├── PERFORMANCE.md
+├── SELFHOSTING.md
+├── config.sh
 ├── deploy/
-│   ├── .env                    # Deine Konfiguration (nach install.sh)
-│   ├── .env.example            # Vorlage
-│   ├── docker-compose.yml      # Container-Definition
-│   └── data/
-│       └── control-panel-state.json  # Alle Daten (Channels, Presets, Events)
 ├── docker/
-│   └── control-panel.Dockerfile
-├── src/                        # Core Streaming Library
-│   └── media/
-│       └── newApi.ts           # FFmpeg + WebRTC Streaming Engine
 ├── examples/
-│   └── control-panel/
-│       ├── src/                # Backend (TypeScript)
-│       │   ├── config/         # App-Konfiguration
-│       │   ├── domain/         # Typen, Profile, Wiederholungslogik
-│       │   ├── runtime/        # Discord, Scheduler, Commands, Source Resolution
-│       │   ├── server/         # Express API Server
-│       │   ├── services/       # Geschaeftslogik (CRUD, Discord Sync)
-│       │   └── state/          # Persistenz (JSON File)
-│       └── public/             # Frontend (HTML/CSS/JS)
-│           ├── index.html
-│           ├── css/app.css
-│           └── js/app.js
-├── COMMANDS.md                 # Befehlsreferenz
-├── IDEAS.md                    # Ideen & Erweiterungsmoeglichkeiten
-├── SELFHOSTING.md              # Docker/Self-Hosting Anleitung
-└── PERFORMANCE.md              # Performance Tipps
+│   ├── basic/
+│   ├── control-panel/
+│   └── puppeteer-stream/
+├── install.sh
+├── src/
+└── update.sh
 ```
 
----
+## Haftung
 
-## Konfigurationsvariablen
-
-| Variable | Beschreibung | Default |
-|----------|-------------|---------|
-| `DISCORD_TOKEN` | Dein Discord Self-Token | (Pflicht) |
-| `HOST_PORT` | Web Panel Port | 3099 |
-| `TZ` | Zeitzone | Europe/Vienna |
-| `DISCORD_COMMANDS_ENABLED` | Chat-Befehle an (1) / aus (0) | 1 |
-| `COMMAND_PREFIX` | Primaeres Prefix fuer Chat-Befehle | $panel |
-| `COMMAND_PREFIX_ALIASES` | Weitere Prefixe, komma-getrennt | leer |
-| `CONTROL_BOT_TOKEN` | Optionaler normaler Discord Bot fuer dieselben Text-Befehle | leer |
-| `CONTROL_BOT_COMMAND_GUILD_IDS` | Server/Guild-IDs fuer guild-spezifische Slash-Commands | automatisch |
-| `COMMAND_ALLOWED_AUTHOR_IDS` | Erlaubte User-IDs (komma-getrennt) | nur Selfbot-Accounts |
-| `PRIMARY_SELFBOT_NAME` | Anzeigename des primaeren Selfbots | Primary Selfbot |
-| `SELFBOT_CONFIG_FILE` | TSV/JSON-Datei fuer zusaetzliche Selfbots | `/app/examples/control-panel/data/selfbot-profiles.tsv` |
-| `IDLE_ACTIVITY_TEXT` | Idle-Status Text | THE LION SQUAD - eSPORTS |
-| `STREAM_ACTIVITY_TEXT` | Streaming-Status Template | `{{title}}` |
-| `VOICE_STATUS_TEMPLATE` | Voice-Status Template | `Now streaming: {{title}}` |
-| `PANEL_AUTH_ENABLED` | Web-Panel per Login absichern | 0 |
-| `PANEL_AUTH_USERNAME` | Benutzername fuer das Panel | leer |
-| `PANEL_AUTH_PASSWORD` | Passwort fuer das Panel | leer |
-| `YT_DLP_FORMAT` | yt-dlp Formatauswahl | bestvideo+bestaudio |
-| `PREFERRED_HW_ENCODER` | Hardware-Encoder Auswahl (`auto`, `nvenc`, `vaapi`) | auto |
-| `FFMPEG_LOG_LEVEL` | FFmpeg Log-Level fuer Streams | warning |
-| `SCHEDULER_POLL_MS` | Wie oft der Scheduler Events prueft | 1000 |
-| `STARTUP_TIMEOUT_MS` | Max. Wartezeit bis Discord verbunden | 15000 |
-
----
-
-## Tests
-
-Fuer das Control Panel gibt es jetzt einen separaten Testpfad fuer Wiederholungen, Scheduler, State-Migration und bot-spezifische Service-Logik.
-
-```bash
-npm run test:control-panel
-```
-
-Direkt im Control-Panel-Ordner:
-
-```bash
-cd examples/control-panel
-npm run test
-```
-
----
-
-## Troubleshooting
-
-### Stream haengt / buffert
-
-1. **Buffer-Profil auf "Stabil" setzen** - Mehr Buffer = stabiler
-2. **Qualitaet reduzieren** - 1080p statt 4K, 30fps statt 60fps
-3. **Bitrate senken** - Weniger kbps = weniger Bandbreite noetig
-4. **Hardware-Beschleunigung im Preset aktivieren** - nutzt automatisch NVENC/VAAPI wenn verfuegbar
-5. **Quelle pruefen** - URL-Test im Preset verwenden
-6. **Logs checken** - Im Logs-Tab oder per `$panel logs` nach Fehlern suchen
-
-### 1440p / 4K soll fluessiger laufen
-
-- Aktiviere im Preset **Hardware Acceleration**
-- Lasse `PREFERRED_HW_ENCODER=auto`, ausser du willst gezielt `nvenc` oder `vaapi` erzwingen
-- Fuer VAAPI im Docker-Container muss `/dev/dri` in den Container durchgereicht werden
-- Ohne Hardware-Encoder faellt das System automatisch auf Software-Encoding zurueck; fuer stabile Streams dann besser auf `1080p30` oder `1080p60` bleiben
-
-### YouTube funktioniert nicht
-
-- URL muss ein vollstaendiger YouTube Link sein
-- Quelltyp muss auf **yt-dlp** stehen (wird automatisch erkannt)
-- yt-dlp ist im Docker Image enthalten
-
-### Discord Event wird nicht erstellt
-
-- Bot muss auf dem Server die Berechtigung haben Events zu erstellen
-- Self-Token Accounts haben manchmal eingeschraenkte Rechte
-- Check die Logs fuer genaue Fehlermeldung
-
-### Container startet nicht
-
-```bash
-# Logs anzeigen
-docker compose -f deploy/docker-compose.yml logs -f
-
-# Container neu bauen
-docker compose -f deploy/docker-compose.yml up -d --build --force-recreate
-```
-
----
-
-## Technische Details
-
-| Komponente | Technologie |
-|-----------|-------------|
-| Streaming Engine | FFmpeg → WebRTC via discord-video-stream |
-| Discord Bibliothek | discord.js-selfbot-v13 |
-| Backend | Node.js, Express, TypeScript |
-| Frontend | Vanilla JavaScript, HTML5, CSS3 |
-| Persistenz | JSON File (kein externer DB Server noetig) |
-| Containerisierung | Docker, Docker Compose |
-| Video Codecs | H.264, H.265 |
-| Verschluesselung | Transport + E2E Encryption |
-
----
-
-## Lizenz & Haftung
-
-Dieses Projekt nutzt Self-Bot Funktionalitaet die gegen die Discord Terms of Service verstossen kann. Die Nutzung erfolgt auf eigene Verantwortung. Der Autor uebernimmt keine Haftung fuer Konsequenzen.
+Dieses Projekt nutzt Self-Bot-Funktionalitaet. Der Betrieb erfolgt auf eigene Verantwortung.

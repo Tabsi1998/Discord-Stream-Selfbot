@@ -1,240 +1,202 @@
-# Discord Chat-Befehle - Referenz
+# Command Reference
 
-> Alle Befehle beginnen mit dem konfigurierten Prefix. Standard: `$panel`
->
-> Zusaetzliche Prefixe wie `?` oder `!panel` koennen ueber `COMMAND_PREFIX_ALIASES` gesetzt werden. Beim normalen Control-Bot funktioniert zusaetzlich die Bot-Mention als Prefix.
->
-> Die Befehle koennen ueber den primaeren Selfbot, ueber command-faehige Zusatz-Selfbots und optional ueber einen normalen Discord Bot (`CONTROL_BOT_TOKEN`) angenommen werden.
->
-> Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Chat-Commands.
->
-> Der normale Control-Bot kann zusaetzlich guild-spezifische Slash-Commands wie `/play`, `/status`, `/queue` und `/info` registrieren. Diese werden nie global angelegt.
+Diese Referenz beschreibt den aktuellen Command-Pfad des deploybaren Bots in `examples/control-panel/`.
 
----
+## Wie Commands ins System kommen
 
-## Uebersicht
+Es gibt drei reale Wege:
 
-| Befehl | Kurzbeschreibung |
-|--------|-----------------|
-| `help` | Alle Befehle anzeigen |
-| `whoami` | Eigene Discord-ID und Freigabe pruefen |
-| `play` | URL direkt im aktuellen Voice-Channel starten |
-| `status` | Aktuellen Stream-Status |
-| `start` | Stream manuell starten |
-| `stop` | Einen oder mehrere aktive Streams stoppen |
-| `restart` | Aktiven Stream gezielt neu starten |
-| `channels` | Kanaele auflisten |
-| `presets` | Presets auflisten |
-| `events` | Kommende Events auflisten |
-| `event start` | Geplantes Event starten |
-| `event cancel` | Event abbrechen |
-| `queue` | Queue anzeigen |
-| `queue add` | URL in die Queue legen |
-| `queue start` | Queue starten |
-| `queue stop` | Queue stoppen |
-| `queue skip` | Zum naechsten Queue-Item springen |
-| `queue clear` | Queue leeren |
-| `queue loop on/off` | Queue-Loop umschalten |
-| `info` | System- und Runtime-Infos |
-| `logs` | Letzte Logs abrufen |
+1. primaerer Selfbot
+2. Zusatz-Selfbots mit `command_enabled=1`
+3. optional ein normaler Discord Bot ueber `CONTROL_BOT_TOKEN`
 
----
+Wichtig:
 
-## Slash-Commands
+- Sobald ein normaler Control-Bot aktiv ist, antworten die Selfbots nicht mehr auf Text-Commands.
+- Bot-Mention als Prefix funktioniert nur beim normalen Control-Bot.
+- Slash-Commands werden nur ueber den normalen Control-Bot registriert.
+- Slash-Commands werden nie global angelegt, sondern nur guild-spezifisch.
 
-Wenn `CONTROL_BOT_TOKEN` gesetzt ist, kann derselbe Bot zusaetzlich guild-spezifische Slash-Commands anlegen:
+## Prefixe
+
+- primaeres Prefix: `COMMAND_PREFIX`, Default `$panel`
+- zusaetzliche Prefixe: `COMMAND_PREFIX_ALIASES`, komma-getrennt
+- beim normalen Bot zusaetzlich die Bot-Mention
+
+Beispiel:
 
 ```bash
-CONTROL_BOT_TOKEN=dein_bot_token
-CONTROL_BOT_COMMAND_GUILD_IDS=123456789012345678
-COMMAND_ALLOWED_AUTHOR_IDS=123456789012345678
+COMMAND_PREFIX=$panel
+COMMAND_PREFIX_ALIASES=?,!panel
 ```
 
-Wenn `CONTROL_BOT_COMMAND_GUILD_IDS` leer bleibt, nutzt der Bot zuerst die im Panel konfigurierten Guilds. Nur wenn genau ein Server sichtbar ist, wird dieser automatisch genommen.
-
-Die wichtigsten Slash-Commands:
+Dann sind z. B. diese Varianten gueltig:
 
 ```text
-/help
-/whoami
-/play url:<link> stop_at:<optional>
-/start channel:<kanal> preset:<preset> stop_at:<optional>
-/stop
-/queue status
-/queue add url:<link> name:<optional>
-/queue start channel:<kanal> preset:<preset>
-/info
-/logs count:10
-```
-
----
-
-## Befehle im Detail
-
-### `$panel help`
-
-Zeigt die Liste aller verfuegbaren Befehle.
-
-```
 $panel help
+?help
+!panel status
 ```
 
-**Ausgabe:**
-```
-Befehle mit $panel
-$panel help
-$panel whoami
-$panel play <url> | [zeit] | [qualitaet]
-$panel status
-$panel start <url> | [zeit] | [qualitaet]
-$panel start <kanal|id> | <preset|id> | [zeit]
-$panel stop
-$panel restart [bot|kanal|id]
-$panel channels
-$panel presets
-$panel events
-$panel event start <event-id>
-$panel event cancel <event-id>
-$panel queue
-$panel queue add <url> | [name]
-$panel queue start <kanal> | <preset>
-$panel queue stop
-$panel queue skip
-$panel queue clear
-$panel queue loop on
-$panel queue loop off
-$panel info
-$panel logs [n]
-```
+## Wer darf Commands ausfuehren
 
----
+### Ohne normalen Control-Bot
 
-### `$panel whoami`
+- die eingeloggten Selfbot-Accounts selbst
 
-Zeigt deine Discord-ID, den aktuellen Freigabe-Status und das erkannte Prefix an. Das ist der schnellste Check, wenn Commands ueber den normalen Bot nicht reagieren.
+### Mit normalem Control-Bot
 
-```
-$panel whoami
-? whoami
-```
+- Selfbot-Accounts
+- zusaetzlich die IDs aus `COMMAND_ALLOWED_AUTHOR_IDS`
 
-**Ausgabe:**
-```
-Deine Discord-ID: 123456789012345678
-Erlaubt: nein
-Auth-Modus: allowlist
-Erkanntes Prefix: ?
-Primaeres Prefix: $panel
-Trage diese User-ID in COMMAND_ALLOWED_AUTHOR_IDS ein, um den normalen Bot zu nutzen.
-```
-
----
-
-### `$panel play <url> | [stopAt] | [quality]`
-
-Startet eine URL direkt im aktuellen Voice-Channel des Schreibers. Wenn der Voice-Channel bereits im Panel konfiguriert ist, wird diese Zuordnung verwendet. Andernfalls wird fuer den aktuellen Channel ein temporaerer Command-Kanal verwendet.
+Wenn normale User nichts ausfuehren duerfen, hilft fast immer:
 
 ```text
-?play https://www.youtube.com/watch?v=atRP5-nOfRY
-?play https://example.com/live.m3u8 | 2026-04-30 22:30
-?play https://example.com/live.m3u8 | 1080p60
-?play https://example.com/live.m3u8 | 2026-04-30 22:30 | 1440p30
+$panel whoami
 ```
 
-Wenn genau ein gespeicherter Stream-Kanal existiert, funktioniert `play` auch ohne aktuellen Voice-Channel.
+Damit siehst du die erkannte Discord-ID und den aktuellen Freigabemodus.
 
-`start <url>` ist derselbe Schnellstart als Alias.
+## Slash-Command Guild-Auswahl
 
-Unterstuetzte Quick-Play-Zielqualitaeten:
-`auto`, `720p30`, `720p60`, `1080p30`, `1080p60`, `1440p30`, `1440p60`
+Wenn `CONTROL_BOT_COMMAND_GUILD_IDS` gesetzt ist, werden genau diese Guilds genutzt.
 
----
+Wenn die Variable leer bleibt, nimmt der Code zuerst:
 
-### `$panel status`
+1. Guilds aus den gespeicherten Kanaelen
+2. falls das nicht greift und genau eine Guild sichtbar ist, diese einzelne Guild
 
-Zeigt den aktuellen Stream-Status an.
+## Text-Commands: Kurzuebersicht
 
+| Command | Zweck |
+| --- | --- |
+| `help` | Befehlsliste anzeigen |
+| `whoami` | eigene Discord-ID und Command-Freigabe pruefen |
+| `play <url> \| [stopAt] \| [quality]` | URL direkt im aktuellen Voice-Channel starten |
+| `start <url> \| [stopAt] \| [quality]` | Alias fuer Quick-Play |
+| `start <channel> \| <preset> \| [stopAt]` | gespeicherten Kanal mit Preset starten |
+| `status` | aktive Streams anzeigen |
+| `stop` | aktive Streams stoppen |
+| `restart [target]` | aktiven Stream neu starten |
+| `channels` | gespeicherte Kanaele auflisten |
+| `presets` | gespeicherte Presets auflisten |
+| `events` | kommende oder laufende Events anzeigen |
+| `event start <id>` | geplantes Event sofort starten |
+| `event cancel <id>` | Event abbrechen |
+| `queue` | Queue-Status anzeigen |
+| `queue add <url> \| [name]` | Queue-Eintrag anlegen |
+| `queue start <channel> \| <preset>` | Queue starten |
+| `queue stop` | Queue stoppen |
+| `queue skip` | naechsten Queue-Eintrag spielen |
+| `queue clear` | Queue leeren |
+| `queue loop on` / `off` | Loop umschalten |
+| `info` | Runtime- und Systeminfo anzeigen |
+| `logs [n]` | letzte Logs anzeigen |
+
+## Slash-Commands: Kurzuebersicht
+
+| Slash-Command | Zweck |
+| --- | --- |
+| `/help` | Befehlsliste |
+| `/whoami` | Freigabe und ID |
+| `/status` | aktive Streams |
+| `/play url stop_at quality` | Quick-Play im aktuellen Voice-Channel |
+| `/start channel preset stop_at` | gespeicherten Kanal mit Preset starten |
+| `/stop` | aktive Streams stoppen |
+| `/restart target` | aktiven Stream neu starten |
+| `/channels` | Kanaele auflisten |
+| `/presets` | Presets auflisten |
+| `/events` | Events auflisten |
+| `/event start id` | Event starten |
+| `/event cancel id` | Event abbrechen |
+| `/queue status` | Queue anzeigen |
+| `/queue add url name` | Queue-Eintrag anlegen |
+| `/queue start channel preset` | Queue starten |
+| `/queue stop` | Queue stoppen |
+| `/queue skip` | Queue ueberspringen |
+| `/queue clear` | Queue leeren |
+| `/queue loop enabled` | Queue-Loop setzen |
+| `/info` | Runtime-Info |
+| `/logs count` | Logs anzeigen |
+
+## Quick-Play: Details
+
+### Syntax
+
+```text
+$panel play <url> | [stopAt] | [quality]
+$panel start <url> | [stopAt] | [quality]
 ```
-$panel status
+
+Beispiele:
+
+```text
+$panel play https://www.youtube.com/watch?v=atRP5-nOfRY
+$panel play https://example.com/live.m3u8 | 2026-04-30 22:30
+$panel play https://example.com/live.m3u8 | 1080p60
+$panel play https://example.com/live.m3u8 | 2026-04-30 22:30 | 1440p30
 ```
 
-**Ausgabe wenn aktiv:**
+Verhalten:
+
+- nutzt den aktuellen Voice-Channel des Absenders
+- wenn genau ein gespeicherter Stream-Kanal existiert, funktioniert `play` auch ohne aktuellen Voice-Channel
+- erkennt YouTube/Twitch-Links und schaltet intern auf `yt-dlp`
+
+Unterstuetzte Quick-Play-Qualitaeten:
+
+- `auto`
+- `720p30`
+- `720p60`
+- `1080p30`
+- `1080p60`
+- `1440p30`
+- `1440p60`
+
+## Gespeicherte Kanaele und Presets starten
+
+### Syntax
+
+```text
+$panel start <channel> | <preset> | [stopAt]
 ```
-Aktive Streams: 2
-1. Primary Bot | Gaming Kanal -> YouTube HD | running | 19.03.26, 22:00 | Stop 19.03.26, 23:30
-2. Backup Bot | IPTV -> Dispatcharr | running | 19.03.26, 22:05
-```
 
-**Ausgabe wenn inaktiv:**
-```
-Kein aktiver Stream.
-```
+Beispiele:
 
----
-
-### `$panel start <kanal> | <preset>`
-
-Startet sofort einen Stream im angegebenen Kanal mit dem angegebenen Preset.
-
-Kanal und Preset koennen per **Name** oder **ID** angegeben werden.
-
-```
+```text
 $panel start Gaming Kanal | YouTube HD
 $panel start gaming | youtube
 $panel start 1234567890 | abcdef123456
+$panel start Gaming Kanal | YouTube HD | 2026-12-31 23:00
 ```
 
-**Mit Stoppzeit:**
+Hinweise:
 
-```
-$panel start Gaming Kanal | YouTube HD | 2025-12-31 23:00
-$panel start Gaming Kanal | YouTube HD | 2025-12-31T23:00:00
-```
+- Kanal und Preset duerfen per Name oder interner ID referenziert werden
+- wenn mehrere Treffer moeglich sind, bricht der Command mit einem Fehler ab
 
-**Trennzeichen:** Das `|` Zeichen trennt die drei Teile.
+## Status, Stop und Restart
 
-**Ausgabe:**
-```
-Stream startet: Gaming Kanal
-Preset: YouTube HD
-Stop um: 31.12.25, 23:00
+### Status
+
+```text
+$panel status
 ```
 
-**Fehler:**
-- Kanal oder Preset nicht gefunden: `channel not found: xyz`
-- Mehrere Treffer: `Multiple channels match "gaming"`
-- Ungueltige Zeit: `stopAt must be a valid date/time`
+Zeigt alle aktiven Streams, nicht nur einen.
 
----
+### Stop
 
-### `$panel stop`
-
-Stoppt den aktuell laufenden Stream. Wenn mehrere Streams aktiv sind, werden alle aktiven Streams gestoppt.
-
-```
+```text
 $panel stop
 ```
 
-**Ausgabe mit einem Stream:**
-```
-Stream wird gestoppt: Gaming Kanal
-```
+Verhalten:
 
-**Ausgabe mit mehreren Streams:**
-```
-2 aktive Streams werden gestoppt.
-```
+- bei genau einem aktiven Stream wird dieser gestoppt
+- bei mehreren aktiven Streams werden alle aktiven Streams gestoppt
 
-Oder wenn kein Stream laeuft:
-```
-Kein aktiver Stream.
-```
-
----
-
-### `$panel restart [bot|kanal|id]`
-
-Stoppt einen aktiven Stream und startet ihn mit demselben Kanal/Preset erneut. Eine gesetzte Stoppzeit wird uebernommen.
+### Restart
 
 ```text
 $panel restart
@@ -242,236 +204,111 @@ $panel restart backup-bot
 $panel restart Gaming Kanal
 ```
 
-**Ausgabe:**
+Verhalten:
+
+- uebernimmt Kanal, Preset und vorhandene Stoppzeit
+- ohne Ziel klappt `restart` nur, wenn genau ein aktiver Stream existiert
+
+## Listen-Commands
+
 ```text
-Stream wird neugestartet: Primary Bot | Gaming Kanal -> YouTube HD
-```
-
-Wenn mehrere Streams aktiv sind und kein Ziel uebergeben wird:
-
-```text
-Fehler: Mehrere Streams aktiv. Nutze: restart <bot|kanal|id>
-```
-
----
-
-### `$panel channels`
-
-Listet alle konfigurierten Voice Channels auf.
-
-```
 $panel channels
-```
-
-**Ausgabe:**
-```
-Gaming Kanal | ch_abc123
-Musik Kanal | ch_def456
-Filmabend | ch_ghi789
-```
-
----
-
-### `$panel presets`
-
-Listet alle Stream-Presets auf.
-
-```
 $panel presets
-```
-
-**Ausgabe:**
-```
-YouTube HD | pr_abc123 | yt-dlp
-Dispatcharr IPTV | pr_def456 | direct
-Teststream | pr_ghi789 | direct
-```
-
----
-
-### `$panel events`
-
-Listet kommende und laufende Events auf (max. 12).
-
-```
 $panel events
 ```
 
-**Ausgabe:**
-```
-Abend-Stream | ev_abc123 | scheduled | 20.03.26, 20:00 -> 20.03.26, 23:00
-Morgen-Show | ev_def456 | scheduled | 21.03.26, 08:00 -> 21.03.26, 10:00
-```
+Sie listen gespeicherte Kanaele, Presets und kommende/laufende Events in Textform auf.
 
----
+## Event-Steuerung
 
-### `$panel event start <event-id>`
+### Direkt starten
 
-Startet ein geplantes Event sofort, unabhaengig von der geplanten Startzeit.
-
-```
+```text
 $panel event start ev_abc123
 ```
 
-**Ausgabe:**
-```
-Event ev_abc123 wird gestartet.
-```
+### Abbrechen
 
----
-
-### `$panel event cancel <event-id>`
-
-Bricht ein geplantes oder laufendes Event ab.
-
-```
+```text
 $panel event cancel ev_abc123
 ```
 
-**Ausgabe:**
-```
-Event ev_abc123 wurde abgebrochen.
-```
+Hinweis:
 
----
+- `event start` funktioniert nur fuer Events im Status `scheduled`
 
-### `$panel queue`
+## Queue
 
-Zeigt die aktuelle Queue an.
+### Status
 
 ```text
 $panel queue
 ```
 
----
-
-### `$panel queue add <url> | [name]`
-
-Legt eine URL in die Queue. Der Name ist optional.
+### URL hinzufuegen
 
 ```text
 $panel queue add https://example.com/live.m3u8 | Abendprogramm
 ```
 
----
-
-### `$panel queue start <kanal> | <preset>`
-
-Startet die Queue im angegebenen Kanal mit dem angegebenen Preset.
+### Start
 
 ```text
 $panel queue start Gaming Kanal | IPTV Balanced
 ```
 
----
-
-### `$panel queue stop`
-
-Stoppt die Queue.
+### Stop / Skip / Clear
 
 ```text
 $panel queue stop
-```
-
----
-
-### `$panel queue skip`
-
-Springt direkt zum naechsten Queue-Item.
-
-```text
 $panel queue skip
-```
-
----
-
-### `$panel queue clear`
-
-Entfernt alle Queue-Items.
-
-```text
 $panel queue clear
 ```
 
----
-
-### `$panel queue loop on/off`
-
-Schaltet den Queue-Loop an oder aus.
+### Loop
 
 ```text
 $panel queue loop on
 $panel queue loop off
 ```
 
----
+Hinweise:
 
-### `$panel info`
+- die Queue ist immer an einen bestimmten Selfbot/Kanal/Preset gebunden
+- wenn ein geplantes Event denselben Selfbot braucht, entscheidet die Konfliktregel im Panel, ob die Queue pausiert oder das Event blockiert wird
 
-Zeigt Systemdaten wie Discord-Status, yt-dlp-Version, Uptime und RAM an.
+## Info und Logs
+
+### Info
 
 ```text
 $panel info
 ```
 
----
+Zeigt u. a.:
 
-### `$panel logs [n]`
+- Discord-Status
+- aktive Bots
+- erkannte Command-Prefixe
+- FFmpeg- und yt-dlp-Infos
+- Slash-Command-Status des optionalen Control-Bots
 
-Zeigt die neuesten Logs an. Standard sind 5, maximal 20.
+### Logs
 
 ```text
 $panel logs
 $panel logs 10
 ```
 
----
+Grenzen:
 
-## Wer darf Befehle senden?
+- Standard: 5
+- Maximum: 20
 
-Standardmaessig duerfen nur die eingeloggten Selfbot-Accounts Befehle senden.
+## Fehlerbilder, die haeufig keine Bot-Bugs sind
 
-Zusaetzliche User-IDs koennen in der Konfiguration hinterlegt werden:
-
-```bash
-./config.sh
-# → Option 4: Erlaubte User-IDs
-# → z.B.: 123456789,987654321
-```
-
-Oder direkt in `deploy/.env`:
-```
-COMMAND_ALLOWED_AUTHOR_IDS=123456789,987654321
-```
-
----
-
-## Prefix aendern
-
-Standard-Prefix ist `$panel`. Du kannst es aendern oder weitere Aliase setzen:
-
-```bash
-./config.sh
-# → Option 3: Chat-Befehle
-# → Neuer Prefix: z.B. !stream
-# → Weitere Prefixe: z.B. ?,!panel
-```
-
-Wenn du den normalen Bot verwendest und nichts reagiert, starte mit:
-
-```text
-$panel whoami
-```
-
-Dann werden Befehle mit `!stream start ...` etc. verwendet.
-
----
-
-## Befehle deaktivieren
-
-```bash
-./config.sh
-# → Option 3: Chat-Befehle aktivieren? → n
-```
-
-Das Web Panel funktioniert weiterhin, nur die Discord Chat-Steuerung ist dann aus.
+- Commands reagieren nicht: `DISCORD_COMMANDS_ENABLED=0`
+- normaler User darf nichts: `COMMAND_ALLOWED_AUTHOR_IDS` fehlt
+- normaler Bot reagiert nicht: `Message Content Intent` nicht aktiviert
+- Slash-Commands fehlen: Guild nicht in `CONTROL_BOT_COMMAND_GUILD_IDS` und nicht aus gespeicherten Kanaelen ableitbar
+- `play` findet keinen Kanal: Absender ist in keinem Voice-Channel und es gibt nicht genau einen gespeicherten Stream-Kanal

@@ -1,98 +1,168 @@
-# Performance related tweaks
+# Performance Guide
 
-## Control panel defaults
+Diese Hinweise beziehen sich auf den aktuellen Control-Panel-/Docker-Pfad des Bots.
 
-Im Control-Panel-Pfad gilt jetzt:
+## Erstes Ziel: den echten Engpass finden
 
-- Aktivierte `hardwareAcceleration` im Preset nutzt nicht mehr nur Hardware-Decoding, sondern waehlt auch automatisch einen passenden Hardware-Encoder
-- Bevorzugte Auswahl per `PREFERRED_HW_ENCODER=auto|nvenc|vaapi`
-- Standard fuer produktive Streams ist `FFMPEG_LOG_LEVEL=warning`
-- Fuer VAAPI im Docker-Container muss `/dev/dri` verfuegbar sein; optional `FFMPEG_VAAPI_DEVICE=/dev/dri/renderD128`
-- Wenn kein passender Hardware-Encoder erkannt wird, faellt der Stream automatisch auf Software-Encoding zurueck
+Nicht jeder schlechte Stream ist ein Encoder-Problem. Typische Engpaesse:
 
-## `ultrafast` shouldn't be used for x264/5
+- Quelle ist instabil oder liefert kaputte Timestamps
+- CPU oder GPU reicht fuer Qualitaet/FPS nicht
+- Netzwerk ist instabil
+- yt-dlp oder YouTube blockiert
+- Buffer-Profil passt nicht zur Quelle
 
-In our testing, the `ultrafast` preset produces a lot of bitrate spikes, causing the stream to stutter. `superfast` and below seems to keep it under control pretty well. Do not use `ultrafast`. Previous versions of the library has `ultrafast` as the default, which has been changed after the testing.
+Nutze zuerst:
 
-## Transport encryption methods
+- Dashboard-Telemetrie
+- `GET /api/stream/health`
+- Logs im Panel oder per Docker
 
-> [!NOTE]
-> This is no longer accurate as of [#195](https://github.com/Discord-RE/Discord-video-stream/pull/195), which replaces the custom UDP connection with standard WebRTC. This is kept here for historical purposes only.
+Wichtige Telemetrie-Werte:
 
-On CPUs without AES acceleration (very old x86 CPUs, certain ARM SoCs on single board computers, certain VMs that don't expose AES acceleration capability), the default encryption method (AES-256-GCM) might not be fast enough to handle high frame-rate + high bitrate streams.
+- `fps`: was FFmpeg aktuell liefert
+- `speed`: Transcoding-Geschwindigkeit; deutlich unter `1.0` ist ein Warnsignal
+- `bitrateKbps`: reale Datenrate
+- `dropFrames`: verlorene Frames
+- `dupFrames`: duplizierte Frames
 
-In such cases, you can enable the `forceChacha20Encryption` option on the `Streamer` instance (`streamer.opts.forceChacha20Encryption = true`) before starting a stream, to force the use of the faster Chacha20-Poly1305 encryption method. For even higher performance, also install the optional [`sodium-native`](https://www.npmjs.com/package/sodium-native) package to use the faster native version instead of the WASM version.
+## Empfohlene Startwerte
 
-Below are some benchmark results of the two encryption methods in various circumstances, for reference purposes only. All benchmarks are performed on a Ryzen 5 5600H.
+| Quelle | Solider Startpunkt |
+| --- | --- |
+| YouTube / Twitch via yt-dlp | `1080p30`, Buffer `balanced` |
+| HLS / M3U8 | `1080p30`, Buffer `balanced` oder `stable` |
+| MPEG-TS / IPTV / Dispatcharr | `1080p30`, Buffer `stable` |
+| Datei / MP4 / lokaler Direktlink | `1080p30`, Buffer `balanced` |
+| schwacher Host | `720p30`, Buffer `balanced` |
 
-<details>
-<summary>AES-256-GCM, with AES acceleration</summary>
+Wenn du zuerst Stabilitaet willst:
 
-```
-PS C:\> openssl speed -elapsed -aead -evp aes-256-gcm
-You have chosen to measure elapsed time instead of user CPU time.
-Doing AES-256-GCM ops for 3s on 2 size blocks: 19046296 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 31 size blocks: 15299030 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 136 size blocks: 13580376 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 1024 size blocks: 7691855 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 8192 size blocks: 1648811 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 16384 size blocks: 863115 AES-256-GCM ops in 3.00s
-version: 3.4.0
-built on: Tue Oct 22 23:27:41 2024 UTC
-options: bn(64,64)
-compiler: cl  /Z7 /Fdossl_static.pdb /Gs0 /GF /Gy /MD /W3 /wd4090 /nologo /O2 -DL_ENDIAN -DOPENSSL_PIC -D"OPENSSL_BUILDING_OPENSSL" -D"OPENSSL_SYS_WIN32" -D"WIN32_LEAN_AND_MEAN" -D"UNICODE" -D"_UNICODE" -D"_CRT_SECURE_NO_DEPRECATE" -D"_WINSOCK_DEPRECATED_NO_WARNINGS" -D"NDEBUG" -D_WINSOCK_DEPRECATED_NO_WARNINGS -D_WIN32_WINNT=0x0502
-CPUINFO: OPENSSL_ia32cap=0xfed8320b078bffff:0x400684219c97a9
-The 'numbers' are in 1000s of bytes per second processed.
-type              2 bytes     31 bytes    136 bytes   1024 bytes   8192 bytes  16384 bytes
-AES-256-GCM      12693.30k   158089.98k   615233.56k  2625486.51k  4500852.95k  4712187.99k
-```
+- 30 FPS vor 60 FPS
+- `1080p30` vor `1440p60`
+- `balanced` oder `stable` vor `low-latency`
 
-</details>
+## Buffer-Profile richtig einsetzen
 
-<details>
-<summary>AES-256-GCM, without AES acceleration</summary>
+### `auto`
 
-```
-PS C:\> openssl speed -elapsed -aead -evp aes-256-gcm
-You have chosen to measure elapsed time instead of user CPU time.
-Doing AES-256-GCM ops for 3s on 2 size blocks: 6947831 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 31 size blocks: 4875037 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 136 size blocks: 3132696 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 1024 size blocks: 821006 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 8192 size blocks: 113769 AES-256-GCM ops in 3.00s
-Doing AES-256-GCM ops for 3s on 16384 size blocks: 57074 AES-256-GCM ops in 3.00s
-version: 3.4.0
-built on: Tue Oct 22 23:27:41 2024 UTC
-options: bn(64,64)
-compiler: cl  /Z7 /Fdossl_static.pdb /Gs0 /GF /Gy /MD /W3 /wd4090 /nologo /O2 -DL_ENDIAN -DOPENSSL_PIC -D"OPENSSL_BUILDING_OPENSSL" -D"OPENSSL_SYS_WIN32" -D"WIN32_LEAN_AND_MEAN" -D"UNICODE" -D"_UNICODE" -D"_CRT_SECURE_NO_DEPRECATE" -D"_WINSOCK_DEPRECATED_NO_WARNINGS" -D"NDEBUG" -D_WINSOCK_DEPRECATED_NO_WARNINGS -D_WIN32_WINNT=0x0502
-CPUINFO: OPENSSL_ia32cap=0xfcd83209078bffff:0x0 env:~0x200000200000000
-The 'numbers' are in 1000s of bytes per second processed.
-type              2 bytes     31 bytes    136 bytes   1024 bytes   8192 bytes  16384 bytes
-AES-256-GCM       4630.34k    50358.60k   142015.55k   280143.33k   310561.70k   311596.27k
-```
+- Default
+- waehlt Verhalten passend zur Quelle
 
-</details>
+### `stable`
 
-<details>
-<summary>Chacha20-Poly1305</summary>
+- fuer IPTV, MPEG-TS, lange Streams und wackelige Quellen
+- langsamerer Start, dafuer meist robuster
 
-```
-PS C:\> openssl speed -elapsed -aead -evp chacha20-poly1305
-You have chosen to measure elapsed time instead of user CPU time.
-Doing ChaCha20-Poly1305 ops for 3s on 2 size blocks: 8312139 ChaCha20-Poly1305 ops in 3.00s
-Doing ChaCha20-Poly1305 ops for 3s on 31 size blocks: 7801222 ChaCha20-Poly1305 ops in 3.00s
-Doing ChaCha20-Poly1305 ops for 3s on 136 size blocks: 5436377 ChaCha20-Poly1305 ops in 3.00s
-Doing ChaCha20-Poly1305 ops for 3s on 1024 size blocks: 4182141 ChaCha20-Poly1305 ops in 3.00s
-Doing ChaCha20-Poly1305 ops for 3s on 8192 size blocks: 903567 ChaCha20-Poly1305 ops in 3.00s
-Doing ChaCha20-Poly1305 ops for 3s on 16384 size blocks: 472556 ChaCha20-Poly1305 ops in 3.00s
-version: 3.4.0
-built on: Tue Oct 22 23:27:41 2024 UTC
-options: bn(64,64)
-compiler: cl  /Z7 /Fdossl_static.pdb /Gs0 /GF /Gy /MD /W3 /wd4090 /nologo /O2 -DL_ENDIAN -DOPENSSL_PIC -D"OPENSSL_BUILDING_OPENSSL" -D"OPENSSL_SYS_WIN32" -D"WIN32_LEAN_AND_MEAN" -D"UNICODE" -D"_UNICODE" -D"_CRT_SECURE_NO_DEPRECATE" -D"_WINSOCK_DEPRECATED_NO_WARNINGS" -D"NDEBUG" -D_WINSOCK_DEPRECATED_NO_WARNINGS -D_WIN32_WINNT=0x0502
-CPUINFO: OPENSSL_ia32cap=0xfed8320b078bffff:0x400684219c97a9
-The 'numbers' are in 1000s of bytes per second processed.
-type              2 bytes     31 bytes    136 bytes   1024 bytes   8192 bytes  16384 bytes
-ChaCha20-Poly1305     5539.58k    80585.77k   246284.90k  1427504.13k  2465696.49k  2580785.83k
+### `balanced`
+
+- sinnvoller Allround-Default
+- guter Mittelweg fuer die meisten Quellen
+
+### `low-latency`
+
+- nur wenn schnelle Reaktion wichtiger ist als Stabilitaet
+- empfindlicher bei Lastspitzen und unruhigen Quellen
+
+## Hardware-Encoding
+
+Aktivierte `hardwareAcceleration` im Preset bedeutet im aktuellen Code:
+
+- nicht nur Hardware-Decoding
+- sondern auch bevorzugte Auswahl eines passenden Hardware-Encoders
+
+Steuerung per `.env`:
+
+```bash
+PREFERRED_HW_ENCODER=auto
+FFMPEG_LOG_LEVEL=warning
 ```
 
-</details>
+Unterstuetzte Priorisierung:
+
+- `auto`
+- `nvenc`
+- `vaapi`
+
+### VAAPI
+
+Noetig:
+
+- Host muss `/dev/dri` bereitstellen
+- Docker Compose muss das Device durchreichen
+- optional `FFMPEG_VAAPI_DEVICE=/dev/dri/renderD128`
+
+### NVENC
+
+Noetig:
+
+- NVIDIA GPU
+- `nvidia-container-toolkit`
+- Docker Runtime mit GPU-Zugriff
+
+Wenn kein passender Encoder verfuegbar ist, faellt der Bot automatisch auf Software-Encoding zurueck.
+
+## Source-spezifische Hinweise
+
+### yt-dlp / YouTube / Twitch
+
+- Verwende `sourceMode=yt-dlp` oder eine URL, die automatisch erkannt wird.
+- Default fuer YouTube ist `YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android`.
+- Bei Problemen zuerst `./update.sh --fresh`, damit yt-dlp ohne Build-Cache neu gebaut wird.
+- Wenn YouTube weiter blockiert:
+  - Cookies nutzen
+  - oder den OAuth2-Flow im Panel starten
+
+### MPEG-TS / IPTV / Dispatcharr
+
+Das Projekt erkennt solche Quellen und behandelt sie konservativer. Fuer diesen Typ gilt fast immer:
+
+- Buffer `stable`
+- keine aggressive Latenzoptimierung
+- lieber 30 FPS statt 60 FPS
+
+### HLS / M3U8
+
+HLS ist oft okay mit `balanced`, kann aber bei schwankenden Segmenten `stable` brauchen.
+
+### Direkte Dateien
+
+Dateien oder sehr saubere Direktlinks vertragen oft `balanced` gut und sind der einfachste Lastfall.
+
+## Was du bei Lastproblemen zuerst senken solltest
+
+1. FPS von `60` auf `30`
+2. Aufloesung von `1440p` oder `2160p` auf `1080p`
+3. Video-Bitrate
+4. von `H265` auf `H264`, falls dein Setup mit H265 schlechter laeuft
+5. Buffer-Profil auf `stable`, wenn die Quelle selbst wackelt
+
+## Host- und Docker-Tipps
+
+- gib dem Host genug CPU-Reserven
+- vermeide parallel zu viele 60-FPS-Streams auf demselben Bot
+- pruefe, ob die Quelle lokal schneller/stabiler erreichbar ist
+- bei Reverse Proxies nur das Panel proxyen; der eigentliche Stream laeuft ueber Discord, nicht ueber HTTP
+- halte yt-dlp aktuell, wenn du stark von YouTube abhaengst
+
+## Wann `./update.sh --fresh` sinnvoll ist
+
+Typische Faelle:
+
+- YouTube-Link ging frueher, jetzt nicht mehr
+- yt-dlp soll sicher neu gezogen werden
+- Docker hat alte Layer gecacht
+
+```bash
+./update.sh --fresh
+```
+
+## Realistische Erwartungen
+
+- `2160p60` ist nur mit sehr starken Hosts sinnvoll.
+- `1440p60` ist bereits deutlich anspruchsvoller als `1080p60`.
+- fuer die meisten produktiven Setups ist `1080p30` oder `1080p60` die bessere Wahl.
+
+## Historischer Hinweis
+
+Aeltere Dokumentation zu AES-/ChaCha-Benchmarks aus dem frueheren UDP-Pfad ist fuer den aktuellen Control-Panel-Betrieb nicht mehr der relevante Tuning-Hebel. Der heutige Deploy-Pfad arbeitet ueber den aktuellen WebRTC-basierten Stack; fuer den Bot-Betrieb sind Quelle, FFmpeg-Last, Buffering und Hardware-Encoding die entscheidenden Punkte.

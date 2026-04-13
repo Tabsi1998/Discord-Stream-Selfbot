@@ -1,212 +1,228 @@
-# Self-Hosting Anleitung
+# Self-Hosting
 
-Dieses Repo kann als persistenter Docker-Dienst auf deinem eigenen Server betrieben werden.
-
----
+Diese Anleitung beschreibt den produktiven Docker-Pfad des Bots in diesem Repo. Gemeint ist nicht die nackte Library unter `src/`, sondern die deploybare App in `examples/control-panel/`.
 
 ## Voraussetzungen
 
-- **Docker** mit `docker compose` (v2)
-- **Git**
-- Ein **Discord Self-Token** ([Anleitung im README](README.md#discord-token-finden))
+- Docker mit `docker compose`
+- Git
+- ein Discord Self-Token
+- optional:
+  - ein normaler Discord Bot fuer Commands und Slash-Commands
+  - Reverse Proxy und TLS
+  - Intel/AMD iGPU oder NVIDIA GPU fuer Hardware-Encoding
 
----
-
-## Schnellstart
+## Empfohlene Installation
 
 ```bash
-# 1. Repo klonen
 git clone https://github.com/Tabsi1998/Discord-Stream-Selfbot.git
 cd stream-bot
-
-# 2. Interaktive Installation
 ./install.sh
-
-# 3. Fertig!
-# Browser: http://localhost:3099
 ```
 
-`install.sh` fragt interaktiv alles ab:
+`install.sh`:
 
-| Schritt | Was abgefragt wird |
-|---------|-------------------|
-| 1/4 | Voraussetzungen pruefen (Docker, Compose, Dateien) |
-| 2/4 | Discord Token + erlaubte User-IDs |
-| 3/4 | Zeitzone, Chat-Befehle an/aus, Panel-Login, yt-dlp Cookies |
-| 4/4 | Zusammenfassung + Bestaetigung |
+1. prueft Docker und Compose
+2. fragt Token, erlaubte User-IDs, Commands, Panel-Login, Cookies und Presence-Texte ab
+3. schreibt `deploy/.env`
+4. legt `deploy/data/selfbot-profiles.tsv` an
+5. baut das Docker-Image frisch
+6. startet `deploy/docker-compose.yml`
 
----
+Nach erfolgreicher Installation:
 
-## Konfiguration aendern
+- Panel: `http://localhost:3099`
+- Health: `http://localhost:3099/api/health`
+
+## Erster Funktionstest
+
+1. Im Panel einen Kanal speichern
+2. Ein Preset anlegen
+3. Ueber "Manual Start" oder `$panel start` einen Stream ausloesen
+4. Im Dashboard pruefen:
+   - Discord ist `ready`
+   - ein aktiver Run erscheint
+   - Telemetrie aktualisiert sich
+
+## Alltag: Befehle fuer den Betrieb
 
 ```bash
 ./config.sh
-```
-
-Zeigt die aktuelle Konfiguration und bietet Optionen:
-
-| Option | Was du aendern kannst |
-|--------|----------------------|
-| 1 | Discord Token |
-| 2 | Zeitzone |
-| 3 | Chat-Befehle (an/aus, Prefix) |
-| 4 | Erlaubte User-IDs |
-| 5 | yt-dlp Cookies |
-| 6 | yt-dlp Paket |
-| 7 | yt-dlp Format |
-| 8 | Scheduler (Poll-Intervall, Timeout) |
-| 9 | Web-Panel Login |
-| 10 | Selfbots + Presence-Templates |
-| a | Alles auf einmal |
-| q | Abbrechen |
-
-Danach wird optional der Container mit der neuen Konfiguration neu gebaut.
-
----
-
-## Updates einspielen
-
-```bash
 ./update.sh
+./update.sh --fresh
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f
 ```
 
-Was passiert:
+- `./config.sh`: aendert `.env` und Zusatz-Selfbots
+- `./update.sh`: Standard-Update mit Backups und Rebuild
+- `./update.sh --fresh`: Build ohne Docker-Cache, sinnvoll fuer yt-dlp-Updates
 
-1. Voraussetzungen pruefen
-2. Aktuellen Stand anzeigen (Branch, Commit)
-3. Lokale Aenderungen sichern (git stash)
-4. Pruefen ob Updates verfuegbar sind
-5. Konfiguration + Stream-Daten sichern
-6. `git pull --ff-only` ausfuehren
-7. Container stoppen, neu bauen, starten
+## Was persistent gespeichert wird
 
-**Alles wird gesichert:**
-- `.env` → `.env.pre-update`
-- `control-panel-state.json` → `control-panel-state.pre-update.json`
-- Lokale Code-Aenderungen → `git stash`
+| Host-Datei / Ordner | Zweck |
+| --- | --- |
+| `deploy/.env` | Konfiguration |
+| `deploy/data/control-panel-state.json` | Kanaele, Presets, Events, Queue, Notification-Settings |
+| `deploy/data/control-panel-state.logs.json` | Logs |
+| `deploy/data/*.bak` | automatische Backup-Dateien bei State-Schreibvorgaengen |
+| `deploy/data/selfbot-profiles.tsv` | Zusatz-Selfbots auf dem Host |
+| `deploy/cookies/yt-dlp-cookies.txt` | YouTube-Cookies |
+| `deploy/yt-dlp-cache/` | yt-dlp Cache und OAuth2-Tokens |
 
----
+Wichtig:
 
-## Wichtige Dateien
+- Der State wird ohne externe Datenbank gespeichert.
+- Logs liegen absichtlich nicht im Haupt-State, sondern in `*.logs.json`.
+- Import/Export im Panel betrifft Kanaele, Presets, Events, Queue und Notification-Settings, nicht deine `.env`.
 
-| Datei | Beschreibung |
-|-------|-------------|
-| `deploy/.env` | Deine Konfiguration (Token, Port, etc.) |
-| `deploy/.env.example` | Vorlage mit allen Variablen |
-| `deploy/docker-compose.yml` | Container-Definition |
-| `deploy/data/control-panel-state.json` | Alle Daten (Channels, Presets, Events, Logs) |
-| `docker/control-panel.Dockerfile` | Docker Build fuer den Dienst |
+## Backup und Restore
 
----
-
-## Docker Compose manuell steuern
+### Minimal noetig
 
 ```bash
-# Status anzeigen
-docker compose -f deploy/docker-compose.yml ps
+cp deploy/.env /pfad/zum/backup/
+cp deploy/data/control-panel-state.json /pfad/zum/backup/
+cp deploy/data/control-panel-state.logs.json /pfad/zum/backup/
+cp deploy/data/selfbot-profiles.tsv /pfad/zum/backup/
+cp -r deploy/cookies /pfad/zum/backup/
+cp -r deploy/yt-dlp-cache /pfad/zum/backup/
+```
 
-# Logs anzeigen (live)
-docker compose -f deploy/docker-compose.yml logs -f
+### Wiederherstellung
 
-# Container stoppen
-docker compose -f deploy/docker-compose.yml down
+1. Dateien an dieselben Host-Pfade zurueckkopieren
+2. Container neu starten:
 
-# Container starten
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+```
+
+## Manuelle Docker-Steuerung
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml down
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
-
-# Container komplett neu bauen
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build --force-recreate
 ```
 
----
+## Wichtige Host-Pfade und Container-Mounts
 
-## Daten-Backup
+| Host | Container |
+| --- | --- |
+| `deploy/data` | `/app/examples/control-panel/data` |
+| `deploy/cookies` | `/app/examples/control-panel/cookies` |
+| `deploy/yt-dlp-cache` | `/root/.cache/yt-dlp` |
 
-Die einzigen Dateien die du sichern musst:
+Deshalb gilt:
+
+- die Zusatz-Selfbot-Datei liegt auf dem Host unter `deploy/data/selfbot-profiles.tsv`
+- OAuth2-Tokens landen persistent unter `deploy/yt-dlp-cache/youtube-oauth2/`
+
+## YouTube: aktueller Betriebsweg
+
+### Standard ohne manuelles Zutun
+
+Per Default nutzt das Projekt:
 
 ```bash
-# Konfiguration
-cp deploy/.env ~/backup/
-
-# Stream-Daten (Channels, Presets, Events)
-cp deploy/data/control-panel-state.json ~/backup/
+YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android
 ```
 
-Zum Wiederherstellen einfach zurueckkopieren und Container neu starten.
+Das umgeht bereits viele YouTube-Bot-Checks.
 
----
+### Wenn YouTube trotzdem blockiert
 
-## Hinweise
+Es gibt zwei reale Pfade im Code:
 
-- Der Dienst laeuft auf **Port 3099** (fest konfiguriert)
-- Das Panel kann direkt per `PANEL_AUTH_ENABLED=1` plus Benutzername/Passwort abgesichert werden
-- Mehrere Selfbots werden ueber `PRIMARY_SELFBOT_NAME` plus `SELFBOT_CONFIG_FILE` verwaltet
-- Zusatzbots liegen standardmaessig in `examples/control-panel/data/selfbot-profiles.tsv`
-- Geplante Events und manuelle Streams koennen parallel laufen, solange sie unterschiedliche Selfbots verwenden
-- Die Queue ist bot-gebunden: sie streamt immer ueber den Selfbot des ausgewaehlten Queue-Kanals
-- YouTube-Quellen laufen ueber **yt-dlp**, das im Docker-Image bei jedem `./update.sh` frisch ohne Build-Cache neu gebaut wird
-- Standard fuer Docker ist jetzt der offizielle `pip`-Pfad `--pre "yt-dlp[default]"`, damit YouTube-Fixes schneller im Server landen
-- Aktivierte Hardware-Beschleunigung im Preset nutzt jetzt echte Hardware-Encoder statt nur Hardware-Decoding
-- Mit `PREFERRED_HW_ENCODER=auto|nvenc|vaapi` kannst du den bevorzugten Encoder festlegen
-- Wenn YouTube `Sign in to confirm you're not a bot` meldet, setze in `deploy/.env` entweder:
-  - `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
-  - oder `YT_DLP_COOKIES_FROM_BROWSER=...` wenn du den Browser-Profile-Zugriff selbst in den Container bringst
-- Vor diesem Cookie-Fallback versucht das Panel automatisch `YT_DLP_YOUTUBE_EXTRACTOR_ARGS=youtube:player_client=android`, was viele Livestreams bereits ohne Cookies aufloest.
-- Fuer die Cookie-Datei kannst du eine Netscape-Cookies-Datei unter `deploy/cookies/yt-dlp-cookies.txt` ablegen. Dieser Ordner wird read-only in den Container gemountet.
-- MPEG-TS Streams (Dispatcharr, IPTV) werden automatisch erkannt und optimiert
-- FFmpeg ist im Docker-Image mit allen benoetigten Codecs enthalten
-- Die State-Datei wird bei jedem Schreibvorgang automatisch gespeichert
-- Fuer Aenderungen an Code oder Abhaengigkeiten: `./update.sh` ausfuehren
+1. Cookie-Datei
+2. OAuth2-Device-Flow
 
----
+### Cookie-Datei
+
+Möglichkeiten:
+
+- im Panel per Cookie-Upload
+- manuell als `deploy/cookies/yt-dlp-cookies.txt`
+- per `.env` mit `YT_DLP_COOKIES_FILE=/app/examples/control-panel/cookies/yt-dlp-cookies.txt`
+- lokal ausserhalb von Docker optional per `YT_DLP_COOKIES_FROM_BROWSER=edge` oder `chrome:Default`
+
+Der Upload-Endpunkt erwartet Netscape/Mozilla-Format mit Tab-separierten Feldern.
+
+### OAuth2-Device-Flow
+
+Im Panel kann ein OAuth2-Flow gestartet werden. Intern startet das Projekt `yt-dlp` mit dem `yt-dlp-youtube-oauth2` Plugin und speichert das Token im gemounteten Cache unter:
+
+```text
+deploy/yt-dlp-cache/youtube-oauth2/token_data.json
+```
+
+Der Flow ist fuer Faelle gedacht, in denen Cookies unbequem sind oder haeufig ablaufen.
 
 ## Mehrere Selfbots
 
-Der primaere Bot kommt direkt aus `deploy/.env`. Weitere Bots kannst du ueber `config.sh` unter `10) Selfbots` anlegen oder manuell in `examples/control-panel/data/selfbot-profiles.tsv` eintragen.
+Der primaere Selfbot kommt aus `deploy/.env`. Zusatz-Selfbots werden aus `deploy/data/selfbot-profiles.tsv` oder einer JSON-Datei geladen.
 
-Die wichtigsten Variablen:
+### TSV-Format
 
-```bash
-PRIMARY_SELFBOT_NAME=Primary Selfbot
-SELFBOT_CONFIG_FILE=/app/examples/control-panel/data/selfbot-profiles.tsv
-IDLE_ACTIVITY_TEXT=THE LION SQUAD - eSPORTS
-STREAM_ACTIVITY_TEXT={{title}}
-VOICE_STATUS_TEMPLATE=Now streaming: {{title}}
+```text
+# id	name	token	idle_status_text	stream_status_text	voice_status_text	enabled	command_enabled
+backup-1	Backup Bot	TOKEN_HIER	Idle Text	{{title}}	Now streaming: {{title}}	1	0
+backup-2	Event Bot	TOKEN_HIER	Idle Text	{{title}}	Now streaming: {{title}}	1	1
 ```
 
-Jeder Channel in der Web-UI ist genau einem Selfbot zugeordnet. Dadurch koennen mehrere Streams parallel laufen, ohne sich gegenseitig auf denselben Bot zu legen.
+Spalten:
+
+- `id`: interne ID des Bots
+- `name`: Anzeigename im Panel
+- `token`: Discord Token
+- `idle_status_text`: Idle-Text
+- `stream_status_text`: Text waehrend des Streams
+- `voice_status_text`: Voice-Status-Template
+- `enabled`: `1` oder `0`
+- `command_enabled`: `1` oder `0`
+
+### JSON-Alternative
+
+Der Loader akzeptiert auch ein JSON-Array. Nutzbare Felder:
+
+- `id`
+- `name`
+- `token`
+- `enabled`
+- `commandEnabled`
+- `idlePresenceStatus`
+- `idleActivityType`
+- `idleActivityText`
+- `streamPresenceStatus`
+- `streamActivityType`
+- `streamActivityText`
+- `voiceStatusTemplate`
 
 ## Commands und optionaler Control-Bot
 
-Text-Befehle laufen standardmaessig ueber den primaeren Selfbot und ueber Zusatz-Selfbots mit aktivierten Commands. Optional kannst du einen normalen Discord Bot dazuschalten:
+Wenn `CONTROL_BOT_TOKEN` gesetzt ist:
 
-```bash
-COMMAND_PREFIX=$panel
-COMMAND_PREFIX_ALIASES=?,!panel
-CONTROL_BOT_TOKEN=
-CONTROL_BOT_COMMAND_GUILD_IDS=
-COMMAND_ALLOWED_AUTHOR_IDS=
-```
+- registriert das Projekt Text-Commands ueber einen normalen Bot
+- registriert optional guild-spezifische Slash-Commands
+- die Selfbots selbst antworten dann nicht mehr auf Chat-Commands
 
-Wichtig fuer den normalen Bot:
-- `Message Content Intent` im Discord Developer Portal aktivieren
-- fuer `play <url>` automatisch den aktuellen Voice-Channel erkennen zu koennen, braucht der Bot `Guild Voice States` als Gateway-Intent im Client
-- denselben Bot auf deinen Server einladen
-- sobald `CONTROL_BOT_TOKEN` gesetzt ist, antworten die Selfbots nicht mehr auf Chat-Commands; nur der normale Bot schreibt zurueck
-- Slash-Commands werden nur guild-spezifisch registriert, nie global
-- `CONTROL_BOT_COMMAND_GUILD_IDS` kann die Ziel-Server fest vorgeben; wenn leer, nutzt der Bot zuerst die im Panel konfigurierten Guilds und faellt erst bei genau einem Server auf diesen zurueck
-- wenn `COMMAND_ALLOWED_AUTHOR_IDS` leer bleibt, duerfen nur Selfbot-Accounts Commands ausfuehren
-- fuer einen normalen User-Account deshalb die eigene Discord-ID per `whoami` ermitteln und in `COMMAND_ALLOWED_AUTHOR_IDS` eintragen
+Wichtig:
 
----
+- `COMMAND_ALLOWED_AUTHOR_IDS` ist fuer normale User relevant
+- `CONTROL_BOT_COMMAND_GUILD_IDS` begrenzt die Slash-Registrierung
+- wenn keine Guild-IDs gesetzt sind, versucht der Code zuerst die im Panel gespeicherten Guilds abzuleiten
+- Slash-Commands werden nie global angelegt
 
-## Hardware-Encoding in Docker
+Die komplette Referenz steht in [`COMMANDS.md`](COMMANDS.md).
 
-Fuer 1440p/4K oder laengere Streams solltest du Hardware-Encoding bevorzugen.
+## Hardware-Encoding
 
-### Intel / AMD iGPU via VAAPI
+### VAAPI
 
-Ergaenze in `deploy/docker-compose.yml` bei Bedarf:
+Compose-Beispiel:
 
 ```yaml
 services:
@@ -215,33 +231,40 @@ services:
       - /dev/dri:/dev/dri
 ```
 
-Optional in `deploy/.env`:
+Empfohlene `.env`-Werte:
 
 ```bash
 PREFERRED_HW_ENCODER=vaapi
 FFMPEG_VAAPI_DEVICE=/dev/dri/renderD128
 ```
 
-### NVIDIA via NVENC
+### NVENC
 
 - `nvidia-container-toolkit` auf dem Host installieren
 - GPU fuer Docker freigeben
-- optional `PREFERRED_HW_ENCODER=nvenc` setzen
+- optional `PREFERRED_HW_ENCODER=nvenc`
 
-Wenn kein passender Hardware-Encoder erkannt wird, faellt der Stream automatisch auf Software-Encoding zurueck.
+Wenn kein passender Encoder verfuegbar ist, faellt das Projekt automatisch auf Software-Encoding zurueck.
 
----
+## Sicherheit und Reverse Proxy
 
-## Reverse Proxy (optional)
+Das Panel kann sensible Funktionen ausloesen. Deshalb mindestens eine dieser Optionen setzen:
 
-Wenn du das Panel ueber eine Domain erreichbar machen willst:
+- `PANEL_AUTH_ENABLED=1` mit Benutzername/Passwort
+- Reverse-Proxy-Auth
+- beides
 
-### nginx Beispiel
+Wichtig:
+
+- `/api/health` bleibt absichtlich ohne Panel-Auth erreichbar
+- alle anderen API-Routen und die statischen Panel-Dateien liegen hinter der Auth-Middleware
+
+### nginx
 
 ```nginx
 server {
     listen 443 ssl;
-    server_name stream.deinedomain.at;
+    server_name stream.example.com;
 
     ssl_certificate     /etc/ssl/certs/stream.pem;
     ssl_certificate_key /etc/ssl/private/stream.key;
@@ -254,12 +277,22 @@ server {
 }
 ```
 
-### Caddy Beispiel
+### Caddy
 
-```
-stream.deinedomain.at {
+```text
+stream.example.com {
     reverse_proxy localhost:3099
 }
 ```
 
-**Empfehlung:** Entweder Reverse-Proxy-Auth oder direkt die eingebauten `PANEL_AUTH_*` Variablen verwenden, da das Panel volle Kontrolle ueber den Stream-Bot hat.
+## Monitoring und Fehleranalyse
+
+Praktische Stellen:
+
+- `docker compose ... logs -f`
+- Dashboard-Logs
+- `GET /api/health`
+- `GET /api/stream/health`
+- `GET /api/live/state` fuer den Live-State-Stream
+
+Wenn Streams instabil sind, siehe [`PERFORMANCE.md`](PERFORMANCE.md).
